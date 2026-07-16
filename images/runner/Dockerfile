@@ -17,11 +17,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 COPY images/requirements.lock /tmp/requirements.lock
-RUN python -m pip install --require-hashes --no-deps -r /tmp/requirements.lock \
+RUN python -m pip install --root-user-action=ignore --require-hashes --no-deps -r /tmp/requirements.lock \
     && rm -f /tmp/requirements.lock \
     && groupadd --gid 65532 certforge \
     && useradd --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin certforge \
     && mkdir -p /opt/echo /workspace \
+    && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
     && chown -R 65532:65532 /opt/echo /workspace
 
 COPY --chown=65532:65532 src/echo_certification_forge /opt/echo/echo_certification_forge

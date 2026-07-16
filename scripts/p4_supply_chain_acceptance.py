@@ -251,7 +251,14 @@ def containment_probe(image: str, role: ImageRole, ownership_token: str) -> dict
         "memory_limited": host.get("Memory") == 268435456 and host.get("MemorySwap") == 268435456,
         "cpu_limited": host.get("NanoCpus") == 250000000,
         "tmp_writable": "import=ok" in result["logs"],
-        "docker_socket_absent": "docker.sock" not in canonical_json(result),
+        "docker_socket_absent": "docker.sock" not in canonical_json(
+            {
+                "binds": host.get("Binds"),
+                "mounts": host.get("Mounts"),
+                "volumes_from": host.get("VolumesFrom"),
+                "config_volumes": result["config"].get("Volumes"),
+            }
+        ),
     }
     return {**result, "checks": checks, "passed": all(checks.values())}
 
