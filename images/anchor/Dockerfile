@@ -1,12 +1,12 @@
-FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
+FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="Echo Certification Forge Anchor" \
       org.opencontainers.image.description="Purpose-built independent evidence-root anchoring service image" \
       org.opencontainers.image.source="https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
-      org.opencontainers.image.base.name="python:3.12.10-slim-bookworm" \
-      org.opencontainers.image.base.digest="sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db" \
+      org.opencontainers.image.base.name="python:3.12-slim-bookworm" \
+      org.opencontainers.image.base.digest="sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b" \
       echo.certforge.image.role="anchor" \
       echo.certforge.image.schema="1.1.0"
 

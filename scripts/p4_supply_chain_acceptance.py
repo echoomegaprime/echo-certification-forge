@@ -57,7 +57,7 @@ FORBIDDEN_PATH_COMPONENTS = {
     "anchor-private.pem",
     ".echo_sovereign_key",
 }
-BASE_IMAGE_NAME = "python:3.12.10-slim-bookworm"
+BASE_IMAGE_NAME = "python:3.12-slim-bookworm"
 OWNED_CONTAINER_IDS: list[str] = []
 
 
