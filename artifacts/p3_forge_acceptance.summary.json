@@ -1,0 +1,135 @@
+{
+  "acceptance_identity": {
+    "bytes": 27332,
+    "completed_at_utc": "2026-07-16T08:56:19.933459Z",
+    "path": "artifacts/p3_forge_acceptance.json",
+    "sha256": "189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27",
+    "started_at_utc": "2026-07-16T08:55:50.242697Z"
+  },
+  "acceptance_source_identity": {
+    "scripts/p3_forge_acceptance.py": "07d819198aa8b9c4e7fbd71121598b5e5cd5db6e9e4b1cc21dcda002c8e3623f",
+    "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
+    "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
+    "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
+    "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
+    "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
+    "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9"
+  },
+  "adversarial_tests": {
+    "failed": 0,
+    "failed_checks": [],
+    "passed": 34,
+    "total": 34
+  },
+  "anchor": {
+    "chain_tip": "4b59c9b24ec0557da6e865c57ad16fe7662e0a5e9deff45fb34294983c3aa82a",
+    "offline_verification": {
+      "reason": "verified",
+      "valid": true
+    },
+    "provider_id": "anchor.p3.acceptance",
+    "public_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
+    "receipt_id": "anchor.095f5d407cb768340fd52b065cba56e6",
+    "receipt_sha256": "f3bdb7a16993924cc7a1145b023d9f5ac69d2c5aef1a62b1b604b1f897dcd3ac",
+    "statement_sha256": "eb96857e35e64e68c949fda668fdee8a5d68cadf3b1b901f97fc40b19301ef72",
+    "storage_independent": true
+  },
+  "cleanup": {
+    "anchor_service": {
+      "pid": 257733,
+      "returncode": 0,
+      "stopped": true
+    },
+    "container_cleanup_errors": [],
+    "containers_after": 21,
+    "containers_before": 21,
+    "custody_service": {
+      "pid": 257469,
+      "returncode": 0,
+      "stopped": true
+    },
+    "owned_container_ids": [
+      "3158196bd244e87920249605edd4a083b6fa66d7bdffa5eef8a53875013495e9",
+      "7844b601488a6ae0431ed96192b1a9fa9c4a26ec7b69f4810730da45c4573a5b",
+      "7c787f9d4855290fb8278b6a1c6b2df204e43fbe0d3863a456206000b1bf9fd6",
+      "ab967c337effd44026ddb3900cf6f88839dc383659a88a5f5f03e0a183513883",
+      "c56ae6600e8100deeb9e5839b3f16f911301adfa2247264537ad39f5ef238fc1",
+      "d0607c66eadf637745e43d20831d82ef62b6fa2abf2d9f93b5ed929d3412d316"
+    ],
+    "private_key_files_removed": {
+      "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/anchor-private.pem": true,
+      "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input/verdict-key.pem": true
+    },
+    "unrelated_container_ids_preserved": true
+  },
+  "custody": {
+    "artifact_id": "artifact.p3.acceptance",
+    "artifact_sha256": "61d4fd7ed282d9c0cb3f358a35c521c3304149b70e56fea7260281121c996a74",
+    "audit_chain_tip": "75459f4cadc1b49a28f0d9392b7a6cc7d947dc8eec67f6ae5ecbf8cd12177020",
+    "leaf_hash": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
+    "legal_hold": true,
+    "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
+    "merkle_root": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
+    "visibility": "RESTRICTED"
+  },
+  "forge_host": {
+    "gid": 1002,
+    "node": "forge",
+    "platform": "Linux-6.8.0-134-generic",
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "uid": 1000
+  },
+  "passed": true,
+  "phase": "P3",
+  "private_key_leakage": {
+    "non_secret_files_clear": true,
+    "outputs_clear": true,
+    "service_logs_clear": true,
+    "signing_database_clear": true
+  },
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "runner": {
+    "container_execution_non_root": true,
+    "image_digest": "sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99",
+    "isolation_profile_digest": "f0722821d2658705626bca74623438db30416de174ead34df15588b80dcc72bc",
+    "rootful_docker_engine": true
+  },
+  "schema_version": "1.0.0",
+  "signer": {
+    "anchor_provider_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
+    "authorization_key_id": "ed25519:96b682f0c3aee75a5ef97db427062900",
+    "compromise_invalidation": {
+      "reason": "signing_key_compromised",
+      "valid": false
+    },
+    "containment": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "memory_bytes": 268435456,
+      "nano_cpus": 250000000,
+      "network_mode": "none",
+      "pids_limit": 32,
+      "read_only_root": true,
+      "security_options": [
+        "no-new-privileges:true",
+        "seccomp=builtin",
+        "apparmor=docker-default"
+      ],
+      "user": "1000:1002"
+    },
+    "image": "ghcr.io/home-assistant/home-assistant@sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
+    "isolated_signing_succeeded": true,
+    "key_domains_distinct": true,
+    "offline_verdict_verified": true,
+    "public_key_id": "ed25519:a574dd0fee97965ad65b6777d3efe137",
+    "rotation_historical_verification": {
+      "reason": "verified",
+      "valid": true
+    },
+    "runner_has_signing_key_mount": false
+  },
+  "source_commit": "87c8afcfa5e439219b8737f7fdcb202967810316",
+  "source_commit_contains_p3": false
+}

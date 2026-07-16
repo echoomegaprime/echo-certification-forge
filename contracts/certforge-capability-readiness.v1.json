@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "contract_path": "contracts/certforge-capabilities.v1.json",
+  "registration_policy": "Register only after the mapped endpoint is real, schema-complete, authorized, healthy, and acceptance-tested.",
+  "capabilities": [
+    "echo.certforge.health",
+    "echo.certforge.submit",
+    "echo.certforge.status",
+    "echo.certforge.cancel",
+    "echo.certforge.findings",
+    "echo.certforge.evidence",
+    "echo.certforge.verify",
+    "echo.certforge.verdict",
+    "echo.certforge.deploy_gate"
+  ],
+  "state": {
+    "catalog_visibility": false,
+    "registration": false,
+    "contract_schema_complete": true,
+    "mapped_endpoint_complete": false,
+    "authorization_proven": false,
+    "health_proven": false,
+    "real_invocation_proven": false,
+    "registration_state": "NOT_REGISTERED"
+  },
+  "echo_certforge_health": {
+    "catalog_visibility": false,
+    "registration": false,
+    "schema_complete": true,
+    "authorization": "UNPROVEN",
+    "health": "UNAVAILABLE_UNREGISTERED",
+    "real_invocation": false
+  },
+  "echo_builds_log": {
+    "catalog_visibility": false,
+    "registration": false,
+    "schema_complete": false,
+    "authorization": "UNPROVEN",
+    "health": "UNAVAILABLE_UNREGISTERED",
+    "real_invocation": false
+  },
+  "decision": "DO_NOT_REGISTER",
+  "reason": "The future capability contracts are versioned, but the complete mapped service endpoints and central authorization/health acceptance are not yet proven."
+}

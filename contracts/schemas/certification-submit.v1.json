@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cert.echoforge.com/contracts/certification-submit.v1.json",
+  "title": "CertificationSubmitV1",
+  "type": "object",
+  "required": ["tenant_id", "target", "environment", "policy_version", "idempotency_key"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "target": {
+      "type": "object",
+      "required": ["target_type", "identity_digest"],
+      "properties": {
+        "target_type": {"enum": ["git", "archive", "container", "package", "deployment", "mcp", "sdk", "cli"]},
+        "identity_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "reference": {"type": "string", "minLength": 1, "maxLength": 2048}
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["identity_digest"],
+      "properties": {
+        "identity_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "runner_image_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "policy_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 128}
+  },
+  "additionalProperties": false
+}

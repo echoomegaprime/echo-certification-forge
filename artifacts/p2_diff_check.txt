@@ -1,3 +1,2 @@
-warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'src/echo_certification_forge/service.py', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'tests/test_state_and_api.py', LF will be replaced by CRLF the next time Git touches it

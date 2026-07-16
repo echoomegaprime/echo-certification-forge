@@ -30,7 +30,7 @@ class DeployGateRequest(BaseModel):
 
 
 def create_app(context: ServiceContext) -> FastAPI:
-    app = FastAPI(title="Echo Certification Forge", version="0.2.0")
+    app = FastAPI(title="Echo Certification Forge", version="0.3.0")
 
     def tenant(value: str | None) -> str:
         if value is None or not value.strip():
@@ -41,7 +41,7 @@ def create_app(context: ServiceContext) -> FastAPI:
     def healthz() -> dict[str, object]:
         return {
             "status": "ok",
-            "version": "0.1.0",
+            "version": "0.3.0",
             "control_plane_executes_customer_code": False,
             "private_signing_key_loaded": False,
         }
@@ -55,7 +55,12 @@ def create_app(context: ServiceContext) -> FastAPI:
             "rule_manifest_id": context.manifest.manifest_id,
             "rule_manifest_digest": context.manifest.digest,
             "trusted_signing_keys": sorted(context.trusted_keys.keys),
-            "external_evidence_anchor": "PENDING",
+            "completed_phase_gate": "P3",
+            "release_verdict": "NOT_READY",
+            "evidence_custody": "P3_APPEND_ONLY_VERIFIED",
+            "external_evidence_anchor": "P3_INDEPENDENT_PROVIDER_VERIFIED",
+            "verdict_signing": "P3_ISOLATED_SIGNER_VERIFIED",
+            "public_key_lifecycle": "P3_ROTATION_REVOCATION_VERIFIED",
             "runner_isolation": "P2_FOUNDATION_VERIFIED",
         }
 

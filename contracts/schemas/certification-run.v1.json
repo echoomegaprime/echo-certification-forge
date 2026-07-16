@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cert.echoforge.com/contracts/certification-run.v1.json",
+  "title": "CertificationRunV1",
+  "type": "object",
+  "required": ["run_id", "tenant_id", "state", "run_outcome", "release_verdict", "target_identity_digest", "environment_identity_digest", "policy_version"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "state": {"enum": ["CREATED", "QUEUED", "DISCOVERING", "BUILDING", "EXECUTING_TESTS", "VERIFYING_EVIDENCE", "ISSUING_VERDICT", "COMPLETE", "CANCELLED", "FAILED"]},
+    "run_outcome": {"enum": ["COMPLETE", "INCONCLUSIVE", "CANCELLED", "INFRA_FAILED"]},
+    "release_verdict": {"enum": ["NOT_READY", "CONDITIONALLY_READY", "PRODUCTION_READY"]},
+    "target_identity_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "environment_identity_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "policy_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "evidence_merkle_root": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}
