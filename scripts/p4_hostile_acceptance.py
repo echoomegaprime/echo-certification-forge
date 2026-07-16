@@ -70,7 +70,7 @@ from echo_certification_forge.supply_chain import (  # noqa: E402
     verify_spdx_document,
 )
 
-BASE_IMAGE_NAME = "python:3.12-slim-bookworm"
+BASE_IMAGE_NAME = "python:3.12-alpine"
 ROLE_ORDER = (
     ImageRole.RUNNER,
     ImageRole.CUSTODY,

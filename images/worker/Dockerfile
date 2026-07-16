@@ -1,12 +1,12 @@
-FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
+FROM python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
 
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="Echo Certification Forge Worker" \
       org.opencontainers.image.description="Purpose-built tenant-scoped control-plane worker image" \
       org.opencontainers.image.source="https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
-      org.opencontainers.image.base.name="python:3.12-slim-bookworm" \
-      org.opencontainers.image.base.digest="sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b" \
+      org.opencontainers.image.base.name="python:3.12-alpine" \
+      org.opencontainers.image.base.digest="sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df" \
       echo.certforge.image.role="worker" \
       echo.certforge.image.schema="1.1.0"
 
@@ -23,10 +23,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY images/requirements.lock /tmp/requirements.lock
 RUN python -m pip install --root-user-action=ignore --require-hashes --no-deps -r /tmp/requirements.lock \
     && rm -f /tmp/requirements.lock \
-    && groupadd --gid 65532 certforge \
-    && useradd --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin certforge \
+    && addgroup -S -g 65532 certforge \
+    && adduser -S -D -H -u 65532 -G certforge -s /sbin/nologin certforge \
     && mkdir -p /opt/echo /state /run/certforge \
-    && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
+    && find / -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} + \
     && chown -R 65532:65532 /opt/echo /state /run/certforge
 
 COPY --chown=65532:65532 src/echo_certification_forge /opt/echo/echo_certification_forge

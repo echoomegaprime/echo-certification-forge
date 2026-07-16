@@ -241,7 +241,10 @@ def test_all_p4_production_dockerfiles_are_pinned_and_nonroot() -> None:
         assert f'echo.certforge.image.role="{role}"' in text
         assert "USER 65532:65532" in text
         assert "--require-hashes" in text
-        assert "find / -xdev -type f -perm /6000" in text
+        assert "find / -xdev -type f" in text
+        assert "-perm -4000" in text
+        assert "-perm -2000" in text
+        assert "chmod a-s" in text
 
 
 def test_public_verifier_cli_accepts_valid_bundle_and_denies_expired_bundle(tmp_path) -> None:
