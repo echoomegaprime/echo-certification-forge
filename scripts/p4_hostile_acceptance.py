@@ -493,7 +493,7 @@ def clamav_scan(clamav_image: str, tar_path: Path, role: ImageRole, ownership_to
         command=["--infected", "--no-summary", "/scan/image.tar"],
         entrypoint="clamscan",
         mounts=[(tar_path, "/scan/image.tar", True)],
-        memory="512m",
+        memory="2g",
         pids=128,
         workspace_size="8m",
         file_size_bytes=1024 * 1024 * 1024,
