@@ -30,7 +30,7 @@ class DeployGateRequest(BaseModel):
 
 
 def create_app(context: ServiceContext) -> FastAPI:
-    app = FastAPI(title="Echo Certification Forge", version="0.1.0")
+    app = FastAPI(title="Echo Certification Forge", version="0.2.0")
 
     def tenant(value: str | None) -> str:
         if value is None or not value.strip():
@@ -56,7 +56,7 @@ def create_app(context: ServiceContext) -> FastAPI:
             "rule_manifest_digest": context.manifest.digest,
             "trusted_signing_keys": sorted(context.trusted_keys.keys),
             "external_evidence_anchor": "PENDING",
-            "runner_isolation": "PENDING",
+            "runner_isolation": "P2_FOUNDATION_VERIFIED",
         }
 
     @app.get("/v1/certifications")

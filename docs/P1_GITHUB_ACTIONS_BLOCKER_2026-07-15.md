@@ -1,44 +1,29 @@
-# P1 GitHub Actions Blocker — 2026-07-15
+# CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED
 
-Commit `7c133755ad5a8c8c69a0008d3cb1307411f5b885` triggered GitHub Actions run `29472066127`.
+## Classification
 
-Observed state:
+`CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED`
 
-- event: `push`
-- status: `completed`
-- conclusion: `startup_failure`
-- jobs: none
-- workflow name reported by the run: empty
-- repository Actions policy: enabled
-- allowed actions: all
-- SHA pinning required: false
-- checked-in workflow content: present and structurally valid on inspection
+This classification replaces earlier wording that attributed the failures to an external GitHub platform issue. That attribution was not proven.
 
-The workflow was then normalized without weakening the gate:
+## Confirmed facts
 
-- explicit quoted trigger key;
-- `workflow_dispatch` added;
-- job timeout added;
-- one-command deterministic P1 verification retained;
-- verification artifact upload added.
+- GitHub Actions is enabled for the repository and the repository action policy reports `allowed_actions: all`.
+- Push runs `29472066127` and `29472641620` both ended as `startup_failure`.
+- Both runs created zero jobs and exposed an empty workflow name.
+- Normalizing the workflow trigger layout did not change the failure.
+- The locally reproduced P1 and P2 verification gates are independent of hosted CI and remain evidence-backed.
 
-Commit `0bbf6b3cb362c687f4b6c6b770082c03a376e8a8` triggered run `29472641620`. It produced the same result:
+## Not yet ruled out
 
-- event: `push`
-- status: `completed`
-- conclusion: `startup_failure`
-- jobs: none
-- workflow name reported by the run: empty
+- workflow parser or schema annotation failure not exposed by the returned API payloads;
+- repository, organization, or enterprise policy inherited outside repository-level settings;
+- account, billing, quota, or hosted-runner restrictions;
+- reusable-workflow or required-workflow interactions;
+- environment or deployment-protection restrictions;
+- GitHub API annotations not returned by the available run/job endpoints;
+- permission interactions not represented by the repository Actions permission endpoint.
 
-The repeated zero-job failure after normalization proves that GitHub-hosted CI is currently an external repository/platform integration blocker rather than a test failure. No GitHub-hosted result is treated as evidence.
+## Required resolution
 
-The completed P1 execution evidence remains the clean repository-local Python environment:
-
-- 23 tests passed;
-- 87.15% branch coverage against an enforced 85% floor;
-- default-block, signed-readiness fixture, and post-signature tamper scenarios passed;
-- dependency integrity check passed;
-- diff check passed;
-- real ASGI runtime smoke passed using observable HTTP readiness and owned-process cleanup.
-
-Required recovery: inspect the GitHub Actions workflow parser/startup diagnostics or organization billing/runner integration until a job is actually scheduled. Do not mark hosted CI green from workflow-file presence or run creation alone.
+The blocker is resolved only when a pushed commit creates a named workflow and at least one job, or when GitHub exposes a concrete diagnostic that identifies and corrects the root cause. Tests must not be removed or weakened to obtain a run.

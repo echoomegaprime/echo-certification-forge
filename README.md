@@ -4,7 +4,7 @@ Echo Certification Forge is a deterministic, evidence-backed release authority f
 
 ## Current phase
 
-This repository contains the hardened foundation gate:
+This repository contains the completed P1 deterministic foundation and the evidence-backed P2 runner/transport foundation:
 
 - immutable target and environment identity;
 - separate `run_outcome` and `release_verdict` contracts;
@@ -16,9 +16,16 @@ This repository contains the hardened foundation gate:
 - expiration, revocation, invalidation, and supersession checks;
 - exact-digest deployment-gate evaluation;
 - tenant-scoped read API contracts;
-- adversarial tests for missing, altered, forged, revoked, and mismatched evidence.
+- adversarial tests for missing, altered, forged, revoked, and mismatched evidence;
+- short-lived Ed25519 run credentials separated from verdict signing;
+- authenticated typed runner requests and signed responses;
+- nonce replay prevention, idempotent retries, leases, heartbeats, cancellation, and orphan reaping;
+- append-only resumable evidence chunks;
+- safe archive extraction and symlink rejection;
+- immutable-image container policy with non-root execution, read-only root, network denial, capability dropping, seccomp, AppArmor, and cgroup quotas;
+- real FORGE acceptance for CPU, PID, disk, file-size, timeout, cancellation, crash, hostile install, tenant, archive, and evidence-interruption behavior.
 
-This foundation does **not** claim that the full product is production-ready. Isolated runner execution, authenticated worker transport, adapter breadth, GS343/R2D2 qualification, external evidence-root anchoring, and subscriber productization remain gated phases.
+This foundation does **not** claim that the full product is production-ready. The verified P2 execution plane currently uses equivalent hardened non-root containers on a rootful Docker Engine. Production signing separation, external evidence-root anchoring, hostile-runner production qualification, adapter breadth and GS343/R2D2 routing proof, central `echo.certforge.*` registration, real deployment enforcement, and subscriber productization remain gated phases.
 
 ## Development
 
@@ -27,6 +34,7 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev]"
 .\.venv\Scripts\python -m pytest -q
 .\.venv\Scripts\python scripts\p1_acceptance.py
+.\.venv\Scripts\python scripts\verify_p2.py
 ```
 
 ## Run the read-only control-plane API

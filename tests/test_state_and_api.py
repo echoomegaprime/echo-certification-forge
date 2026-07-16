@@ -48,5 +48,5 @@ def test_health_truthfully_reports_pending_gates(store, manifest):
     assert response.status_code == 200
     body = response.json()
     assert body["external_evidence_anchor"] == "PENDING"
-    assert body["runner_isolation"] == "PENDING"
+    assert body["runner_isolation"] == "P2_FOUNDATION_VERIFIED"
     assert "PRODUCTION_READY" in body["release_verdicts"]
