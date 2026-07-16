@@ -5,7 +5,7 @@ import base64
 import hashlib
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -24,7 +24,11 @@ _PINNED_FROM = re.compile(r"^FROM\s+[^\s]+@sha256:[0-9a-f]{64}(?:\s+AS\s+[A-Za-z
 
 class ImageRole(StrEnum):
     RUNNER = "runner"
+    CUSTODY = "custody"
+    ANCHOR = "anchor"
     SIGNER = "signer"
+    WORKER = "worker"
+    VERIFIER = "verifier"
 
 
 class ImageSupplyChainError(RuntimeError):
@@ -73,12 +77,23 @@ class ImageIdentity(BaseModel):
 class ImageAttestation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = "1.0.0"
+    schema_version: str = "1.1.0"
     identity: ImageIdentity
     key_id: str = Field(min_length=1, max_length=128)
     algorithm: str = "Ed25519"
     public_key_pem: str
+    issued_at: datetime
+    expires_at: datetime
     signature_b64: str
+
+    @model_validator(mode="after")
+    def validate_lifetime(self) -> "ImageAttestation":
+        if self.issued_at.tzinfo is None or self.expires_at.tzinfo is None:
+            raise ValueError("attestation timestamps must be timezone-aware")
+        lifetime = self.expires_at - self.issued_at
+        if lifetime <= timedelta(0) or lifetime > timedelta(days=90):
+            raise ValueError("attestation lifetime must be greater than zero and no more than 90 days")
+        return self
 
 
 class ImageAttestationAuthority:
@@ -98,12 +113,29 @@ class ImageAttestationAuthority:
     def generate(cls) -> "ImageAttestationAuthority":
         return cls(Ed25519PrivateKey.generate())
 
-    def sign(self, identity: ImageIdentity) -> ImageAttestation:
-        signature = self._private_key.sign(canonical_json(identity.model_dump(mode="json")).encode("utf-8"))
+    def sign(
+        self,
+        identity: ImageIdentity,
+        *,
+        issued_at: datetime | None = None,
+        valid_for: timedelta = timedelta(days=30),
+    ) -> ImageAttestation:
+        issued = issued_at or datetime.now(UTC)
+        if issued.tzinfo is None:
+            raise ValueError("issued_at must be timezone-aware")
+        expires = issued + valid_for
+        signed_payload = {
+            "identity": identity.model_dump(mode="json"),
+            "issued_at": to_utc_iso(issued),
+            "expires_at": to_utc_iso(expires),
+        }
+        signature = self._private_key.sign(canonical_json(signed_payload).encode("utf-8"))
         return ImageAttestation(
             identity=identity,
             key_id=self.key_id,
             public_key_pem=self.public_key_pem,
+            issued_at=issued,
+            expires_at=expires,
             signature_b64=base64.b64encode(signature).decode("ascii"),
         )
 
@@ -111,7 +143,7 @@ class ImageAttestationAuthority:
 class ImageAdmissionPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = "1.0.0"
+    schema_version: str = "1.1.0"
     policy_id: str = Field(min_length=1, max_length=128)
     required_role: ImageRole
     expected_image_digest: str
@@ -146,7 +178,19 @@ class AdmissionResult(BaseModel):
     attestation_key_id: str
 
 
-def verify_image_attestation(attestation: ImageAttestation) -> tuple[bool, str]:
+def _attestation_payload(attestation: ImageAttestation) -> dict[str, Any]:
+    return {
+        "identity": attestation.identity.model_dump(mode="json"),
+        "issued_at": to_utc_iso(attestation.issued_at),
+        "expires_at": to_utc_iso(attestation.expires_at),
+    }
+
+
+def verify_image_attestation(
+    attestation: ImageAttestation,
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str]:
     if attestation.algorithm != "Ed25519":
         return False, "unsupported_attestation_algorithm"
     try:
@@ -158,17 +202,29 @@ def verify_image_attestation(attestation: ImageAttestation) -> tuple[bool, str]:
             return False, "attestation_key_id_mismatch"
         key.verify(
             base64.b64decode(attestation.signature_b64, validate=True),
-            canonical_json(attestation.identity.model_dump(mode="json")).encode("utf-8"),
+            canonical_json(_attestation_payload(attestation)).encode("utf-8"),
         )
     except (InvalidSignature, ValueError, TypeError):
         return False, "invalid_image_attestation"
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        return False, "verification_time_not_timezone_aware"
+    if current < attestation.issued_at:
+        return False, "image_attestation_not_yet_valid"
+    if current >= attestation.expires_at:
+        return False, "image_attestation_expired"
     return True, "verified"
 
 
-def evaluate_image_admission(attestation: ImageAttestation, policy: ImageAdmissionPolicy) -> AdmissionResult:
+def evaluate_image_admission(
+    attestation: ImageAttestation,
+    policy: ImageAdmissionPolicy,
+    *,
+    now: datetime | None = None,
+) -> AdmissionResult:
     identity = attestation.identity
     reasons: list[str] = []
-    valid, reason = verify_image_attestation(attestation)
+    valid, reason = verify_image_attestation(attestation, now=now)
     if not valid:
         reasons.append(reason)
     trusted = policy.trusted_attestation_keys.get(attestation.key_id)
@@ -385,7 +441,7 @@ def container_link_escapes(member_path: str, target: str) -> bool:
     """Check whether an image-root symlink lexically escapes the container root.
 
     Absolute links remain inside the container mount namespace. Relative links are
-    resolved from the link's parent and denied only if `..` traverses above root.
+    resolved from the link's parent and denied only if ``..`` traverses above root.
     """
     member = PurePosixPath(member_path.lstrip("./"))
     target_path = PurePosixPath(target)

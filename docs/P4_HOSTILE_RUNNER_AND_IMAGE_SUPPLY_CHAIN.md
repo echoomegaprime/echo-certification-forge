@@ -4,34 +4,40 @@
 
 - Phase: `P4`
 - State: `IN_PROGRESS`
-- Completed phase gate remains: `P3`
-- Product release verdict remains: `NOT_READY`
+- Completed phase gate: `P3`
+- Product release verdict: `NOT_READY`
+- FORGE uses a rootful Docker Engine. Hardened non-root containers do not prove a rootless daemon.
 
-## Foundation implemented
+## Implemented controls
 
-- Purpose-built runner and signer Dockerfiles.
-- Base image pinned to `python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db`.
-- Hash-locked Python runtime dependency graph.
-- Non-root image user `65532:65532`.
-- Explicit runner and signer role labels.
-- Signed image-identity contract using Ed25519 public verification.
-- Fail-closed image admission for role, exact digest, base digest, source commit, Dockerfile digest, lockfile digest, trusted key, revocation, compromise, and drift.
-- Pinned-Dockerfile policy and hostile Dockerfile rejection.
-- Build-context symlink and resource-limit policy.
-- SPDX 2.3 SBOM construction and image binding.
-- Real FORGE supply-chain acceptance harness with exact-container ownership and cleanup.
+- Six purpose-built roles: runner, custody, anchor, signer, worker, and public verifier.
+- Immutable base digest and hash-locked dependencies.
+- Non-root UID/GID `65532:65532`; privileged executable bits removed.
+- Expiring Ed25519 image attestations and public verification.
+- Fail-closed admission for unknown, premature, expired, revoked, compromised, drifted, role-mismatched, base-mismatched, source-mismatched, Dockerfile-mismatched, and lockfile-mismatched identities.
+- Production runner allocation requires successful image admission before Docker creation and records the policy and attestation key IDs.
+- SPDX SBOM and provenance binding.
+- Public-only verifier image.
+- Bounded source, build-context, archive, recursive-archive, installer-script, submodule, lockfile, LFS, and legacy-build checks.
+- Deterministic runtime observations, target-log sanitization, exact container ownership, and unrelated-container preservation.
+- A real FORGE gate for independent builds, image scanning, signatures, service lifecycle, resource boundaries, network denial, tenant separation, evidence integrity, cleanup, and signer regression.
 
-## Current verified infrastructure fact
+## Source validation
 
-FORGE uses a rootful Docker Engine. The images and execution policy are non-root and hardened. This does not establish a rootless Docker daemon or microVM isolation.
+- Tests: `109 passed`, `0 failed`.
+- Branch coverage: `85.79%`.
+- Required floor: `85%`.
+- Compilation: passed.
 
-## Remaining P4 exit work
+## Remaining exit work
 
-- Rebuild both images from the exact P4 Git commit.
-- Produce real FORGE SBOM, provenance, public attestation, admission, containment, and forbidden-file evidence.
-- Complete dependency and operating-system vulnerability scanning.
-- Complete hostile build and runtime fixture matrix: hostile package-install scripts, traversal/symlink contexts, archive bombs, fork/PID, CPU, memory, disk, file-size, exfiltration, timeout, cancellation, crashes, evidence corruption, cross-tenant attempts, and orphan cleanup.
-- Prove purpose-built signer operation with the P3 isolated signing workflow.
-- Resolve exact reproducibility or record independently comparable build evidence.
-- Add image revocation and compromised-image denial to the actual runner/signer admission path.
-- Capture final P4 evidence package, commit, and push before marking P4 complete.
+1. Commit and push this source baseline.
+2. Build every role twice on FORGE from its exact Git archive.
+3. Verify external scanner and signature tooling.
+4. Execute the full real FORGE gate.
+5. Correct any real defect without weakening a check.
+6. Import exact evidence bytes.
+7. Add deterministic `scripts/verify_p4.py`.
+8. Run closure gates, update ledgers, commit `[P4 COMPLETE]`, push, and verify remote identity.
+
+P4 is not complete from source existence, local tests, labels, or the earlier foundation result alone.

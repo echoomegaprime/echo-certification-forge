@@ -8,7 +8,7 @@ LABEL org.opencontainers.image.title="Echo Certification Forge Verdict Signer" \
       org.opencontainers.image.base.name="python:3.12.10-slim-bookworm" \
       org.opencontainers.image.base.digest="sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db" \
       echo.certforge.image.role="signer" \
-      echo.certforge.image.schema="1.0.0"
+      echo.certforge.image.schema="1.1.0"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

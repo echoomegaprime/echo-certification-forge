@@ -1315,3 +1315,62 @@ def assert_no_symlinks(root: Path) -> None:
     for path in resolved_root.rglob("*"):
         if path.is_symlink():
             raise IsolationFailure(f"symlink_not_allowed:{path.relative_to(resolved_root).as_posix()}")
+
+
+def build_admitted_docker_create_payload(
+    profile: IsolationProfile,
+    *,
+    attestation: "ImageAttestation",
+    admission_policy: "ImageAdmissionPolicy",
+    run_id: str,
+    tenant_id: str,
+    ownership_token: str,
+    command: Iterable[str],
+    input_directory: Path | None = None,
+    evidence_directory: Path | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Build a production Docker payload only after exact image admission.
+
+    The legacy payload builder remains available for P1/P2 regression fixtures. New
+    production allocation paths must call this function so an unknown, drifted,
+    expired, revoked, compromised, or role-mismatched image fails closed before
+    Docker receives a create request.
+    """
+    from .supply_chain import ImageAdmissionPolicy, ImageAttestation, ImageRole, evaluate_image_admission
+
+    if not isinstance(attestation, ImageAttestation) or not isinstance(admission_policy, ImageAdmissionPolicy):
+        raise IsolationFailure("image_admission_contract_invalid")
+    decision = evaluate_image_admission(attestation, admission_policy, now=now)
+    if not decision.allowed:
+        raise IsolationFailure("image_admission_denied:" + ",".join(decision.reasons))
+    if decision.role is not ImageRole.RUNNER:
+        raise IsolationFailure("image_admission_role_is_not_runner")
+    if decision.image_digest != profile.image_digest:
+        raise IsolationFailure("isolation_profile_image_digest_mismatch")
+    payload = build_docker_create_payload(
+        profile,
+        run_id=run_id,
+        tenant_id=tenant_id,
+        ownership_token=ownership_token,
+        command=command,
+        input_directory=input_directory,
+        evidence_directory=evidence_directory,
+    )
+    payload["Labels"]["echo.certforge.image_attestation_key"] = decision.attestation_key_id
+    payload["Labels"]["echo.certforge.image_admission_policy"] = admission_policy.policy_id
+    return payload
+
+
+def assert_no_nested_archives(root: Path) -> None:
+    """Reject recursive archive payloads after a bounded first-level extraction."""
+    resolved_root = root.resolve(strict=True)
+    for path in resolved_root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            nested = zipfile.is_zipfile(path) or tarfile.is_tarfile(path)
+        except OSError as exc:
+            raise IsolationFailure(f"nested_archive_probe_failed:{path.name}") from exc
+        if nested:
+            raise IsolationFailure(f"nested_archive_not_allowed:{path.relative_to(resolved_root).as_posix()}")
