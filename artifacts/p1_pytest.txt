@@ -26,4 +26,4 @@ src\echo_certification_forge\verdict.py            61     12     34      9    76
 -------------------------------------------------------------------------------------------
 TOTAL                                             754     74    164     42    87%
 Required test coverage of 85.0% reached. Total coverage: 87.15%
-23 passed, 1 warning in 3.91s
+23 passed, 1 warning in 4.88s

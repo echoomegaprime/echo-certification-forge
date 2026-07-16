@@ -26,7 +26,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts\\p1_pytest.txt",
-      "log_sha256": "76bb56a52bb70ee2b426378adad738689c465a090bd2a352878d6d87c8d821e7",
+      "log_sha256": "26270e18bca753d1b2905d0f8081ce6ea25b1312689f8e8c0d5a25d09fee7c61",
       "name": "pytest"
     },
     {
@@ -36,7 +36,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts\\p1_acceptance.txt",
-      "log_sha256": "dd59095ea6b4c92caea44ef59c4a1e2a0c878f25b4f8f6925cbd6ade83e532e1",
+      "log_sha256": "370ffdfdb2433533cb5f1b1da62374986f80a9b937d016545c465ccba66bd64e",
       "name": "acceptance"
     },
     {
@@ -46,7 +46,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts\\p1_runtime_smoke.txt",
-      "log_sha256": "acdc4d11984705c735546f89c144d41d6394a942461a79a63e7b3dfbb4fc6f93",
+      "log_sha256": "bed98f0aa849d1af8ffb915daecafd832166a96e9d5787f4fee6785aa19565e8",
       "name": "runtime_smoke"
     },
     {
@@ -69,12 +69,12 @@
       ],
       "exit_code": 0,
       "log": "artifacts\\p1_diff_check.txt",
-      "log_sha256": "d2cb6ffb663a2b94bca7a186494ceb020deacbc8ff6c9af0ce2e8eba2120ca08",
+      "log_sha256": "68775a2155ed53a91f5294a8f72159ec7f2da68fef54c283fe79dc2ccf1990bd",
       "name": "diff_check"
     }
   ],
   "forbidden_source_tokens": [],
-  "generated_at_utc": "2026-07-16T04:43:17.445787Z",
+  "generated_at_utc": "2026-07-16T04:57:39.276553Z",
   "passed": true,
   "phase": "P1",
   "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
@@ -83,6 +83,7 @@
     "policies/mandatory-rules.v1.json": "aa04ed551e8a01d06526394887ff1a6b7782c55fdee786a8829a8ef08ce846ca",
     "scripts/p1_acceptance.py": "b2a828f46b083308c3aae68b74d234aa82b768b9900fc41b40b551c8ab15126d",
     "scripts/p1_runtime_smoke.py": "f93d7e0a2684e288fa51574ebf88476d2af9fcc5150c02ac85d6b98e26494654",
+    "scripts/qualify_family_adapters.py": "feb307b9c30a262994a5c9a089366675ae3fb8167a5f37329a33101d74b6f05e",
     "scripts/verify_p1.py": "af19e85e7a980fb644462da54f2c338104176c4dfa9c7a53fef5b64d6db415e5",
     "src/echo_certification_forge/__init__.py": "7d2516bb6d9f2918c6cc0d1bd621dbb5c8207fc6911fc079a070ab55da62eb31",
     "src/echo_certification_forge/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",

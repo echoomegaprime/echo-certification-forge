@@ -1,0 +1,165 @@
+{
+  "family_server": "http://192.168.1.49:8200",
+  "health": {
+    "gpu_free_mib": 3596,
+    "gpu_mem_fraction": 0.82,
+    "loaded": [
+      "echo-prime",
+      "echo-prometheus-v5",
+      "echo-aegis",
+      "echo-c3po",
+      "echo-gs343",
+      "echo-r2d2",
+      "echo-raistlin",
+      "echo-bree",
+      "echo-judge",
+      "echo-board-judge",
+      "echo-tax",
+      "echo-gs343-v2"
+    ],
+    "min_free_floor_mib": 512,
+    "queue": {
+      "completed": 215,
+      "in_flight": 1,
+      "max_waiting": 4,
+      "queued": 3,
+      "rejected": 103,
+      "slots": 1
+    },
+    "status": "ok"
+  },
+  "health_headers": {
+    "connection": "close",
+    "content-length": "358",
+    "content-type": "application/json",
+    "date": "Thu, 16 Jul 2026 04:43:31 GMT",
+    "server": "uvicorn"
+  },
+  "mode": "gs_base",
+  "mode_definition": {
+    "context": false,
+    "kind": "base",
+    "model": "echo-prime",
+    "suite": "gs343",
+    "system": null
+  },
+  "model_headers": {
+    "connection": "close",
+    "content-length": "773",
+    "content-type": "application/json",
+    "date": "Thu, 16 Jul 2026 04:43:31 GMT",
+    "server": "uvicorn"
+  },
+  "models": {
+    "data": [
+      {
+        "id": "echo-prime",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-prometheus-v5",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-aegis",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-c3po",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-gs343",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-r2d2",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-raistlin",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-bree",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-judge",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-board-judge",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-tax",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-gs343-v2",
+        "object": "model",
+        "owned_by": "echo-prime"
+      }
+    ],
+    "object": "list"
+  },
+  "records": [
+    {
+      "captured_at_utc": "2026-07-16T04:49:36.040826Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_base",
+      "mode_kind": "base",
+      "probe": "application_null_deref",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "Application log: POST /login returned 500. TypeError: Cannot read properties of null (reading id) at src/auth/user.ts:42. Harness connected to the configured port and captured the response. Classify the primary failure and bounded repair scope.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-prime",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-prime",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-16T04:49:39.495479Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_base",
+      "mode_kind": "base",
+      "probe": "harness_wrong_port",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "App log: ready on 127.0.0.1:8080 and GET /health returned 200. Harness was configured for port 3000 and got connection refused. Application behavior is otherwise healthy. Classify and propose a bounded repair.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-prime",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-prime",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    }
+  ],
+  "schema_version": "1.0.0"
+}
