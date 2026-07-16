@@ -12,6 +12,8 @@ from echo_certification_forge.supply_chain import (
     ImageIdentity,
     ImageRole,
     build_spdx_document,
+    container_link_escapes,
+    contains_private_key_material,
     evaluate_image_admission,
     scan_build_context,
     scan_dockerfile,
@@ -176,3 +178,28 @@ def test_spdx_document_is_deterministic_and_bound_to_image():
         False,
         "sbom_image_binding_mismatch",
     )
+
+
+
+def test_container_root_links_are_not_host_escape_false_positives():
+    assert container_link_escapes("etc/localtime", "/usr/share/zoneinfo/Etc/UTC") is False
+    assert container_link_escapes("etc/os-release", "../usr/lib/os-release") is False
+    assert container_link_escapes("usr/share/zoneinfo/posix/Africa", "../Africa") is False
+    assert container_link_escapes("top/link", "../../outside") is True
+    assert container_link_escapes("link", "../outside") is True
+
+
+def test_private_key_scan_requires_complete_plausible_pem_block():
+    marker_only = b"-----BEGIN " + b"PRIVATE KEY-----"
+    assert contains_private_key_material(marker_only) is False
+    source_literal = b'constant = "-----BEGIN OPENSSH PRIVATE KEY-----"'
+    assert contains_private_key_material(source_literal) is False
+    real_block = (
+        b"-----BEGIN "
+        + b"PRIVATE KEY-----\n"
+        + (b"A" * 64)
+        + b"\n"
+        + (b"B" * 64)
+        + b"\n-----END PRIVATE KEY-----"
+    )
+    assert contains_private_key_material(real_block) is True

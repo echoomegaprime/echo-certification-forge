@@ -32,6 +32,8 @@ from echo_certification_forge.supply_chain import (  # noqa: E402
     ImageIdentity,
     ImageRole,
     build_spdx_document,
+    container_link_escapes,
+    contains_private_key_material,
     evaluate_image_admission,
     scan_build_context,
     scan_dockerfile,
@@ -286,18 +288,16 @@ def scan_image_filesystem(image: str, ownership_token: str) -> dict[str, Any]:
                 forbidden = sorted(components & FORBIDDEN_PATH_COMPONENTS)
                 if forbidden:
                     findings.append({"path": member.name, "rule": "forbidden_path", "tokens": forbidden})
-                if member.mode & (stat.S_ISUID | stat.S_ISGID):
-                    findings.append({"path": member.name, "rule": "setuid_or_setgid"})
-                if member.issym() or member.islnk():
-                    target = PurePosixPath(member.linkname)
-                    if target.is_absolute() or ".." in target.parts:
-                        findings.append({"path": member.name, "rule": "escaping_link", "target": member.linkname})
+                if member.isfile() and member.mode & (stat.S_ISUID | stat.S_ISGID):
+                    findings.append({"path": member.name, "rule": "setuid_or_setgid_file"})
+                if (member.issym() or member.islnk()) and container_link_escapes(member.name, member.linkname):
+                    findings.append({"path": member.name, "rule": "escaping_link", "target": member.linkname})
                 if member.isfile() and 0 < member.size <= 1024 * 1024:
                     extracted = archive.extractfile(member)
                     if extracted is None:
                         continue
                     payload = extracted.read()
-                    if any(marker in payload for marker in PRIVATE_MARKERS):
+                    if contains_private_key_material(payload):
                         findings.append({"path": member.name, "rule": "private_key_material"})
                     if any(marker in payload for marker in MALWARE_MARKERS):
                         findings.append({"path": member.name, "rule": "malware_signature"})

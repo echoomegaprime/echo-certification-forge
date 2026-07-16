@@ -365,3 +365,38 @@ def verify_spdx_document(document: dict[str, Any], *, image_digest: str) -> tupl
 
 def sha256_json_document(document: dict[str, Any]) -> str:
     return sha256_bytes((json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8"))
+
+
+_PRIVATE_KEY_BLOCK_RE = re.compile(
+    b"-----BEGIN "
+    + b"(?P<label>(?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY)"
+    + b"-----[\\r\\n]+"
+    + b"(?:[A-Za-z0-9+/=]{16,}[\\r\\n]+){2,}"
+    + b"-----END (?P=label)-----"
+)
+
+
+def contains_private_key_material(payload: bytes) -> bool:
+    """Return true only for a complete plausible PEM private-key block."""
+    return _PRIVATE_KEY_BLOCK_RE.search(payload) is not None
+
+
+def container_link_escapes(member_path: str, target: str) -> bool:
+    """Check whether an image-root symlink lexically escapes the container root.
+
+    Absolute links remain inside the container mount namespace. Relative links are
+    resolved from the link's parent and denied only if `..` traverses above root.
+    """
+    member = PurePosixPath(member_path.lstrip("./"))
+    target_path = PurePosixPath(target)
+    stack: list[str] = [] if target_path.is_absolute() else list(member.parent.parts)
+    for part in target_path.parts:
+        if part in {"", "/", "."}:
+            continue
+        if part == "..":
+            if not stack:
+                return True
+            stack.pop()
+            continue
+        stack.append(part)
+    return False
