@@ -38,6 +38,7 @@ from echo_certification_forge.canonical import (  # noqa: E402
     sha256_bytes,
     to_utc_iso,
 )
+from echo_certification_forge.p4_manifest import P4ImageManifest, verify_p4_image_manifest  # noqa: E402
 from echo_certification_forge.hostile import (  # noqa: E402
     HostileCaseKind,
     HostileCaseObservation,
@@ -58,7 +59,7 @@ from echo_certification_forge.runner import (  # noqa: E402
 )
 from echo_certification_forge.supply_chain import (  # noqa: E402
     ImageAdmissionPolicy,
-    ImageAttestationAuthority,
+    ImageAttestation,
     ImageIdentity,
     ImageRole,
     build_spdx_document,
@@ -1108,6 +1109,7 @@ def service_health_probe(image: str, role: ImageRole, ownership_token: str, work
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--images", type=Path, required=True)
+    parser.add_argument("--sealed-manifest", type=Path, required=True)
     parser.add_argument("--base-digest", required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--trivy", type=Path, required=True)
@@ -1136,6 +1138,7 @@ def main() -> int:
         "base_image": f"{BASE_IMAGE_NAME}@{args.base_digest}",
         "docker_engine": {"daemon_mode": "rootful", "rootless_claimed": False},
         "images": {},
+        "sealed_image_manifest": {},
         "static_attack_matrix": {},
         "runtime_attack_matrix": {},
         "service_runtime": {},
@@ -1151,18 +1154,41 @@ def main() -> int:
     try:
         require(args.trivy.is_file(), "Trivy binary missing")
         require(args.cosign.is_file(), "Cosign binary missing")
+        require(args.sealed_manifest.is_file(), "sealed twelve-image manifest missing")
         images_document = json.loads(args.images.read_text(encoding="utf-8"))
         image_map = images_document.get("images")
         require(isinstance(image_map, dict), "images manifest missing")
         require(set(image_map) == {role.value for role in ROLE_ORDER}, "image role set mismatch")
         require(args.base_digest.startswith("sha256:") and len(args.base_digest) == 71, "base digest invalid")
         require(len(args.source_commit) == 40, "source commit invalid")
+        sealed_manifest_sha256 = sha256_file(args.sealed_manifest)
+        require(
+            images_document.get("sealed_manifest_sha256") == sealed_manifest_sha256,
+            "images manifest does not bind the sealed twelve-image manifest",
+        )
+        sealed_document = P4ImageManifest.model_validate_json(args.sealed_manifest.read_text(encoding="utf-8"))
+        sealed_records = {(item.role.value, item.variant): item for item in sealed_document.records}
+        sealed_verification = verify_p4_image_manifest(
+            args.sealed_manifest,
+            expected_source_commit=args.source_commit,
+            expected_base_digest=args.base_digest,
+            now=started + timedelta(seconds=1),
+        )
+        report["sealed_image_manifest"] = {
+            "path": str(args.sealed_manifest.resolve()),
+            "sha256": sealed_manifest_sha256,
+            "record_count": sealed_verification["record_count"],
+            "attestation_key_id": sealed_verification["attestation_key_id"],
+            "verification": sealed_verification,
+            "passed": sealed_verification["passed"],
+        }
+        require(sealed_verification["passed"], f"sealed image manifest failed: {sealed_verification['failures']}")
 
         source_scan = scan_build_context(ROOT, max_files=30_000, max_bytes=2 * 1024 * 1024 * 1024)
         require(source_scan.valid, f"source build context invalid: {source_scan.findings}")
         lockfile = ROOT / "images/requirements.lock"
         lockfile_sha256 = sha256_file(lockfile)
-        authority = ImageAttestationAuthority.generate()
+        sealed_parent = args.sealed_manifest.resolve().parent
         attestations: dict[ImageRole, Any] = {}
         policies: dict[ImageRole, ImageAdmissionPolicy] = {}
         statements: dict[str, Path] = {}
@@ -1174,12 +1200,28 @@ def main() -> int:
             inspect = image_inspect(primary)
             compare_inspect = image_inspect(comparison)
             labels = inspect["Config"].get("Labels") or {}
+            compare_labels = compare_inspect["Config"].get("Labels") or {}
             image_digest = inspect["Id"]
             compare_digest = compare_inspect["Id"]
+            primary_record = sealed_records[(role.value, "a")]
+            comparison_record = sealed_records[(role.value, "b")]
+            require(primary_record.reference == primary, f"sealed primary reference mismatch: {role.value}")
+            require(comparison_record.reference == comparison, f"sealed comparison reference mismatch: {role.value}")
+            require(primary_record.image_id == image_digest, f"sealed primary digest mismatch: {role.value}")
+            require(comparison_record.image_id == compare_digest, f"sealed comparison digest mismatch: {role.value}")
             require(labels.get("echo.certforge.image.role") == role.value, f"image role label mismatch: {role.value}")
-            require(labels.get("org.opencontainers.image.base.digest") == args.base_digest, f"base label mismatch: {role.value}")
-            require(labels.get("org.opencontainers.image.revision") == args.source_commit, f"source label mismatch: {role.value}")
+            require(compare_labels.get("echo.certforge.image.role") == role.value, f"comparison role label mismatch: {role.value}")
+            require(labels.get("echo.certforge.image.variant") == "a", f"primary variant label mismatch: {role.value}")
+            require(compare_labels.get("echo.certforge.image.variant") == "b", f"comparison variant label mismatch: {role.value}")
+            for current_labels in (labels, compare_labels):
+                require(current_labels.get("org.opencontainers.image.base.digest") == args.base_digest, f"base label mismatch: {role.value}")
+                require(current_labels.get("org.opencontainers.image.revision") == args.source_commit, f"source label mismatch: {role.value}")
+                require(current_labels.get("echo.certforge.admission.policy") == f"p4.{role.value}.production.v1", f"policy label mismatch: {role.value}")
+                require(current_labels.get("echo.certforge.attestation.key_id") == sealed_document.attestation_key_id, f"attestation key label mismatch: {role.value}")
             require(inspect["Config"].get("User") == "65532:65532", f"runtime user mismatch: {role.value}")
+            require(compare_inspect["Config"].get("User") == "65532:65532", f"comparison runtime user mismatch: {role.value}")
+            require(bool((inspect["Config"].get("Healthcheck") or {}).get("Test")), f"primary health command missing: {role.value}")
+            require(bool((compare_inspect["Config"].get("Healthcheck") or {}).get("Test")), f"comparison health command missing: {role.value}")
             dockerfile = ROOT / f"images/{role.value}/Dockerfile"
             dockerfile_scan = scan_dockerfile(dockerfile.read_text(encoding="utf-8"))
             require(dockerfile_scan.valid, f"Dockerfile policy failed: {role.value}:{dockerfile_scan.findings}")
@@ -1187,81 +1229,83 @@ def main() -> int:
             comparison_manifest = normalized_image_manifest(comparison, role, ownership_token)
             require(normalized == comparison_manifest, f"independent build comparison failed: {role.value}")
 
-            sbom = build_spdx_document(
-                image_name=f"echo-certforge-{role.value}",
-                image_digest=image_digest,
-                packages=normalized["packages"],
-                created_at=parse_utc_iso(inspect["Created"]),
+            sbom_path = (sealed_parent / primary_record.sbom.path).resolve()
+            provenance_path = (sealed_parent / primary_record.provenance.path).resolve()
+            attestation_path = (sealed_parent / primary_record.attestation.path).resolve()
+            policy_path = (sealed_parent / primary_record.admission_policy.path).resolve()
+            require(sbom_path.is_file() and sha256_file(sbom_path) == primary_record.sbom.sha256, f"sealed SBOM mismatch: {role.value}")
+            require(
+                provenance_path.is_file() and sha256_file(provenance_path) == primary_record.provenance.sha256,
+                f"sealed provenance mismatch: {role.value}",
             )
+            require(
+                attestation_path.is_file() and sha256_file(attestation_path) == primary_record.attestation.sha256,
+                f"sealed attestation mismatch: {role.value}",
+            )
+            require(
+                policy_path.is_file() and sha256_file(policy_path) == primary_record.admission_policy.sha256,
+                f"sealed admission policy mismatch: {role.value}",
+            )
+            sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
             sbom_valid, sbom_reason = verify_spdx_document(sbom, image_digest=image_digest)
-            require(sbom_valid, f"SPDX failed: {role.value}:{sbom_reason}")
-            sbom_path = workspace / f"{role.value}.spdx.json"
-            write_json(sbom_path, sbom)
-            provenance = {
-                "_type": "https://in-toto.io/Statement/v1",
-                "subject": [{"name": f"echo-certforge-{role.value}", "digest": {"sha256": image_digest.split(":", 1)[1]}}],
-                "predicateType": "https://slsa.dev/provenance/v1",
-                "predicate": {
-                    "buildDefinition": {
-                        "buildType": "https://cert.echoforge.com/buildtypes/docker-v2",
-                        "externalParameters": {
-                            "source_commit": args.source_commit,
-                            "dockerfile_sha256": dockerfile_scan.sha256,
-                            "lockfile_sha256": lockfile_sha256,
-                        },
-                        "resolvedDependencies": [
-                            {"uri": f"docker-image://{BASE_IMAGE_NAME}", "digest": {"sha256": args.base_digest.split(":", 1)[1]}},
-                            {"uri": "git+https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge", "digest": {"gitCommit": args.source_commit}},
-                            {"uri": "build-context://canonical", "digest": {"sha256": source_scan.manifest_sha256}},
-                        ],
-                    },
-                    "runDetails": {"builder": {"id": "docker-buildx://forge"}, "metadata": {"startedOn": inspect["Created"]}},
-                },
-            }
-            provenance_path = workspace / f"{role.value}.provenance.json"
-            write_json(provenance_path, provenance)
-            identity = ImageIdentity(
-                role=role,
-                image_digest=image_digest,
-                base_image_digest=args.base_digest,
-                source_commit=args.source_commit,
-                dockerfile_sha256=dockerfile_scan.sha256,
-                lockfile_sha256=lockfile_sha256,
-                sbom_sha256=sha256_file(sbom_path),
-                provenance_sha256=sha256_file(provenance_path),
-                architecture=inspect["Architecture"],
-                operating_system=inspect["Os"],
-                created_at=parse_utc_iso(inspect["Created"]),
+            require(sbom_valid, f"sealed SPDX failed: {role.value}:{sbom_reason}")
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            provenance_subject = ((provenance.get("subject") or [{}])[0].get("digest") or {}).get("sha256")
+            require(provenance_subject == image_digest.split(":", 1)[1], f"sealed provenance image mismatch: {role.value}")
+            attestation = ImageAttestation.model_validate_json(attestation_path.read_text(encoding="utf-8"))
+            policy = ImageAdmissionPolicy.model_validate_json(policy_path.read_text(encoding="utf-8"))
+            identity = attestation.identity
+            require(identity.role is role, f"sealed attestation role mismatch: {role.value}")
+            require(identity.image_digest == image_digest, f"sealed attestation image mismatch: {role.value}")
+            require(identity.base_image_digest == args.base_digest, f"sealed attestation base mismatch: {role.value}")
+            require(identity.source_commit == args.source_commit, f"sealed attestation source mismatch: {role.value}")
+            require(identity.dockerfile_sha256 == dockerfile_scan.sha256, f"sealed Dockerfile hash mismatch: {role.value}")
+            require(identity.lockfile_sha256 == lockfile_sha256, f"sealed lockfile hash mismatch: {role.value}")
+            require(identity.sbom_sha256 == primary_record.sbom.sha256, f"sealed SBOM identity mismatch: {role.value}")
+            require(
+                identity.provenance_sha256 == primary_record.provenance.sha256,
+                f"sealed provenance identity mismatch: {role.value}",
             )
-            attestation = authority.sign(identity, issued_at=started, valid_for=timedelta(days=30))
-            policy = ImageAdmissionPolicy(
-                policy_id=f"p4.{role.value}.production.v1",
-                required_role=role,
-                expected_image_digest=image_digest,
-                approved_base_digests=(args.base_digest,),
-                approved_source_commits=(args.source_commit,),
-                approved_dockerfile_sha256=dockerfile_scan.sha256,
-                approved_lockfile_sha256=lockfile_sha256,
-                trusted_attestation_keys={authority.key_id: authority.public_key_pem},
-            )
+            require(policy.policy_id == f"p4.{role.value}.production.v1", f"sealed policy identity mismatch: {role.value}")
             admitted = evaluate_image_admission(attestation, policy, now=started + timedelta(seconds=1))
-            expired = evaluate_image_admission(attestation, policy, now=started + timedelta(days=31))
-            revoked = evaluate_image_admission(attestation, policy.model_copy(update={"revoked_image_digests": (image_digest,)}), now=started + timedelta(seconds=1))
-            compromised = evaluate_image_admission(attestation, policy.model_copy(update={"compromised_key_ids": (authority.key_id,)}), now=started + timedelta(seconds=1))
-            unknown = evaluate_image_admission(attestation, policy.model_copy(update={"trusted_attestation_keys": {}}), now=started + timedelta(seconds=1))
-            drift = evaluate_image_admission(attestation, policy.model_copy(update={"expected_image_digest": "sha256:" + "0" * 64}), now=started + timedelta(seconds=1))
+            expired = evaluate_image_admission(attestation, policy, now=attestation.expires_at + timedelta(seconds=1))
+            revoked = evaluate_image_admission(
+                attestation,
+                policy.model_copy(update={"revoked_image_digests": (image_digest,)}),
+                now=started + timedelta(seconds=1),
+            )
+            compromised = evaluate_image_admission(
+                attestation,
+                policy.model_copy(update={"compromised_key_ids": (attestation.key_id,)}),
+                now=started + timedelta(seconds=1),
+            )
+            unknown = evaluate_image_admission(
+                attestation,
+                policy.model_copy(update={"trusted_attestation_keys": {}}),
+                now=started + timedelta(seconds=1),
+            )
+            drift = evaluate_image_admission(
+                attestation,
+                policy.model_copy(update={"expected_image_digest": "sha256:" + "0" * 64}),
+                now=started + timedelta(seconds=1),
+            )
             require(admitted.allowed, f"image admission failed: {role.value}:{admitted.reasons}")
             require(not expired.allowed and "image_attestation_expired" in expired.reasons, f"expired attestation accepted: {role.value}")
             require(not revoked.allowed and "image_digest_revoked" in revoked.reasons, f"revoked image accepted: {role.value}")
             require(not compromised.allowed and "attestation_key_compromised" in compromised.reasons, f"compromised key accepted: {role.value}")
             require(not unknown.allowed and "unknown_attestation_key" in unknown.reasons, f"unknown key accepted: {role.value}")
             require(not drift.allowed and "image_digest_drift" in drift.reasons, f"drifted image accepted: {role.value}")
-            attestation_path = workspace / f"{role.value}.attestation.json"
-            policy_path = workspace / f"{role.value}.admission-policy.json"
-            attestation_path.write_text(attestation.model_dump_json(indent=2) + "\n", encoding="utf-8")
-            policy_path.write_text(policy.model_dump_json(indent=2) + "\n", encoding="utf-8")
             statement_path = workspace / f"{role.value}.image-statement.json"
-            write_json(statement_path, {"schema_version": "1.0.0", "role": role.value, "image_digest": image_digest, "attestation_sha256": sha256_file(attestation_path)})
+            write_json(
+                statement_path,
+                {
+                    "schema_version": "1.0.0",
+                    "role": role.value,
+                    "image_digest": image_digest,
+                    "attestation_sha256": primary_record.attestation.sha256,
+                    "sealed_manifest_sha256": sealed_manifest_sha256,
+                },
+            )
             statements[role.value] = statement_path
             attestations[role] = attestation
             policies[role] = policy
@@ -1294,7 +1338,7 @@ def main() -> int:
                 "lockfile_sha256": lockfile_sha256,
                 "sbom": {"path": str(sbom_path), "sha256": sha256_file(sbom_path), "verified": True},
                 "provenance": {"path": str(provenance_path), "sha256": sha256_file(provenance_path)},
-                "attestation": {"path": str(attestation_path), "sha256": sha256_file(attestation_path), "key_id": authority.key_id, "private_key_persisted": False},
+                "attestation": {"path": str(attestation_path), "sha256": sha256_file(attestation_path), "key_id": attestation.key_id, "private_key_persisted": False},
                 "admission": admitted.model_dump(mode="json"),
                 "expired_admission": expired.model_dump(mode="json"),
                 "revoked_admission": revoked.model_dump(mode="json"),
@@ -1405,6 +1449,7 @@ def main() -> int:
             if any(marker in payload for marker in PRIVATE_KEY_MARKERS):
                 private_leaks.append(path.relative_to(workspace).as_posix())
         checks = {
+            "sealed_twelve_image_manifest_verified": report["sealed_image_manifest"]["passed"] and report["sealed_image_manifest"]["record_count"] == 12,
             "six_purpose_built_images": set(report["images"]) == {role.value for role in ROLE_ORDER},
             "all_images_independently_comparable": all(item["independently_comparable"] for item in report["images"].values()),
             "all_sboms_verified": all(item["sbom"]["verified"] for item in report["images"].values()),

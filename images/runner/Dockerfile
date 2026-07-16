@@ -1,6 +1,9 @@
 FROM python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
 
 ARG SOURCE_REVISION=unknown
+ARG IMAGE_VARIANT=unknown
+ARG ADMISSION_POLICY_ID=p4.runner.production.v1
+ARG ATTESTATION_KEY_ID=unknown
 LABEL org.opencontainers.image.title="Echo Certification Forge Runner" \
       org.opencontainers.image.description="Purpose-built non-root execution image for isolated Certification Forge runs" \
       org.opencontainers.image.source="https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge" \
@@ -8,7 +11,10 @@ LABEL org.opencontainers.image.title="Echo Certification Forge Runner" \
       org.opencontainers.image.base.name="python:3.12-alpine" \
       org.opencontainers.image.base.digest="sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df" \
       echo.certforge.image.role="runner" \
-      echo.certforge.image.schema="1.1.0"
+      echo.certforge.image.variant="${IMAGE_VARIANT}" \
+      echo.certforge.admission.policy="${ADMISSION_POLICY_ID}" \
+      echo.certforge.attestation.key_id="${ATTESTATION_KEY_ID}" \
+      echo.certforge.image.schema="1.2.0"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -29,5 +35,7 @@ COPY --chown=65532:65532 src/echo_certification_forge /opt/echo/echo_certificati
 
 WORKDIR /workspace
 USER 65532:65532
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["python", "-c", "import echo_certification_forge"]
 
 CMD ["python", "-c", "import echo_certification_forge; print('echo-certforge-runner-ready')"]

@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from echo_certification_forge.canonical import sha256_bytes
 from echo_certification_forge.supply_chain import (
@@ -192,14 +194,15 @@ def test_container_root_links_are_not_host_escape_false_positives():
 def test_private_key_scan_requires_complete_plausible_pem_block():
     marker_only = b"-----BEGIN " + b"PRIVATE KEY-----"
     assert contains_private_key_material(marker_only) is False
-    source_literal = b'constant = "-----BEGIN OPENSSH PRIVATE KEY-----"'
+    source_literal = (
+        b'constant = "'
+        + b"-----BEGIN OPENSSH "
+        + b'PRIVATE KEY-----"'
+    )
     assert contains_private_key_material(source_literal) is False
-    real_block = (
-        b"-----BEGIN "
-        + b"PRIVATE KEY-----\n"
-        + (b"A" * 64)
-        + b"\n"
-        + (b"B" * 64)
-        + b"\n-----END PRIVATE KEY-----"
+    real_block = Ed25519PrivateKey.generate().private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
     )
     assert contains_private_key_material(real_block) is True

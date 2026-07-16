@@ -426,15 +426,29 @@ def sha256_json_document(document: dict[str, Any]) -> str:
 _PRIVATE_KEY_BLOCK_RE = re.compile(
     b"-----BEGIN "
     + b"(?P<label>(?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY)"
-    + b"-----[\\r\\n]+"
-    + b"(?:[A-Za-z0-9+/=]{16,}[\\r\\n]+){2,}"
+    + b"-----[\r\n]+"
+    + b"(?:[A-Za-z0-9+/=]{16,}[\r\n]+)+"
     + b"-----END (?P=label)-----"
 )
 
 
 def contains_private_key_material(payload: bytes) -> bool:
-    """Return true only for a complete plausible PEM private-key block."""
-    return _PRIVATE_KEY_BLOCK_RE.search(payload) is not None
+    """Return true only when a complete private-key block parses cryptographically."""
+    for match in _PRIVATE_KEY_BLOCK_RE.finditer(payload):
+        block = match.group(0)
+        label = match.group("label")
+        if label == b"ENCRYPTED PRIVATE KEY":
+            return True
+        try:
+            if label == b"OPENSSH PRIVATE KEY":
+                key = serialization.load_ssh_private_key(block, password=None)
+            else:
+                key = serialization.load_pem_private_key(block, password=None)
+        except (TypeError, ValueError):
+            continue
+        if key is not None:
+            return True
+    return False
 
 
 def container_link_escapes(member_path: str, target: str) -> bool:

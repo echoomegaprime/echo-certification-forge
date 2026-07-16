@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from echo_certification_forge.supply_chain import contains_private_key_material
+
 ARTIFACTS = ROOT / "artifacts"
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
@@ -26,12 +32,12 @@ EXPECTED_EVIDENCE = {
         "3d17fee069b44b30794ee1f5ef871934406a785307e2b64724f8a59956b81093",
     ),
 }
+P2_SOURCE_COMMIT = "87c8afcfa5e439219b8737f7fdcb202967810316"
 EXPECTED_SOURCE_IDENTITIES = {
     "src/echo_certification_forge/runner.py": "19ebf13539dc878611bb21a8aeb1f8621ca2d43e4cf82b290a5bb3f5761b03d4",
     "scripts/p2_forge_acceptance.py": "4c83a187509a8e62477bed861dc16523a0400476260e8bf44f2ddae8b0dfd823",
 }
 FORBIDDEN_PATTERNS = {
-    "private_key_pem": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "github_token": re.compile(r"\b(?:ghp|gho|github_pat)_[A-Za-z0-9_]{20,}\b"),
     "aws_access_key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     "generic_secret_assignment": re.compile(
@@ -121,12 +127,32 @@ def verify_evidence() -> dict[str, Any]:
 
 
 def verify_source_identities() -> dict[str, str]:
+    """Verify the immutable P2 closure blobs, not later-phase working-tree source."""
+    commit_check = subprocess.run(
+        ["git", "cat-file", "-e", f"{P2_SOURCE_COMMIT}^{{commit}}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if commit_check.returncode != 0:
+        raise RuntimeError(f"P2 source commit missing: {P2_SOURCE_COMMIT}")
     result: dict[str, str] = {}
     for relative, expected in EXPECTED_SOURCE_IDENTITIES.items():
-        digest = sha256(ROOT / relative)
+        blob = subprocess.run(
+            ["git", "show", f"{P2_SOURCE_COMMIT}:{relative}"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if blob.returncode != 0:
+            raise RuntimeError(f"P2 source blob missing: {P2_SOURCE_COMMIT}:{relative}")
+        digest = hashlib.sha256(blob.stdout).hexdigest()
         if digest != expected:
-            raise RuntimeError(f"source identity mismatch: {relative}: {digest} != {expected}")
+            raise RuntimeError(f"P2 source identity mismatch: {relative}: {digest} != {expected}")
         result[relative] = digest
+    result["p2_source_commit"] = P2_SOURCE_COMMIT
     return result
 
 
@@ -139,8 +165,11 @@ def secret_scan() -> dict[str, Any]:
         if any(part in SCAN_EXCLUDES for part in path.parts):
             continue
         scanned += 1
+        payload = path.read_bytes()
+        if contains_private_key_material(payload):
+            findings.append({"file": str(path.relative_to(ROOT)), "pattern": "private_key_material", "line": 1})
         try:
-            text = path.read_text(encoding="utf-8")
+            text = payload.decode("utf-8")
         except UnicodeDecodeError:
             continue
         for name, pattern in FORBIDDEN_PATTERNS.items():

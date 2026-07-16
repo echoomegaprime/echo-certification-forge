@@ -1,6 +1,9 @@
 FROM python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
 
 ARG SOURCE_REVISION=unknown
+ARG IMAGE_VARIANT=unknown
+ARG ADMISSION_POLICY_ID=p4.anchor.production.v1
+ARG ATTESTATION_KEY_ID=unknown
 LABEL org.opencontainers.image.title="Echo Certification Forge Anchor" \
       org.opencontainers.image.description="Purpose-built independent evidence-root anchoring service image" \
       org.opencontainers.image.source="https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge" \
@@ -8,7 +11,10 @@ LABEL org.opencontainers.image.title="Echo Certification Forge Anchor" \
       org.opencontainers.image.base.name="python:3.12-alpine" \
       org.opencontainers.image.base.digest="sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df" \
       echo.certforge.image.role="anchor" \
-      echo.certforge.image.schema="1.1.0"
+      echo.certforge.image.variant="${IMAGE_VARIANT}" \
+      echo.certforge.admission.policy="${ADMISSION_POLICY_ID}" \
+      echo.certforge.attestation.key_id="${ATTESTATION_KEY_ID}" \
+      echo.certforge.image.schema="1.2.0"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -30,5 +36,7 @@ COPY --chown=65532:65532 src/echo_certification_forge /opt/echo/echo_certificati
 
 WORKDIR /state
 USER 65532:65532
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"]
 
 CMD ["uvicorn", "echo_certification_forge.p3_runtime:app", "--host", "127.0.0.1", "--port", "8080", "--no-access-log"]

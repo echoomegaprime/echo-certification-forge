@@ -239,6 +239,11 @@ def test_all_p4_production_dockerfiles_are_pinned_and_nonroot() -> None:
         assert result.valid is True, (role, result.findings)
         text = dockerfile.read_text(encoding="utf-8")
         assert f'echo.certforge.image.role="{role}"' in text
+        assert 'echo.certforge.image.variant="${IMAGE_VARIANT}"' in text
+        assert f'ARG ADMISSION_POLICY_ID=p4.{role}.production.v1' in text
+        assert 'echo.certforge.admission.policy="${ADMISSION_POLICY_ID}"' in text
+        assert 'echo.certforge.attestation.key_id="${ATTESTATION_KEY_ID}"' in text
+        assert "HEALTHCHECK " in text
         assert "USER 65532:65532" in text
         assert "--require-hashes" in text
         assert "find / -xdev -type f" in text
