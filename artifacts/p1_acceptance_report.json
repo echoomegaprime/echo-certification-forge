@@ -1,0 +1,44 @@
+{
+  "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
+  "manifest_id": "certforge.release-strict.v1",
+  "passed": true,
+  "phase": "P1",
+  "platform": "Windows-11-10.0.22631-SP0",
+  "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
+  "scenarios": {
+    "default_block": {
+      "passed": true,
+      "reasons": [
+        "evidence_integrity_failed",
+        "mandatory_rule_missing:budget_enforcement",
+        "mandatory_rule_missing:cleanup_verification",
+        "mandatory_rule_missing:critical_journeys",
+        "mandatory_rule_missing:deployment_identity_binding",
+        "mandatory_rule_missing:environment_identity",
+        "mandatory_rule_missing:evidence_integrity",
+        "mandatory_rule_missing:immutable_target_identity",
+        "mandatory_rule_missing:runner_control_channel",
+        "mandatory_rule_missing:signing_authority_separation",
+        "mandatory_rule_missing:tenant_isolation",
+        "run_outcome_inconclusive"
+      ],
+      "verdict": "NOT_READY"
+    },
+    "tamper_blocks": {
+      "deploy_gate_allowed": false,
+      "passed": true,
+      "reasons": [
+        "current_evidence_invalid"
+      ]
+    },
+    "verified_ready": {
+      "deploy_gate_allowed": true,
+      "evidence_merkle_root": "74e5b03b623680ba93c8ad6c3954ae346d9571bf8af09c4c4ed602167a9187f8",
+      "passed": true,
+      "payload_sha256": "6b1728e808b77d9b29d7fd7111b5dd89a5793e806cdd44bf63d1a94067756472",
+      "signing_key_id": "ed25519:e0356e8f7df16e087a0fda41a37a9074",
+      "verdict": "PRODUCTION_READY"
+    }
+  },
+  "schema_version": "1.0.0"
+}

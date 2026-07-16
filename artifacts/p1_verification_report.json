@@ -1,0 +1,105 @@
+{
+  "checks": [
+    {
+      "command": [
+        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "tests",
+        "scripts"
+      ],
+      "exit_code": 0,
+      "log": "artifacts\\p1_compileall.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "name": "compileall"
+    },
+    {
+      "command": [
+        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "-q",
+        "--cov",
+        "--cov-report=term-missing"
+      ],
+      "exit_code": 0,
+      "log": "artifacts\\p1_pytest.txt",
+      "log_sha256": "76bb56a52bb70ee2b426378adad738689c465a090bd2a352878d6d87c8d821e7",
+      "name": "pytest"
+    },
+    {
+      "command": [
+        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "scripts/p1_acceptance.py"
+      ],
+      "exit_code": 0,
+      "log": "artifacts\\p1_acceptance.txt",
+      "log_sha256": "dd59095ea6b4c92caea44ef59c4a1e2a0c878f25b4f8f6925cbd6ade83e532e1",
+      "name": "acceptance"
+    },
+    {
+      "command": [
+        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "scripts/p1_runtime_smoke.py"
+      ],
+      "exit_code": 0,
+      "log": "artifacts\\p1_runtime_smoke.txt",
+      "log_sha256": "acdc4d11984705c735546f89c144d41d6394a942461a79a63e7b3dfbb4fc6f93",
+      "name": "runtime_smoke"
+    },
+    {
+      "command": [
+        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pip",
+        "check"
+      ],
+      "exit_code": 0,
+      "log": "artifacts\\p1_pip_check.txt",
+      "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+      "name": "pip_check"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "artifacts\\p1_diff_check.txt",
+      "log_sha256": "d2cb6ffb663a2b94bca7a186494ceb020deacbc8ff6c9af0ce2e8eba2120ca08",
+      "name": "diff_check"
+    }
+  ],
+  "forbidden_source_tokens": [],
+  "generated_at_utc": "2026-07-16T04:43:17.445787Z",
+  "passed": true,
+  "phase": "P1",
+  "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
+  "schema_version": "1.0.0",
+  "source_manifest": {
+    "policies/mandatory-rules.v1.json": "aa04ed551e8a01d06526394887ff1a6b7782c55fdee786a8829a8ef08ce846ca",
+    "scripts/p1_acceptance.py": "b2a828f46b083308c3aae68b74d234aa82b768b9900fc41b40b551c8ab15126d",
+    "scripts/p1_runtime_smoke.py": "f93d7e0a2684e288fa51574ebf88476d2af9fcc5150c02ac85d6b98e26494654",
+    "scripts/verify_p1.py": "af19e85e7a980fb644462da54f2c338104176c4dfa9c7a53fef5b64d6db415e5",
+    "src/echo_certification_forge/__init__.py": "7d2516bb6d9f2918c6cc0d1bd621dbb5c8207fc6911fc079a070ab55da62eb31",
+    "src/echo_certification_forge/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+    "src/echo_certification_forge/app.py": "3ce3b45745e5b5d831352da46e97b71e5d9f1e34edfebbd07316ce510911e549",
+    "src/echo_certification_forge/canonical.py": "e66eb6a6a9548cefa9f713a198f644cb9d48c82e081bf467e49f097fef1f1e88",
+    "src/echo_certification_forge/cli.py": "59e571e8cca7b86999d2ec9bd36e4606a741a5059f87b0b63f8e9b05f1c57bd4",
+    "src/echo_certification_forge/deploy_gate.py": "a5a563be5717195431f112d5ceff95c3fc4c1dd8304b98ec23b097fcb3eed1ad",
+    "src/echo_certification_forge/evidence.py": "7719ee8d7809c67e144dc30bed895c5bd09d791c5bb9665b5d3619f93aa54a17",
+    "src/echo_certification_forge/models.py": "6feb76c47967dfc562a55e57b12f184feee4f66abc4c246c10aec6d0023d5799",
+    "src/echo_certification_forge/policy.py": "eda878bea2e2231f03c4ff4d7c2fc2438168a8365c41da66d7a2e3c5c1ae11ab",
+    "src/echo_certification_forge/service.py": "9ce024436a1611894a6ee67aac35e2221b43741ce8b53288bc97470086c4cad9",
+    "src/echo_certification_forge/signing.py": "548d3befc5a91f4f2f952a9a2b93fc4611bf67db265b3e332c17c5b6440c5b7e",
+    "src/echo_certification_forge/state_machine.py": "daafc3e09a9852ea8417f1ffb6450252f54680ad22428d118332165d99188f3f",
+    "src/echo_certification_forge/verdict.py": "ba047e47800c39cd40e24fa03d813f685f5db56f6f9b019ce1d12bbab9513eb1",
+    "tests/conftest.py": "ffeb687d8029dfa7fc38077b4768edbcb6386c6c8af154acb4ad6faf46243b78",
+    "tests/test_additional_contracts.py": "a722ac594fad0af885d1ee229177dfcba645cecb72835842e21af454c7cff190",
+    "tests/test_evidence_and_verdict.py": "f3203eb2ce955e388d692b09f7fd49eb43d809fdb01bfbe3e4474a5c2ee6260b",
+    "tests/test_state_and_api.py": "1a20d5c3f52cdd33f7c994b45f01f852419c6f4018fb16a4aca3e314fff04f49"
+  }
+}

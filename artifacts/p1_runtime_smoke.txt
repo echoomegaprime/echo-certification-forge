@@ -1,0 +1,32 @@
+{
+  "health": {
+    "control_plane_executes_customer_code": false,
+    "private_signing_key_loaded": false,
+    "status": "ok",
+    "version": "0.1.0"
+  },
+  "passed": true,
+  "pid": 161076,
+  "port": 56626,
+  "readiness": "observable_http_predicate",
+  "schema_version": "1.0.0",
+  "status": {
+    "external_evidence_anchor": "PENDING",
+    "release_verdicts": [
+      "NOT_READY",
+      "CONDITIONALLY_READY",
+      "PRODUCTION_READY"
+    ],
+    "rule_manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
+    "rule_manifest_id": "certforge.release-strict.v1",
+    "run_outcomes": [
+      "COMPLETE",
+      "INCONCLUSIVE",
+      "CANCELLED",
+      "INFRA_FAILED"
+    ],
+    "runner_isolation": "PENDING",
+    "service": "echo-certification-forge",
+    "trusted_signing_keys": []
+  }
+}

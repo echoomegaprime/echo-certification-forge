@@ -1,0 +1,565 @@
+"""Durable tenant-scoped evidence store with append-only chain and Merkle verification."""
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import tempfile
+from contextlib import contextmanager
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any, Iterable
+
+from .canonical import (
+    canonical_json,
+    contained_path,
+    require_identifier,
+    sha256_bytes,
+    sha256_json,
+    to_utc_iso,
+    utc_now,
+)
+from .models import (
+    EnvironmentIdentity,
+    RedactionStatus,
+    RuleResult,
+    RunOutcome,
+    RunState,
+    TargetIdentity,
+    VerdictLifecycleEvent,
+    VerificationReport,
+)
+from .state_machine import validate_transition
+
+_ZERO_HASH = "0" * 64
+
+
+def merkle_root(leaves: Iterable[str]) -> str:
+    level = [bytes.fromhex(item) for item in leaves]
+    if not level:
+        return sha256_bytes(b"")
+    while len(level) > 1:
+        if len(level) % 2:
+            level.append(level[-1])
+        level = [
+            bytes.fromhex(sha256_bytes(level[index] + level[index + 1]))
+            for index in range(0, len(level), 2)
+        ]
+    return level[0].hex()
+
+
+class EvidenceStore:
+    def __init__(self, db_path: Path, evidence_root: Path) -> None:
+        self.db_path = db_path
+        self.evidence_root = evidence_root
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.evidence_root.mkdir(parents=True, exist_ok=True)
+        self._initialize()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = FULL")
+        return connection
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
+    def _initialize(self) -> None:
+        schema = """
+        CREATE TABLE IF NOT EXISTS runs (
+            run_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            target_identity_json TEXT NOT NULL,
+            target_identity_digest TEXT NOT NULL,
+            environment_identity_json TEXT NOT NULL,
+            environment_identity_digest TEXT NOT NULL,
+            rule_manifest_id TEXT NOT NULL,
+            rule_manifest_digest TEXT NOT NULL,
+            run_outcome TEXT NOT NULL,
+            state TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS state_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            tenant_id TEXT NOT NULL,
+            prior_state TEXT NOT NULL,
+            next_state TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            workflow_version TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS evidence_artifacts (
+            artifact_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            tenant_id TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            media_type TEXT NOT NULL,
+            source_component TEXT NOT NULL,
+            redaction_status TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            record_hash TEXT NOT NULL,
+            prev_chain_hash TEXT NOT NULL,
+            chain_hash TEXT NOT NULL,
+            UNIQUE(run_id, ordinal)
+        );
+        CREATE INDEX IF NOT EXISTS idx_evidence_run ON evidence_artifacts(run_id, ordinal);
+
+        CREATE TABLE IF NOT EXISTS rule_results (
+            result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            tenant_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            passed INTEGER NOT NULL,
+            evidence_ids_json TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, rule_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS findings (
+            finding_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            tenant_id TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            blocks_release INTEGER NOT NULL,
+            evidence_ids_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS signed_verdicts (
+            verdict_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            tenant_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            payload_sha256 TEXT NOT NULL,
+            signature_b64 TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            public_key_pem TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_verdict_run ON signed_verdicts(run_id, verdict_id);
+
+        CREATE TABLE IF NOT EXISTS verdict_lifecycle_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            tenant_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            replacement_run_id TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TRIGGER IF NOT EXISTS no_update_evidence BEFORE UPDATE ON evidence_artifacts
+        BEGIN SELECT RAISE(ABORT, 'evidence_artifacts are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_delete_evidence BEFORE DELETE ON evidence_artifacts
+        BEGIN SELECT RAISE(ABORT, 'evidence_artifacts are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_update_state_events BEFORE UPDATE ON state_events
+        BEGIN SELECT RAISE(ABORT, 'state_events are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_delete_state_events BEFORE DELETE ON state_events
+        BEGIN SELECT RAISE(ABORT, 'state_events are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_update_rule_results BEFORE UPDATE ON rule_results
+        BEGIN SELECT RAISE(ABORT, 'rule_results are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_delete_rule_results BEFORE DELETE ON rule_results
+        BEGIN SELECT RAISE(ABORT, 'rule_results are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_update_signed_verdicts BEFORE UPDATE ON signed_verdicts
+        BEGIN SELECT RAISE(ABORT, 'signed_verdicts are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_delete_signed_verdicts BEFORE DELETE ON signed_verdicts
+        BEGIN SELECT RAISE(ABORT, 'signed_verdicts are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_update_lifecycle BEFORE UPDATE ON verdict_lifecycle_events
+        BEGIN SELECT RAISE(ABORT, 'verdict_lifecycle_events are append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS no_delete_lifecycle BEFORE DELETE ON verdict_lifecycle_events
+        BEGIN SELECT RAISE(ABORT, 'verdict_lifecycle_events are append-only'); END;
+        """
+        with self._connection() as connection:
+            connection.executescript(schema)
+
+    def register_run(
+        self,
+        run_id: str,
+        target: TargetIdentity,
+        environment: EnvironmentIdentity,
+        manifest_id: str,
+        manifest_digest: str,
+    ) -> None:
+        require_identifier(run_id, "run_id")
+        require_identifier(manifest_id, "manifest_id")
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO runs(
+                    run_id, tenant_id, target_identity_json, target_identity_digest,
+                    environment_identity_json, environment_identity_digest,
+                    rule_manifest_id, rule_manifest_digest, run_outcome, state,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    target.tenant_id,
+                    canonical_json(target.to_dict()),
+                    target.identity_digest,
+                    canonical_json(environment.to_dict()),
+                    environment.identity_digest,
+                    manifest_id,
+                    manifest_digest,
+                    RunOutcome.INCONCLUSIVE.value,
+                    RunState.CREATED.value,
+                    now,
+                    now,
+                ),
+            )
+
+    def get_run(self, run_id: str, tenant_id: str | None = None) -> dict[str, Any]:
+        with self._connection() as connection:
+            row = connection.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"unknown run: {run_id}")
+        result = dict(row)
+        if tenant_id is not None and result["tenant_id"] != tenant_id:
+            raise KeyError(f"unknown run: {run_id}")
+        return result
+
+    def list_runs(self, tenant_id: str) -> list[dict[str, Any]]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runs WHERE tenant_id = ? ORDER BY created_at DESC", (tenant_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def transition_state(
+        self,
+        run_id: str,
+        tenant_id: str,
+        next_state: RunState,
+        actor: str,
+        reason: str,
+        workflow_version: str,
+    ) -> None:
+        require_identifier(actor, "actor")
+        require_identifier(workflow_version, "workflow_version")
+        if not reason.strip():
+            raise ValueError("transition reason is required")
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT state, tenant_id FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if row is None or row["tenant_id"] != tenant_id:
+                raise KeyError(f"unknown run: {run_id}")
+            current = RunState(row["state"])
+            validate_transition(current, next_state)
+            connection.execute(
+                "INSERT INTO state_events(run_id, tenant_id, prior_state, next_state, actor, reason, workflow_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (run_id, tenant_id, current.value, next_state.value, actor, reason, workflow_version, now),
+            )
+            connection.execute(
+                "UPDATE runs SET state = ?, updated_at = ? WHERE run_id = ?",
+                (next_state.value, now, run_id),
+            )
+
+    def set_run_outcome(self, run_id: str, tenant_id: str, outcome: RunOutcome) -> None:
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            cursor = connection.execute(
+                "UPDATE runs SET run_outcome = ?, updated_at = ? WHERE run_id = ? AND tenant_id = ?",
+                (outcome.value, now, run_id, tenant_id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(f"unknown run: {run_id}")
+
+    def append_artifact(
+        self,
+        run_id: str,
+        tenant_id: str,
+        artifact_id: str,
+        content: bytes,
+        media_type: str,
+        source_component: str,
+        redaction_status: RedactionStatus = RedactionStatus.COMPLETE,
+    ) -> dict[str, Any]:
+        require_identifier(artifact_id, "artifact_id")
+        require_identifier(source_component, "source_component")
+        run = self.get_run(run_id, tenant_id)
+        del run
+        created_at = to_utc_iso(utc_now())
+        relative_path = f"{tenant_id}/{run_id}/artifacts/{artifact_id}.bin"
+        destination = contained_path(self.evidence_root, relative_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            raise FileExistsError(f"artifact already exists: {artifact_id}")
+        descriptor: dict[str, Any]
+        with self._connection() as connection:
+            previous = connection.execute(
+                "SELECT ordinal, chain_hash FROM evidence_artifacts WHERE run_id = ? ORDER BY ordinal DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+            ordinal = 1 if previous is None else int(previous["ordinal"]) + 1
+            prev_chain_hash = _ZERO_HASH if previous is None else str(previous["chain_hash"])
+            digest = sha256_bytes(content)
+            descriptor = {
+                "artifact_id": artifact_id,
+                "run_id": run_id,
+                "tenant_id": tenant_id,
+                "relative_path": relative_path,
+                "sha256": digest,
+                "size_bytes": len(content),
+                "media_type": media_type,
+                "source_component": source_component,
+                "redaction_status": redaction_status.value,
+                "ordinal": ordinal,
+                "created_at": created_at,
+            }
+            record_hash = sha256_json(descriptor)
+            chain_hash = sha256_bytes(bytes.fromhex(prev_chain_hash) + bytes.fromhex(record_hash))
+            fd, temporary_name = tempfile.mkstemp(prefix=f".{artifact_id}.", dir=destination.parent)
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(content)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary_name, destination)
+                connection.execute(
+                    """
+                    INSERT INTO evidence_artifacts(
+                        artifact_id, run_id, tenant_id, relative_path, sha256, size_bytes,
+                        media_type, source_component, redaction_status, ordinal, created_at,
+                        record_hash, prev_chain_hash, chain_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        artifact_id, run_id, tenant_id, relative_path, digest, len(content),
+                        media_type, source_component, redaction_status.value, ordinal, created_at,
+                        record_hash, prev_chain_hash, chain_hash,
+                    ),
+                )
+            except Exception:
+                Path(temporary_name).unlink(missing_ok=True)
+                destination.unlink(missing_ok=True)
+                raise
+        return {**descriptor, "record_hash": record_hash, "chain_hash": chain_hash}
+
+    def record_rule_result(self, run_id: str, tenant_id: str, result: RuleResult) -> None:
+        require_identifier(result.rule_id, "rule_id")
+        if not result.evidence_ids:
+            raise ValueError("rule results require evidence references")
+        with self._connection() as connection:
+            run = connection.execute(
+                "SELECT tenant_id FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None or run["tenant_id"] != tenant_id:
+                raise KeyError(f"unknown run: {run_id}")
+            placeholders = ",".join("?" for _ in result.evidence_ids)
+            rows = connection.execute(
+                f"SELECT artifact_id, tenant_id, run_id FROM evidence_artifacts WHERE artifact_id IN ({placeholders})",
+                tuple(result.evidence_ids),
+            ).fetchall()
+            if len(rows) != len(set(result.evidence_ids)):
+                raise ValueError("every rule evidence reference must identify a registered artifact")
+            if any(row["tenant_id"] != tenant_id or row["run_id"] != run_id for row in rows):
+                raise ValueError("cross-tenant or cross-run evidence reference rejected")
+            connection.execute(
+                "INSERT INTO rule_results(run_id, tenant_id, rule_id, passed, evidence_ids_json, details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    tenant_id,
+                    result.rule_id,
+                    int(result.passed),
+                    canonical_json(list(result.evidence_ids)),
+                    canonical_json(result.details),
+                    to_utc_iso(utc_now()),
+                ),
+            )
+
+    def list_rule_results(self, run_id: str, tenant_id: str) -> dict[str, RuleResult]:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM rule_results WHERE run_id = ? AND tenant_id = ?", (run_id, tenant_id)
+            ).fetchall()
+        return {
+            row["rule_id"]: RuleResult(
+                rule_id=row["rule_id"],
+                passed=bool(row["passed"]),
+                evidence_ids=tuple(json.loads(row["evidence_ids_json"])),
+                details=json.loads(row["details_json"]),
+            )
+            for row in rows
+        }
+
+    def record_finding(
+        self,
+        finding_id: str,
+        run_id: str,
+        tenant_id: str,
+        severity: str,
+        title: str,
+        blocks_release: bool,
+        evidence_ids: tuple[str, ...],
+    ) -> None:
+        require_identifier(finding_id, "finding_id")
+        if not title.strip():
+            raise ValueError("finding title is required")
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO findings(finding_id, run_id, tenant_id, severity, title, blocks_release, evidence_ids_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    finding_id, run_id, tenant_id, severity, title, int(blocks_release),
+                    canonical_json(list(evidence_ids)), to_utc_iso(utc_now()),
+                ),
+            )
+
+    def blocking_findings(self, run_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM findings WHERE run_id = ? AND tenant_id = ? AND blocks_release = 1",
+                (run_id, tenant_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def verify_evidence(self, run_id: str, tenant_id: str) -> VerificationReport:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM evidence_artifacts WHERE run_id = ? AND tenant_id = ? ORDER BY ordinal",
+                (run_id, tenant_id),
+            ).fetchall()
+        invalid: list[dict[str, str]] = []
+        valid_ids: set[str] = set()
+        record_hashes: list[str] = []
+        expected_previous = _ZERO_HASH
+        for expected_ordinal, row in enumerate(rows, start=1):
+            descriptor = {
+                "artifact_id": row["artifact_id"],
+                "run_id": row["run_id"],
+                "tenant_id": row["tenant_id"],
+                "relative_path": row["relative_path"],
+                "sha256": row["sha256"],
+                "size_bytes": row["size_bytes"],
+                "media_type": row["media_type"],
+                "source_component": row["source_component"],
+                "redaction_status": row["redaction_status"],
+                "ordinal": row["ordinal"],
+                "created_at": row["created_at"],
+            }
+            reasons: list[str] = []
+            calculated_record_hash = sha256_json(descriptor)
+            if int(row["ordinal"]) != expected_ordinal:
+                reasons.append("non_contiguous_ordinal")
+            if row["record_hash"] != calculated_record_hash:
+                reasons.append("record_hash_mismatch")
+            if row["prev_chain_hash"] != expected_previous:
+                reasons.append("chain_predecessor_mismatch")
+            calculated_chain = sha256_bytes(
+                bytes.fromhex(expected_previous) + bytes.fromhex(calculated_record_hash)
+            )
+            if row["chain_hash"] != calculated_chain:
+                reasons.append("chain_hash_mismatch")
+            if row["redaction_status"] not in {
+                RedactionStatus.COMPLETE.value,
+                RedactionStatus.NOT_REQUIRED.value,
+            }:
+                reasons.append("redaction_incomplete")
+            try:
+                artifact_path = contained_path(self.evidence_root, row["relative_path"])
+                if not artifact_path.is_file():
+                    reasons.append("artifact_missing")
+                else:
+                    content = artifact_path.read_bytes()
+                    if len(content) != int(row["size_bytes"]):
+                        reasons.append("artifact_size_mismatch")
+                    if sha256_bytes(content) != row["sha256"]:
+                        reasons.append("artifact_sha256_mismatch")
+            except ValueError:
+                reasons.append("artifact_path_invalid")
+            if reasons:
+                invalid.append({"artifact_id": row["artifact_id"], "reason": ",".join(sorted(set(reasons)))})
+            else:
+                valid_ids.add(row["artifact_id"])
+            record_hashes.append(calculated_record_hash)
+            expected_previous = calculated_chain
+        return VerificationReport(
+            run_id=run_id,
+            tenant_id=tenant_id,
+            valid=bool(rows) and not invalid,
+            artifact_count=len(rows),
+            valid_artifact_ids=frozenset(valid_ids),
+            invalid_artifacts=tuple(invalid),
+            merkle_root=merkle_root(record_hashes),
+            chain_tip=expected_previous,
+        )
+
+    def save_signed_verdict(self, run_id: str, tenant_id: str, envelope: Any) -> None:
+        self.get_run(run_id, tenant_id)
+        if envelope.payload.get("run_id") != run_id or envelope.payload.get("tenant_id") != tenant_id:
+            raise ValueError("signed verdict identity does not match storage scope")
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO signed_verdicts(run_id, tenant_id, payload_json, payload_sha256, signature_b64, key_id, public_key_pem, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id, tenant_id, canonical_json(envelope.payload), envelope.payload_sha256,
+                    envelope.signature_b64, envelope.key_id, envelope.public_key_pem, to_utc_iso(utc_now()),
+                ),
+            )
+
+    def latest_signed_verdict(self, run_id: str, tenant_id: str) -> dict[str, Any] | None:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM signed_verdicts WHERE run_id = ? AND tenant_id = ? ORDER BY verdict_id DESC LIMIT 1",
+                (run_id, tenant_id),
+            ).fetchone()
+        return None if row is None else dict(row)
+
+    def append_lifecycle_event(
+        self,
+        run_id: str,
+        tenant_id: str,
+        event_type: VerdictLifecycleEvent,
+        actor: str,
+        reason: str,
+        replacement_run_id: str | None = None,
+    ) -> None:
+        require_identifier(actor, "actor")
+        if not reason.strip():
+            raise ValueError("lifecycle reason is required")
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO verdict_lifecycle_events(run_id, tenant_id, event_type, actor, reason, replacement_run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id, tenant_id, event_type.value, actor, reason, replacement_run_id,
+                    to_utc_iso(utc_now()),
+                ),
+            )
+
+    def lifecycle_events(self, run_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM verdict_lifecycle_events WHERE run_id = ? AND tenant_id = ? ORDER BY event_id",
+                (run_id, tenant_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
