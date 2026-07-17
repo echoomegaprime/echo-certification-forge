@@ -1,0 +1,51 @@
+{
+  "files": {
+    "result.json": {
+      "bytes": 25961,
+      "sha256": "e0827a178de2139e8c828a6faefdf55728dc7088125f0e78f36d68b8c7440e7c",
+      "source_relative_path": "result.json"
+    },
+    "runner.attestation.json": {
+      "bytes": 1166,
+      "sha256": "13faf5ccf6f326855a8746f8257a711d6d7dfed9869cb194bc031a6bea2808c3",
+      "source_relative_path": "runtime/runner.attestation.json"
+    },
+    "runner.provenance.json": {
+      "bytes": 1673,
+      "sha256": "a88141a994a5e575e95dbb75e11babcb8af90be6ee460b63fe28a2f9c9b2bc78",
+      "source_relative_path": "runtime/runner.provenance.json"
+    },
+    "runner.spdx.json": {
+      "bytes": 2747,
+      "sha256": "8d0810d5bc1a2037944867094fb3bb50af5afb8441894d130b0f9ddfbb95fb2f",
+      "source_relative_path": "runtime/runner.spdx.json"
+    },
+    "signer.attestation.json": {
+      "bytes": 1166,
+      "sha256": "633116c0906f8684cf2741cc31686f0f9b824421c78389ecef8b32dffc89e9de",
+      "source_relative_path": "runtime/signer.attestation.json"
+    },
+    "signer.provenance.json": {
+      "bytes": 1673,
+      "sha256": "bb13b9d8e6a1b139d8f402f7339563b81fe221e28246a1170eb0a8d9c0953ee2",
+      "source_relative_path": "runtime/signer.provenance.json"
+    },
+    "signer.spdx.json": {
+      "bytes": 2747,
+      "sha256": "7394d7ac6fb8fd2ad3b0ed8063fd21ba2164a9b4cba8401d265a699cf472c3ac",
+      "source_relative_path": "runtime/signer.spdx.json"
+    }
+  },
+  "phase": "P4",
+  "phase_state": "SUPPLY_CHAIN_FOUNDATION",
+  "result": {
+    "failed_checks": [],
+    "passed": true,
+    "release_verdict": "NOT_READY",
+    "run_outcome": "COMPLETE"
+  },
+  "schema_version": "1.0.0",
+  "source_commit": "6f42c6b9597f949f34c0f87d71aea7955c51824f",
+  "source_node": "forge",
+  "source_root": "/home/forge/.cache/echo-certforge/p4-6f42c6b"
+}

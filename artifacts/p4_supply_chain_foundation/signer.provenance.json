@@ -1,0 +1,54 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "predicate": {
+    "buildDefinition": {
+      "buildType": "https://cert.echoforge.com/buildtypes/docker-v1",
+      "externalParameters": {
+        "dockerfile_sha256": "ef700d6581cf455305faf0c9bbf6a83c7906c3832dbe6d539b848fa9b44550a2",
+        "lockfile_sha256": "f60a51a7e8088d3e6040edbe6d45c91fe54ee26f02c62b4d1bebf57dabdf7968",
+        "source_commit": "6f42c6b9597f949f34c0f87d71aea7955c51824f"
+      },
+      "internalParameters": {
+        "network_during_dependency_resolution": true
+      },
+      "resolvedDependencies": [
+        {
+          "digest": {
+            "sha256": "fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db"
+          },
+          "uri": "docker-image://python:3.12.10-slim-bookworm"
+        },
+        {
+          "digest": {
+            "gitCommit": "6f42c6b9597f949f34c0f87d71aea7955c51824f"
+          },
+          "uri": "git+https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge"
+        },
+        {
+          "digest": {
+            "sha256": "726aafa264be573c21c75ec0cded7c26200372409213b2e0d9fb1d2fbab01325"
+          },
+          "uri": "build-context://normalized"
+        }
+      ]
+    },
+    "runDetails": {
+      "builder": {
+        "id": "docker-buildx://forge"
+      },
+      "metadata": {
+        "invocationId": "7a3bbc62-092d-4992-b27b-6666e44db3e7",
+        "startedOn": "2026-07-16T18:13:32Z"
+      }
+    }
+  },
+  "predicateType": "https://slsa.dev/provenance/v1",
+  "subject": [
+    {
+      "digest": {
+        "sha256": "73d03370089ff134166531c4f15333de8fbd0e6f34352717e000ef2f70e2e70f"
+      },
+      "name": "echo-certforge-signer"
+    }
+  ]
+}

@@ -1,0 +1,700 @@
+{
+  "base_image": "python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
+  "checks": {
+    "attestation_key_domains_public_only": true,
+    "hash_locked_dependencies": true,
+    "pinned_base_digest": true,
+    "runner_admitted": true,
+    "runner_containment": true,
+    "runner_drift_denied": true,
+    "runner_forbidden_file_scan": true,
+    "runner_independently_comparable": true,
+    "runner_purpose_built": true,
+    "runner_revocation_denied": true,
+    "runner_sbom_verified": true,
+    "signer_admitted": true,
+    "signer_containment": true,
+    "signer_drift_denied": true,
+    "signer_forbidden_file_scan": true,
+    "signer_independently_comparable": true,
+    "signer_purpose_built": true,
+    "signer_revocation_denied": true,
+    "signer_sbom_verified": true
+  },
+  "cleanup": {
+    "containers_after": 21,
+    "containers_before": 21,
+    "owned_container_ids": [
+      "ba4a477b62e75f89ebcc89b12b6daab5e268a31baf86d447a1968ab9d872ec67",
+      "f93290eec1cf746c45099d5c8aca65d6055ed659fda397bfca0e1e65bf647540",
+      "c179ebb2531615af3ed8211b91c708b73e215cc4d982f1d296dfddaefe5ad5c9",
+      "6df0d25ecc3b7020fdbced15c35cc5a6785f59278efafa1564c8581f64e78db1",
+      "307deb3626eeed3aa6f0e8a3e19d55d55b54e4c4c7e35d5d9b2f936b9ee1d4bb",
+      "d0fbad3e4dfe717771eee6e14b33c7e2b5e7e958c69fe79934c3c45de29ffab3",
+      "1bbbdb05adfbcb08a2cae33ce9a41b948355a3970d67645d0da95b1dd95b4f43",
+      "38373c6720b87483bfe965b8ad3a55340201a21423c944fc9277cdc98bc5db51"
+    ],
+    "unrelated_container_ids_preserved": true
+  },
+  "completed_at_utc": "2026-07-16T18:19:26.053549Z",
+  "images": {
+    "runner": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "image_digest": "sha256:323b21e2ac7fc55e9369374945dedbe3a68547c52ce41503db24415e84deea6e",
+        "reasons": [],
+        "role": "runner"
+      },
+      "attestation": {
+        "key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-6f42c6b/runtime/runner.attestation.json",
+        "private_key_persisted": false,
+        "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAeILgyAAANww9OkJpuLztoe3aJ6iHmrNpYDnAIoQ+kXk=\n-----END PUBLIC KEY-----\n"
+      },
+      "comparison_image_digest": "sha256:3281e6a534e4db1f6a7b2f916c1c152a6540311278ba249abdf34973aa7f3ae0",
+      "comparison_reference": "echo-certforge-runner:p4-6f42c6b-b",
+      "containment": {
+        "checks": {
+          "all_capabilities_dropped": true,
+          "capabilities_zero": true,
+          "cpu_limited": true,
+          "docker_socket_absent": true,
+          "exit_zero": true,
+          "gid_65532": true,
+          "memory_limited": true,
+          "network_none": true,
+          "no_new_privileges": true,
+          "pids_limited": true,
+          "read_only_root": true,
+          "seccomp_enforcing": true,
+          "tmp_writable": true,
+          "uid_65532": true
+        },
+        "config": {
+          "AttachStderr": true,
+          "AttachStdin": false,
+          "AttachStdout": true,
+          "Cmd": [
+            "-lc",
+            "set -eu; printf 'uid='; id -u; printf 'gid='; id -g; grep '^CapEff:' /proc/self/status; grep '^NoNewPrivs:' /proc/self/status; grep '^Seccomp:' /proc/self/status; test ! -e /var/run/docker.sock; touch /tmp/write-ok; if touch /root/forbidden 2>/dev/null; then exit 91; fi; python -c \"import echo_certification_forge; print('import=ok')\""
+          ],
+          "Domainname": "",
+          "Entrypoint": [
+            "/bin/sh"
+          ],
+          "Env": [
+            "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG=C.UTF-8",
+            "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+            "PYTHON_VERSION=3.12.10",
+            "PYTHON_SHA256=07ab697474595e06f06647417d3c7fa97ded07afc1a7e4454c5639919b46eaea",
+            "PYTHONDONTWRITEBYTECODE=1",
+            "PYTHONUNBUFFERED=1",
+            "PYTHONPATH=/opt/echo",
+            "PIP_DISABLE_PIP_VERSION_CHECK=1",
+            "PIP_NO_CACHE_DIR=1"
+          ],
+          "Hostname": "c179ebb25316",
+          "Image": "echo-certforge-runner:p4-6f42c6b-a",
+          "Labels": {
+            "echo.certforge.image.role": "runner",
+            "echo.certforge.image.schema": "1.0.0",
+            "echo.certforge.ownership_token": "owner.p4.b95de0cd4478429faf740f65b1a4e438",
+            "echo.certforge.phase": "P4",
+            "org.opencontainers.image.base.digest": "sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
+            "org.opencontainers.image.base.name": "python:3.12.10-slim-bookworm",
+            "org.opencontainers.image.description": "Purpose-built non-root execution image for isolated Certification Forge runs",
+            "org.opencontainers.image.revision": "6f42c6b9597f949f34c0f87d71aea7955c51824f",
+            "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+            "org.opencontainers.image.title": "Echo Certification Forge Runner"
+          },
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Tty": false,
+          "User": "65532:65532",
+          "Volumes": null,
+          "WorkingDir": "/workspace"
+        },
+        "container_id": "c179ebb2531615af3ed8211b91c708b73e215cc4d982f1d296dfddaefe5ad5c9",
+        "exit_code": 0,
+        "host_config": {
+          "AutoRemove": false,
+          "Binds": null,
+          "BlkioDeviceReadBps": [],
+          "BlkioDeviceReadIOps": [],
+          "BlkioDeviceWriteBps": [],
+          "BlkioDeviceWriteIOps": [],
+          "BlkioWeight": 0,
+          "BlkioWeightDevice": [],
+          "CapAdd": null,
+          "CapDrop": [
+            "ALL"
+          ],
+          "Cgroup": "",
+          "CgroupParent": "",
+          "CgroupnsMode": "private",
+          "ConsoleSize": [
+            0,
+            0
+          ],
+          "ContainerIDFile": "",
+          "CpuCount": 0,
+          "CpuPercent": 0,
+          "CpuPeriod": 0,
+          "CpuQuota": 0,
+          "CpuRealtimePeriod": 0,
+          "CpuRealtimeRuntime": 0,
+          "CpuShares": 0,
+          "CpusetCpus": "",
+          "CpusetMems": "",
+          "DeviceCgroupRules": null,
+          "DeviceRequests": null,
+          "Devices": [],
+          "Dns": null,
+          "DnsOptions": [],
+          "DnsSearch": [],
+          "ExtraHosts": null,
+          "GroupAdd": null,
+          "IOMaximumBandwidth": 0,
+          "IOMaximumIOps": 0,
+          "IpcMode": "private",
+          "Isolation": "",
+          "Links": null,
+          "LogConfig": {
+            "Config": {},
+            "Type": "json-file"
+          },
+          "MaskedPaths": [
+            "/proc/acpi",
+            "/proc/asound",
+            "/proc/interrupts",
+            "/proc/kcore",
+            "/proc/keys",
+            "/proc/latency_stats",
+            "/proc/sched_debug",
+            "/proc/scsi",
+            "/proc/timer_list",
+            "/proc/timer_stats",
+            "/sys/devices/virtual/powercap",
+            "/sys/firmware",
+            "/sys/devices/system/cpu/cpu0/thermal_throttle",
+            "/sys/devices/system/cpu/cpu1/thermal_throttle",
+            "/sys/devices/system/cpu/cpu2/thermal_throttle",
+            "/sys/devices/system/cpu/cpu3/thermal_throttle",
+            "/sys/devices/system/cpu/cpu4/thermal_throttle",
+            "/sys/devices/system/cpu/cpu5/thermal_throttle",
+            "/sys/devices/system/cpu/cpu6/thermal_throttle",
+            "/sys/devices/system/cpu/cpu7/thermal_throttle",
+            "/sys/devices/system/cpu/cpu8/thermal_throttle",
+            "/sys/devices/system/cpu/cpu9/thermal_throttle",
+            "/sys/devices/system/cpu/cpu10/thermal_throttle",
+            "/sys/devices/system/cpu/cpu11/thermal_throttle",
+            "/sys/devices/system/cpu/cpu12/thermal_throttle",
+            "/sys/devices/system/cpu/cpu13/thermal_throttle",
+            "/sys/devices/system/cpu/cpu14/thermal_throttle",
+            "/sys/devices/system/cpu/cpu15/thermal_throttle",
+            "/sys/devices/system/cpu/cpu16/thermal_throttle",
+            "/sys/devices/system/cpu/cpu17/thermal_throttle",
+            "/sys/devices/system/cpu/cpu18/thermal_throttle",
+            "/sys/devices/system/cpu/cpu19/thermal_throttle"
+          ],
+          "Memory": 268435456,
+          "MemoryReservation": 0,
+          "MemorySwap": 268435456,
+          "MemorySwappiness": null,
+          "NanoCpus": 250000000,
+          "NetworkMode": "none",
+          "OomKillDisable": null,
+          "OomScoreAdj": 0,
+          "PidMode": "",
+          "PidsLimit": 32,
+          "PortBindings": {},
+          "Privileged": false,
+          "PublishAllPorts": false,
+          "ReadonlyPaths": [
+            "/proc/bus",
+            "/proc/fs",
+            "/proc/irq",
+            "/proc/sys",
+            "/proc/sysrq-trigger"
+          ],
+          "ReadonlyRootfs": true,
+          "RestartPolicy": {
+            "MaximumRetryCount": 0,
+            "Name": "no"
+          },
+          "Runtime": "runc",
+          "SecurityOpt": [
+            "no-new-privileges:true"
+          ],
+          "ShmSize": 67108864,
+          "Tmpfs": {
+            "/tmp": "rw,nosuid,nodev,noexec,size=16777216,mode=700,uid=65532,gid=65532"
+          },
+          "UTSMode": "",
+          "Ulimits": [],
+          "UsernsMode": "",
+          "VolumeDriver": "",
+          "VolumesFrom": null
+        },
+        "logs": "uid=65532\ngid=65532\nCapEff:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\nimport=ok\n",
+        "name": "certforge-p4-containment-runner-65b1a4e438",
+        "network_settings": {
+          "Networks": {
+            "none": {
+              "Aliases": null,
+              "DNSNames": null,
+              "DriverOpts": null,
+              "EndpointID": "",
+              "Gateway": "",
+              "GlobalIPv6Address": "",
+              "GlobalIPv6PrefixLen": 0,
+              "GwPriority": 0,
+              "IPAMConfig": null,
+              "IPAddress": "",
+              "IPPrefixLen": 0,
+              "IPv6Gateway": "",
+              "Links": null,
+              "MacAddress": "",
+              "NetworkID": "27e7213bb7ad941e828256874d22dc32a3b02524c0eaadc7d6b3394ea8f97b9e"
+            }
+          },
+          "Ports": {},
+          "SandboxID": "",
+          "SandboxKey": ""
+        },
+        "passed": true,
+        "state": {
+          "Dead": false,
+          "Error": "",
+          "ExitCode": 0,
+          "FinishedAt": "2026-07-16T18:19:16.515987532Z",
+          "OOMKilled": false,
+          "Paused": false,
+          "Pid": 0,
+          "Restarting": false,
+          "Running": false,
+          "StartedAt": "2026-07-16T18:19:15.785574303Z",
+          "Status": "exited"
+        }
+      },
+      "dockerfile_sha256": "d2dbf03e1635ba14efcf955fc386d9901eb52f5ec126af42966e33aef6d2f45d",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "image_digest": "sha256:323b21e2ac7fc55e9369374945dedbe3a68547c52ce41503db24415e84deea6e",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "runner"
+      },
+      "exact_digest_reproducible": false,
+      "filesystem_scan": {
+        "file_count": 7212,
+        "findings": [],
+        "image": "echo-certforge-runner:p4-6f42c6b-a",
+        "passed": true
+      },
+      "image_digest": "sha256:323b21e2ac7fc55e9369374945dedbe3a68547c52ce41503db24415e84deea6e",
+      "independently_comparable": true,
+      "lockfile_sha256": "f60a51a7e8088d3e6040edbe6d45c91fe54ee26f02c62b4d1bebf57dabdf7968",
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          }
+        ],
+        "python": "3.12.10",
+        "source_file_count": 21,
+        "source_manifest_sha256": "bd2670c62d4e79ef102eb4d151d14d1af4face65bcee279463d1bd49fa939394"
+      },
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-6f42c6b/runtime/runner.provenance.json",
+        "sha256": "a88141a994a5e575e95dbb75e11babcb8af90be6ee460b63fe28a2f9c9b2bc78"
+      },
+      "reference": "echo-certforge-runner:p4-6f42c6b-a",
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "image_digest": "sha256:323b21e2ac7fc55e9369374945dedbe3a68547c52ce41503db24415e84deea6e",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "runner"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-6f42c6b/runtime/runner.spdx.json",
+        "sha256": "8d0810d5bc1a2037944867094fb3bb50af5afb8441894d130b0f9ddfbb95fb2f",
+        "verified": true
+      }
+    },
+    "signer": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "image_digest": "sha256:73d03370089ff134166531c4f15333de8fbd0e6f34352717e000ef2f70e2e70f",
+        "reasons": [],
+        "role": "signer"
+      },
+      "attestation": {
+        "key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-6f42c6b/runtime/signer.attestation.json",
+        "private_key_persisted": false,
+        "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAeILgyAAANww9OkJpuLztoe3aJ6iHmrNpYDnAIoQ+kXk=\n-----END PUBLIC KEY-----\n"
+      },
+      "comparison_image_digest": "sha256:465a1f4cd1aaa04f316cee3271aa6d66e562439fc620c9f266aeed10afb5b423",
+      "comparison_reference": "echo-certforge-signer:p4-6f42c6b-b",
+      "containment": {
+        "checks": {
+          "all_capabilities_dropped": true,
+          "capabilities_zero": true,
+          "cpu_limited": true,
+          "docker_socket_absent": true,
+          "exit_zero": true,
+          "gid_65532": true,
+          "memory_limited": true,
+          "network_none": true,
+          "no_new_privileges": true,
+          "pids_limited": true,
+          "read_only_root": true,
+          "seccomp_enforcing": true,
+          "tmp_writable": true,
+          "uid_65532": true
+        },
+        "config": {
+          "AttachStderr": true,
+          "AttachStdin": false,
+          "AttachStdout": true,
+          "Cmd": [
+            "-lc",
+            "set -eu; printf 'uid='; id -u; printf 'gid='; id -g; grep '^CapEff:' /proc/self/status; grep '^NoNewPrivs:' /proc/self/status; grep '^Seccomp:' /proc/self/status; test ! -e /var/run/docker.sock; touch /tmp/write-ok; if touch /root/forbidden 2>/dev/null; then exit 91; fi; python -c \"import echo_certification_forge; print('import=ok')\""
+          ],
+          "Domainname": "",
+          "Entrypoint": [
+            "/bin/sh"
+          ],
+          "Env": [
+            "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG=C.UTF-8",
+            "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+            "PYTHON_VERSION=3.12.10",
+            "PYTHON_SHA256=07ab697474595e06f06647417d3c7fa97ded07afc1a7e4454c5639919b46eaea",
+            "PYTHONDONTWRITEBYTECODE=1",
+            "PYTHONUNBUFFERED=1",
+            "PYTHONPATH=/opt/echo",
+            "PIP_DISABLE_PIP_VERSION_CHECK=1",
+            "PIP_NO_CACHE_DIR=1"
+          ],
+          "Hostname": "1bbbdb05adfb",
+          "Image": "echo-certforge-signer:p4-6f42c6b-a",
+          "Labels": {
+            "echo.certforge.image.role": "signer",
+            "echo.certforge.image.schema": "1.0.0",
+            "echo.certforge.ownership_token": "owner.p4.b95de0cd4478429faf740f65b1a4e438",
+            "echo.certforge.phase": "P4",
+            "org.opencontainers.image.base.digest": "sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
+            "org.opencontainers.image.base.name": "python:3.12.10-slim-bookworm",
+            "org.opencontainers.image.description": "Purpose-built isolated verdict-signing image for Certification Forge",
+            "org.opencontainers.image.revision": "6f42c6b9597f949f34c0f87d71aea7955c51824f",
+            "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+            "org.opencontainers.image.title": "Echo Certification Forge Verdict Signer"
+          },
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Tty": false,
+          "User": "65532:65532",
+          "Volumes": null,
+          "WorkingDir": "/work"
+        },
+        "container_id": "1bbbdb05adfbcb08a2cae33ce9a41b948355a3970d67645d0da95b1dd95b4f43",
+        "exit_code": 0,
+        "host_config": {
+          "AutoRemove": false,
+          "Binds": null,
+          "BlkioDeviceReadBps": [],
+          "BlkioDeviceReadIOps": [],
+          "BlkioDeviceWriteBps": [],
+          "BlkioDeviceWriteIOps": [],
+          "BlkioWeight": 0,
+          "BlkioWeightDevice": [],
+          "CapAdd": null,
+          "CapDrop": [
+            "ALL"
+          ],
+          "Cgroup": "",
+          "CgroupParent": "",
+          "CgroupnsMode": "private",
+          "ConsoleSize": [
+            0,
+            0
+          ],
+          "ContainerIDFile": "",
+          "CpuCount": 0,
+          "CpuPercent": 0,
+          "CpuPeriod": 0,
+          "CpuQuota": 0,
+          "CpuRealtimePeriod": 0,
+          "CpuRealtimeRuntime": 0,
+          "CpuShares": 0,
+          "CpusetCpus": "",
+          "CpusetMems": "",
+          "DeviceCgroupRules": null,
+          "DeviceRequests": null,
+          "Devices": [],
+          "Dns": null,
+          "DnsOptions": [],
+          "DnsSearch": [],
+          "ExtraHosts": null,
+          "GroupAdd": null,
+          "IOMaximumBandwidth": 0,
+          "IOMaximumIOps": 0,
+          "IpcMode": "private",
+          "Isolation": "",
+          "Links": null,
+          "LogConfig": {
+            "Config": {},
+            "Type": "json-file"
+          },
+          "MaskedPaths": [
+            "/proc/acpi",
+            "/proc/asound",
+            "/proc/interrupts",
+            "/proc/kcore",
+            "/proc/keys",
+            "/proc/latency_stats",
+            "/proc/sched_debug",
+            "/proc/scsi",
+            "/proc/timer_list",
+            "/proc/timer_stats",
+            "/sys/devices/virtual/powercap",
+            "/sys/firmware",
+            "/sys/devices/system/cpu/cpu0/thermal_throttle",
+            "/sys/devices/system/cpu/cpu1/thermal_throttle",
+            "/sys/devices/system/cpu/cpu2/thermal_throttle",
+            "/sys/devices/system/cpu/cpu3/thermal_throttle",
+            "/sys/devices/system/cpu/cpu4/thermal_throttle",
+            "/sys/devices/system/cpu/cpu5/thermal_throttle",
+            "/sys/devices/system/cpu/cpu6/thermal_throttle",
+            "/sys/devices/system/cpu/cpu7/thermal_throttle",
+            "/sys/devices/system/cpu/cpu8/thermal_throttle",
+            "/sys/devices/system/cpu/cpu9/thermal_throttle",
+            "/sys/devices/system/cpu/cpu10/thermal_throttle",
+            "/sys/devices/system/cpu/cpu11/thermal_throttle",
+            "/sys/devices/system/cpu/cpu12/thermal_throttle",
+            "/sys/devices/system/cpu/cpu13/thermal_throttle",
+            "/sys/devices/system/cpu/cpu14/thermal_throttle",
+            "/sys/devices/system/cpu/cpu15/thermal_throttle",
+            "/sys/devices/system/cpu/cpu16/thermal_throttle",
+            "/sys/devices/system/cpu/cpu17/thermal_throttle",
+            "/sys/devices/system/cpu/cpu18/thermal_throttle",
+            "/sys/devices/system/cpu/cpu19/thermal_throttle"
+          ],
+          "Memory": 268435456,
+          "MemoryReservation": 0,
+          "MemorySwap": 268435456,
+          "MemorySwappiness": null,
+          "NanoCpus": 250000000,
+          "NetworkMode": "none",
+          "OomKillDisable": null,
+          "OomScoreAdj": 0,
+          "PidMode": "",
+          "PidsLimit": 32,
+          "PortBindings": {},
+          "Privileged": false,
+          "PublishAllPorts": false,
+          "ReadonlyPaths": [
+            "/proc/bus",
+            "/proc/fs",
+            "/proc/irq",
+            "/proc/sys",
+            "/proc/sysrq-trigger"
+          ],
+          "ReadonlyRootfs": true,
+          "RestartPolicy": {
+            "MaximumRetryCount": 0,
+            "Name": "no"
+          },
+          "Runtime": "runc",
+          "SecurityOpt": [
+            "no-new-privileges:true"
+          ],
+          "ShmSize": 67108864,
+          "Tmpfs": {
+            "/tmp": "rw,nosuid,nodev,noexec,size=16777216,mode=700,uid=65532,gid=65532"
+          },
+          "UTSMode": "",
+          "Ulimits": [],
+          "UsernsMode": "",
+          "VolumeDriver": "",
+          "VolumesFrom": null
+        },
+        "logs": "uid=65532\ngid=65532\nCapEff:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\nimport=ok\n",
+        "name": "certforge-p4-containment-signer-65b1a4e438",
+        "network_settings": {
+          "Networks": {
+            "none": {
+              "Aliases": null,
+              "DNSNames": null,
+              "DriverOpts": null,
+              "EndpointID": "",
+              "Gateway": "",
+              "GlobalIPv6Address": "",
+              "GlobalIPv6PrefixLen": 0,
+              "GwPriority": 0,
+              "IPAMConfig": null,
+              "IPAddress": "",
+              "IPPrefixLen": 0,
+              "IPv6Gateway": "",
+              "Links": null,
+              "MacAddress": "",
+              "NetworkID": "27e7213bb7ad941e828256874d22dc32a3b02524c0eaadc7d6b3394ea8f97b9e"
+            }
+          },
+          "Ports": {},
+          "SandboxID": "",
+          "SandboxKey": ""
+        },
+        "passed": true,
+        "state": {
+          "Dead": false,
+          "Error": "",
+          "ExitCode": 0,
+          "FinishedAt": "2026-07-16T18:19:24.770684093Z",
+          "OOMKilled": false,
+          "Paused": false,
+          "Pid": 0,
+          "Restarting": false,
+          "Running": false,
+          "StartedAt": "2026-07-16T18:19:24.008800909Z",
+          "Status": "exited"
+        }
+      },
+      "dockerfile_sha256": "ef700d6581cf455305faf0c9bbf6a83c7906c3832dbe6d539b848fa9b44550a2",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "image_digest": "sha256:73d03370089ff134166531c4f15333de8fbd0e6f34352717e000ef2f70e2e70f",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "signer"
+      },
+      "exact_digest_reproducible": false,
+      "filesystem_scan": {
+        "file_count": 7214,
+        "findings": [],
+        "image": "echo-certforge-signer:p4-6f42c6b-a",
+        "passed": true
+      },
+      "image_digest": "sha256:73d03370089ff134166531c4f15333de8fbd0e6f34352717e000ef2f70e2e70f",
+      "independently_comparable": true,
+      "lockfile_sha256": "f60a51a7e8088d3e6040edbe6d45c91fe54ee26f02c62b4d1bebf57dabdf7968",
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          }
+        ],
+        "python": "3.12.10",
+        "source_file_count": 21,
+        "source_manifest_sha256": "bd2670c62d4e79ef102eb4d151d14d1af4face65bcee279463d1bd49fa939394"
+      },
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-6f42c6b/runtime/signer.provenance.json",
+        "sha256": "bb13b9d8e6a1b139d8f402f7339563b81fe221e28246a1170eb0a8d9c0953ee2"
+      },
+      "reference": "echo-certforge-signer:p4-6f42c6b-a",
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:8307298692bc761384ead43a64f09ba4",
+        "image_digest": "sha256:73d03370089ff134166531c4f15333de8fbd0e6f34352717e000ef2f70e2e70f",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "signer"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-6f42c6b/runtime/signer.spdx.json",
+        "sha256": "7394d7ac6fb8fd2ad3b0ed8063fd21ba2164a9b4cba8401d265a699cf472c3ac",
+        "verified": true
+      }
+    }
+  },
+  "passed": true,
+  "phase": "P4",
+  "phase_state": "SUPPLY_CHAIN_FOUNDATION",
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "schema_version": "1.0.0",
+  "source_commit": "6f42c6b9597f949f34c0f87d71aea7955c51824f",
+  "started_at_utc": "2026-07-16T18:19:09.821486Z"
+}
