@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -434,6 +435,22 @@ def validate_signer_inspect(inspect: dict[str, Any], input_root: Path) -> tuple[
     return tuple(sorted(set(issues)))
 
 
+def resolve_image_id(api: DockerAPI, reference: str) -> str:
+    """Resolve a tag, digest, or ID reference to the exact local image ID.
+
+    Docker container inspect reports the image ID, never the requested tag or
+    repo digest, so identity must be compared ID-to-ID. Resolution failure
+    raises and therefore fails closed.
+    """
+    inspected = api.request(
+        "GET", f"/images/{urllib.parse.quote(reference, safe=':@')}/json"
+    )
+    image_id = (inspected or {}).get("Id")
+    if not isinstance(image_id, str) or not image_id.startswith("sha256:"):
+        raise RuntimeError(f"unresolvable image reference: {reference}")
+    return image_id
+
+
 def run_signer_container(
     api: DockerAPI,
     *,
@@ -449,8 +466,9 @@ def run_signer_container(
     suffix = secrets.token_hex(5)
     ownership_token = f"owner.{suffix}"
     name = f"certforge-p3-signer-{case}-{suffix}"
+    resolved_image_id = resolve_image_id(api, image)
     payload = signer_payload(
-        image=image,
+        image=resolved_image_id,
         source_root=source_root,
         input_root=input_root,
         output_root=output_root,
@@ -462,11 +480,8 @@ def run_signer_container(
     owned_ids.add(container_id)
     created = api.inspect(container_id)
     issues = validate_signer_inspect(created, input_root)
-    if created.get("Image") != image.split("@", 1)[-1]:
-        # Docker inspect reports sha256:<digest>; image identity is independently checked below.
-        expected_digest = image.split("@", 1)[-1]
-        if created.get("Image") != expected_digest:
-            issues = tuple(sorted(set(issues + ("signer_image_identity_mismatch",))))
+    if created.get("Image") != resolved_image_id:
+        issues = tuple(sorted(set(issues + ("signer_image_identity_mismatch",))))
     api.start(container_id)
     final = wait_not_running(api, container_id, 30.0)
     logs = api.logs(container_id)

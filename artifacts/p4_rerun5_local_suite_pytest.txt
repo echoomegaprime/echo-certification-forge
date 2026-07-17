@@ -1,5 +1,5 @@
-........................................................................ [ 53%]
-...............................................................          [100%]
+........................................................................ [ 51%]
+...................................................................      [100%]
 ============================== warnings summary ===============================
 .venv\Lib\site-packages\fastapi\testclient.py:1
   C:\ECHO_OMEGA_PRIME\echo-certification-forge\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
@@ -38,4 +38,4 @@ src\echo_certification_forge\verifier_cli.py         30      1      4      1    
 ---------------------------------------------------------------------------------------------
 TOTAL                                              3520    372   1014    267    85%
 Required test coverage of 85.0% reached. Total coverage: 85.33%
-135 passed, 1 warning in 17.03s
+139 passed, 1 warning in 17.24s
