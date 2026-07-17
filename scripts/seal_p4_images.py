@@ -165,56 +165,98 @@ print(json.dumps({'python':platform.python_version(),'architecture':platform.mac
 
 
 def runtime_preflight(reference: str, inspect: dict[str, Any], output: Path) -> dict[str, Any]:
-    code = r'''
-import importlib.metadata as metadata, json, os, pathlib
+    runtime_code = r'''
+import importlib.metadata as metadata, json, os
 packages=sorted({d.metadata.get('Name','').lower() for d in metadata.distributions() if d.metadata.get('Name')})
 forbidden_env=[]
 for key in os.environ:
     upper=key.upper()
     if any(token in upper for token in ('PASSWORD','SECRET','TOKEN','PRIVATE_KEY','STRIPE','AWS_ACCESS','ECHO_SOVEREIGN')):
         forbidden_env.append(key)
-history=[p for p in ('/root/.ash_history','/root/.bash_history','/home/certforge/.ash_history','/home/certforge/.bash_history') if pathlib.Path(p).exists()]
+print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),'forbidden_env':forbidden_env,'packages':packages},sort_keys=True,separators=(',',':')))
+'''.strip()
+    audit_code = r'''
+import json, pathlib
+history=[]
 cache=[]
+errors=[]
+for p in ('/root/.ash_history','/root/.bash_history','/home/certforge/.ash_history','/home/certforge/.bash_history'):
+    path=pathlib.Path(p)
+    try:
+        if path.exists(): history.append(p)
+    except OSError as exc:
+        errors.append({'path':p,'error':type(exc).__name__})
 for p in ('/root/.cache/pip','/var/cache/apk','/tmp/requirements.lock'):
     path=pathlib.Path(p)
-    if path.is_file() or (path.is_dir() and any(path.iterdir())): cache.append(p)
-print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),'forbidden_env':forbidden_env,'shell_history':history,'unexpected_cache':cache,'packages':packages},sort_keys=True,separators=(',',':')))
+    try:
+        if path.is_file() or (path.is_dir() and any(path.iterdir())): cache.append(p)
+    except OSError as exc:
+        errors.append({'path':p,'error':type(exc).__name__})
+print(json.dumps({'shell_history':history,'unexpected_cache':cache,'inspection_errors':errors},sort_keys=True,separators=(',',':')))
 '''.strip()
-    result = run(
-        [
-            "docker",
-            "run",
-            "--rm",
+    common = [
+        "docker",
+        "run",
+        "--rm",
+        "--read-only",
+        "--network",
+        "none",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--pids-limit",
+        "32",
+        "--memory",
+        "128m",
+        "--memory-swap",
+        "128m",
+        "--cpus",
+        "0.25",
+    ]
+    runtime_result = run(
+        common
+        + [
             "--user",
             "65532:65532",
-            "--read-only",
-            "--network",
-            "none",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges:true",
-            "--pids-limit",
-            "32",
-            "--memory",
-            "128m",
-            "--memory-swap",
-            "128m",
-            "--cpus",
-            "0.25",
             "--tmpfs",
             "/tmp:rw,nosuid,nodev,noexec,size=8m,mode=700,uid=65532,gid=65532",
             "--entrypoint",
             "python",
             reference,
             "-c",
-            code,
+            runtime_code,
         ],
         check=False,
         timeout=60,
     )
-    payload = json.loads(result.stdout.splitlines()[-1]) if result.returncode == 0 and result.stdout.strip() else {}
-    package_names = set(payload.get("packages") or [])
+    audit_result = run(
+        common
+        + [
+            "--user",
+            "0:0",
+            "--tmpfs",
+            "/tmp:rw,nosuid,nodev,noexec,size=8m,mode=700",
+            "--entrypoint",
+            "python",
+            reference,
+            "-c",
+            audit_code,
+        ],
+        check=False,
+        timeout=60,
+    )
+    runtime_payload = (
+        json.loads(runtime_result.stdout.splitlines()[-1])
+        if runtime_result.returncode == 0 and runtime_result.stdout.strip()
+        else {}
+    )
+    audit_payload = (
+        json.loads(audit_result.stdout.splitlines()[-1])
+        if audit_result.returncode == 0 and audit_result.stdout.strip()
+        else {}
+    )
+    package_names = set(runtime_payload.get("packages") or [])
     dev_found = sorted(package_names & DEV_PACKAGES)
     network_found = sorted(package_names & NETWORK_PACKAGES)
     config = inspect.get("Config") or {}
@@ -224,14 +266,19 @@ print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),'forbidden_env':forbidden_
     privileged_entrypoint = bool(entrypoint and str(entrypoint[0]).lower() in {"su", "sudo", "doas"})
     document = {
         "reference": reference,
-        "container_returncode": result.returncode,
-        "uid": payload.get("uid"),
-        "gid": payload.get("gid"),
-        "read_only_root_compatible": result.returncode == 0,
+        "container_returncode": runtime_result.returncode,
+        "container_stderr": runtime_result.stderr[-4000:],
+        "audit_returncode": audit_result.returncode,
+        "audit_stderr": audit_result.stderr[-4000:],
+        "uid": runtime_payload.get("uid"),
+        "gid": runtime_payload.get("gid"),
+        "read_only_root_compatible": runtime_result.returncode == 0,
+        "root_audit_read_only": audit_result.returncode == 0,
         "network_mode": "none",
-        "forbidden_environment_names": payload.get("forbidden_env") or [],
-        "shell_history": payload.get("shell_history") or [],
-        "unexpected_package_cache": payload.get("unexpected_cache") or [],
+        "forbidden_environment_names": runtime_payload.get("forbidden_env") or [],
+        "shell_history": audit_payload.get("shell_history") or [],
+        "unexpected_package_cache": audit_payload.get("unexpected_cache") or [],
+        "inspection_errors": audit_payload.get("inspection_errors") or [],
         "development_packages": dev_found,
         "network_client_packages": network_found,
         "privileged_entrypoint": privileged_entrypoint,
@@ -240,12 +287,14 @@ print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),'forbidden_env':forbidden_
         "health_command": health,
     }
     document["passed"] = (
-        result.returncode == 0
-        and payload.get("uid") == 65532
-        and payload.get("gid") == 65532
+        runtime_result.returncode == 0
+        and audit_result.returncode == 0
+        and runtime_payload.get("uid") == 65532
+        and runtime_payload.get("gid") == 65532
         and not document["forbidden_environment_names"]
         and not document["shell_history"]
         and not document["unexpected_package_cache"]
+        and not document["inspection_errors"]
         and not dev_found
         and not network_found
         and not privileged_entrypoint
@@ -253,7 +302,6 @@ print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),'forbidden_env':forbidden_
     )
     write_json(output, document)
     return document
-
 
 def trivy_scan(trivy: Path, reference: str, raw_output: Path, summary_output: Path) -> dict[str, Any]:
     result = run(

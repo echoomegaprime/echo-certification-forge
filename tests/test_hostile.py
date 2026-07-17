@@ -245,6 +245,7 @@ def test_all_p4_production_dockerfiles_are_pinned_and_nonroot() -> None:
         assert 'echo.certforge.attestation.key_id="${ATTESTATION_KEY_ID}"' in text
         assert "HEALTHCHECK " in text
         assert "USER 65532:65532" in text
+        assert "--no-cache-dir" in text
         assert "--require-hashes" in text
         assert "find / -xdev -type f" in text
         assert "-perm -4000" in text
@@ -338,3 +339,16 @@ def test_source_scan_detects_lfs_legacy_build_and_limits(tmp_path) -> None:
     assert "python_build_script" in rules
     assert scan_target_source(tmp_path, max_files=1).valid is False
     assert scan_target_source(tmp_path, max_bytes=1).valid is False
+
+
+def test_p4_sealer_splits_nonroot_runtime_and_root_cache_audit() -> None:
+    from pathlib import Path
+
+    source = Path("scripts/seal_p4_images.py").read_text(encoding="utf-8")
+    assert '"65532:65532"' in source
+    assert '"0:0"' in source
+    assert '"root_audit_read_only"' in source
+    assert '"inspection_errors"' in source
+    assert '"container_stderr"' in source
+    assert "runtime_result.returncode == 0" in source
+    assert "audit_result.returncode == 0" in source

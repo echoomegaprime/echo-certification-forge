@@ -27,7 +27,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ECHO_CERTFORGE_TRUSTED_KEYS=/state/trusted-public-keys
 
 COPY images/requirements.lock /tmp/requirements.lock
-RUN python -m pip install --root-user-action=ignore --require-hashes --no-deps -r /tmp/requirements.lock \
+RUN python -m pip install --root-user-action=ignore --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.lock \
     && rm -f /tmp/requirements.lock \
     && addgroup -S -g 65532 certforge \
     && adduser -S -D -H -u 65532 -G certforge -s /sbin/nologin certforge \
