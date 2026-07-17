@@ -1,43 +1,21 @@
-name: P4 readiness-race validation
+name: P4 validation
 
 on:
   push:
-    branches:
-      - p4-readiness-race-validation-20260717
+    branches: [p4-readiness-race-validation-20260717]
   pull_request:
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: p4-readiness-race-validation-${{ github.ref }}
-  cancel-in-progress: false
+    branches: [main]
 
 jobs:
   source-validation:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout exact commit
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-
-      - name: Install project and test dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
-
-      - name: Compile source and P4 entrypoints
-        run: python -m compileall -q src scripts/p4_hostile_acceptance.py scripts/p4_hostile_acceptance_exact.py scripts/p4_hostile_acceptance_hardened.py tests
-
-      - name: Run focused P4 wrapper regressions
-        run: python -m pytest -q tests/test_p4_hostile_acceptance_exact.py tests/test_p4_hostile_acceptance_hardened.py
-
-      - name: Run complete source suite with enforced branch coverage
-        run: python -m pytest -q --cov=echo_certification_forge --cov-branch --cov-report=term-missing
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m compileall -q src scripts/p4_hostile_acceptance.py scripts/p4_hostile_acceptance_exact.py scripts/p4_hostile_acceptance_hardened.py tests
+      - run: python -m pytest -q tests/test_p4_hostile_acceptance_exact.py tests/test_p4_hostile_acceptance_hardened.py
+      - run: python -m pytest -q --cov=echo_certification_forge --cov-branch --cov-report=term-missing
