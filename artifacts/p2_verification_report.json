@@ -26,7 +26,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts\\p2_pytest.txt",
-      "log_sha256": "b7bcfb309bab3be66353d7941bda92f49404d36a22fcf5edd2bfc329f01b1101",
+      "log_sha256": "b1c30caca65daa7abf84ddc13b6c53a725c001a7bfe3ff6333b434c6f2253d04",
       "name": "pytest"
     },
     {
@@ -49,7 +49,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts\\p2_diff_check.txt",
-      "log_sha256": "923d2e554885c0661ae9aceca524bcf6dbb256f5e1a4e853853cd4092f95ddb8",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "name": "diff_check"
     }
   ],
@@ -112,7 +112,7 @@
       "untrusted_control_plane_blocked": true
     }
   },
-  "generated_at_utc": "2026-07-16T17:29:58.439956Z",
+  "generated_at_utc": "2026-07-17T00:14:25.593329Z",
   "passed": true,
   "phase": "P2",
   "platform": "win32",
@@ -123,11 +123,12 @@
   "secret_scan": {
     "findings": [],
     "log": "artifacts\\p2_secret_scan.json",
-    "log_sha256": "b0c93564dca9ac9224ba2bd3260e5bc9e2494b7ddaec7b6ef42e1a6b40514c6f",
+    "log_sha256": "6b1c8ea2f13db0e7c81acedbd7a70514320ebde9445d094cdd2df9ffebfad552",
     "passed": true,
-    "scanned_files": 100
+    "scanned_files": 123
   },
   "source_identity": {
+    "p2_source_commit": "87c8afcfa5e439219b8737f7fdcb202967810316",
     "scripts/p2_forge_acceptance.py": "4c83a187509a8e62477bed861dc16523a0400476260e8bf44f2ddae8b0dfd823",
     "src/echo_certification_forge/runner.py": "19ebf13539dc878611bb21a8aeb1f8621ca2d43e4cf82b290a5bb3f5761b03d4"
   },
@@ -138,6 +139,7 @@
     "docs/P1_GITHUB_ACTIONS_BLOCKER_2026-07-15.md": "ceb9ba4e261188dd21a62dbfbc91f145d18a9044a2e868d8213ad92a6b0c226d",
     "docs/P2_RUNNER_TRANSPORT_FOUNDATION.md": "f981f1a4ae3c527afeed3a3e7de656850df679cfaf81ba41f143eeaf46ff1777",
     "docs/P3_PRODUCTION_EVIDENCE_CUSTODY_AND_SIGNING.md": "8d2147a6a8a0b72a0a0243409f2a82b6b814b0de11b4fc2e5ef6efce7d3a842d",
+    "docs/P4_HOSTILE_RUNNER_AND_IMAGE_SUPPLY_CHAIN.md": "32ce9d2ccef29370912b00a82193caed5b0208e2167105dfde4219310d174b12",
     "docs/PHASE_LEDGER.md": "f820e1d14701d8e7ebd3cd8f3815aaaf5f6de08575eb65bfd6b8a0a43b083a33",
     "docs/PROJECT_CONTRACT.md": "aa1a1b1b07a09246602e8738198e03958f6b51e1564a3cc233823de24eb31ae8",
     "docs/SPEC.md": "238845c7dcda9f2ac87a7fac344e27582408b618543f06c9d5f8c472f98d852e",
@@ -145,15 +147,21 @@
     "docs/phase-ledger.v1.json": "510254b3ecb8c33b93621fa46f641b4fc661808dcc780cc4964f566275a5a1d1",
     "policies/mandatory-rules.v1.json": "aa04ed551e8a01d06526394887ff1a6b7782c55fdee786a8829a8ef08ce846ca",
     "pyproject.toml": "e7b3741ae36b8a01afeaf3cc956cfaca1816a6844effc802892d3ac08918a66e",
+    "scripts/build_p4_images.py": "9ef9991944721bed19dc66529440cf24a479d98e15eee85b1bddc99250d9e911",
+    "scripts/generate_p4_attestation_key.py": "743de9cc0963644fbc12eb501c4553bb4ee4c0cf93f56d3d7b7b4dfdc97c5fee",
     "scripts/p1_acceptance.py": "b2a828f46b083308c3aae68b74d234aa82b768b9900fc41b40b551c8ab15126d",
     "scripts/p1_runtime_smoke.py": "f93d7e0a2684e288fa51574ebf88476d2af9fcc5150c02ac85d6b98e26494654",
     "scripts/p2_forge_acceptance.py": "4c83a187509a8e62477bed861dc16523a0400476260e8bf44f2ddae8b0dfd823",
     "scripts/p3_closure_scan.py": "c922ace032554abdc4a87a66f6f1b9e37593b8db4499ad9e1d28eae9464b068b",
     "scripts/p3_forge_acceptance.py": "59fd14eabbc22e89d3d106ecbd4f074358a841e3819376c590ccb97d39e7e5d3",
+    "scripts/p4_hostile_acceptance.py": "fe325d5e2d00cae89cd9fad982678510210b300eef15b11b13a2dc69745af0b5",
+    "scripts/p4_supply_chain_acceptance.py": "2e95ee8ea832537519170a46abffb91276ea1ce17427822447ea7127c5ccb0ea",
     "scripts/qualify_family_adapters.py": "feb307b9c30a262994a5c9a089366675ae3fb8167a5f37329a33101d74b6f05e",
+    "scripts/seal_p4_images.py": "a039910c825fa3c10748b262d744c41a53b8bd91db3eb91ea2d3c61ec1b1340c",
     "scripts/verify_p1.py": "af19e85e7a980fb644462da54f2c338104176c4dfa9c7a53fef5b64d6db415e5",
-    "scripts/verify_p2.py": "eb0e20610b4b85af61bb8ae2c02795a8684b39f7b25c8deb745547a943012806",
+    "scripts/verify_p2.py": "8b06ff2463adb6c868124b78df60cdafce622aa3d0df8cf3bbb207cda61ee737",
     "scripts/verify_p3.py": "2ec31fb8571dec3921af94b740442851575f82f203bf6f10087be61a8268c28a",
+    "scripts/verify_p4.py": "e20d3c2ae90bd8522e736b74f2ab2d3028b84f68f966b3e78f95e86cad148f8c",
     "src/echo_certification_forge/__init__.py": "7d2516bb6d9f2918c6cc0d1bd621dbb5c8207fc6911fc079a070ab55da62eb31",
     "src/echo_certification_forge/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
     "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
@@ -163,24 +171,31 @@
     "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
     "src/echo_certification_forge/deploy_gate.py": "a5a563be5717195431f112d5ceff95c3fc4c1dd8304b98ec23b097fcb3eed1ad",
     "src/echo_certification_forge/evidence.py": "7719ee8d7809c67e144dc30bed895c5bd09d791c5bb9665b5d3619f93aa54a17",
+    "src/echo_certification_forge/hostile.py": "a973f26540ad90f537435ddf1be5f8744ed826c46da509fdcf412d9a1164d7ab",
     "src/echo_certification_forge/models.py": "6feb76c47967dfc562a55e57b12f184feee4f66abc4c246c10aec6d0023d5799",
     "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
     "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
+    "src/echo_certification_forge/p4_manifest.py": "410955cea84ff3e86773788608bc12bd4b432a05be3ad7d3fdb695579656c512",
     "src/echo_certification_forge/policy.py": "eda878bea2e2231f03c4ff4d7c2fc2438168a8365c41da66d7a2e3c5c1ae11ab",
-    "src/echo_certification_forge/runner.py": "19ebf13539dc878611bb21a8aeb1f8621ca2d43e4cf82b290a5bb3f5761b03d4",
+    "src/echo_certification_forge/runner.py": "4a28c047dd90b90859de540fc5ec021ebc71a975416b7d5caebcc1e24fdc1a14",
     "src/echo_certification_forge/service.py": "6e478d5a40496b70b02a0c912136570a9c08afc942184731011fcb295152f7d3",
     "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
     "src/echo_certification_forge/signing.py": "548d3befc5a91f4f2f952a9a2b93fc4611bf67db265b3e332c17c5b6440c5b7e",
     "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9",
     "src/echo_certification_forge/state_machine.py": "daafc3e09a9852ea8417f1ffb6450252f54680ad22428d118332165d99188f3f",
+    "src/echo_certification_forge/supply_chain.py": "a4d3ceb4a5cefc40233b7983d6ca6120deb647ad895281e4686f26069f7002c5",
     "src/echo_certification_forge/verdict.py": "ba047e47800c39cd40e24fa03d813f685f5db56f6f9b019ce1d12bbab9513eb1",
+    "src/echo_certification_forge/verifier_cli.py": "b0f297b96ade9da66fe857b2c633e834d68038fe489a9eca6aaf8c36d5bc37b5",
     "tests/conftest.py": "ffeb687d8029dfa7fc38077b4768edbcb6386c6c8af154acb4ad6faf46243b78",
     "tests/test_additional_contracts.py": "a722ac594fad0af885d1ee229177dfcba645cecb72835842e21af454c7cff190",
     "tests/test_evidence_and_verdict.py": "f3203eb2ce955e388d692b09f7fd49eb43d809fdb01bfbe3e4474a5c2ee6260b",
+    "tests/test_hostile.py": "a1dc57740f11a38ddd499dd89b278d30766b8e941a19634228362d4950663edf",
     "tests/test_p3_custody_anchor_signing.py": "a054c07120e85220c9726577297a138e371a382d5097d102f6ec7185bf400f29",
     "tests/test_p3_runtime.py": "1fd1acf77bfeffbe01384a0e32dd0de43bf447f52b4bd8d339fee32ec4e85d41",
     "tests/test_p3_service.py": "7ee677c41b7a1aef5fc771a8c192f4024765f06106542ee3a2afc9a44ccccc8e",
+    "tests/test_p4_manifest.py": "6bfbc28d32f845727413be84ee627642b72b2b43ca77928afcbaa3733f357830",
     "tests/test_runner.py": "2865b2fd20e0826ea5deee8b27af255ce72930f3c0287fb9acd35de48d2551e3",
-    "tests/test_state_and_api.py": "ffee5f31405d5b90482f47c03818757296bf841e7c99c787873320390fccf43c"
+    "tests/test_state_and_api.py": "ffee5f31405d5b90482f47c03818757296bf841e7c99c787873320390fccf43c",
+    "tests/test_supply_chain.py": "27c72df688e4098ce6bf1ce109f3e9b63e8002868e2d830d5d9c4d590d39a41a"
   }
 }
