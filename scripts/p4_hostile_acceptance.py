@@ -13,6 +13,7 @@ import json
 import os
 import secrets
 import shutil
+import signal
 import stat
 import subprocess
 import tarfile
@@ -517,23 +518,246 @@ def clamav_scan(clamav_image: str, tar_path: Path, role: ImageRole, ownership_to
         remove_exact(container_id)
 
 
-def cosign_sign_and_verify(cosign: Path, statements: dict[str, Path], workspace: Path) -> dict[str, Any]:
-    prefix = workspace / "image-signing"
-    password = secrets.token_urlsafe(32)
-    environment = {"COSIGN_PASSWORD": password}
-    generated = run(
-        [str(cosign), "generate-key-pair", "--output-key-prefix", str(prefix)],
-        env=environment,
-        check=False,
-        timeout=60,
-    )
-    require(generated.returncode == 0, f"cosign key generation failed: {generated.stderr}")
+class CosignKeyGenerationError(RuntimeError):
+    """Cosign key generation failed with a redacted deterministic diagnostic."""
+
+    def __init__(self, message: str, diagnostic: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.diagnostic = diagnostic
+
+
+def sanitize_tool_output(value: str | bytes | None, *, secret: str) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = value
+    if secret:
+        text = text.replace(secret, "<redacted>")
+    for marker in PRIVATE_KEY_MARKERS:
+        text = text.replace(marker.decode("ascii"), "<private-key-marker-redacted>")
+    return text[-4000:]
+
+
+def host_resource_snapshot(path: Path, cosign: Path) -> dict[str, Any]:
+    disk = shutil.disk_usage(path)
+    memory: dict[str, int] = {}
+    meminfo = Path("/proc/meminfo")
+    if meminfo.is_file():
+        for line in meminfo.read_text(encoding="utf-8", errors="replace").splitlines():
+            name, separator, value = line.partition(":")
+            if separator and name in {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"}:
+                token = value.strip().split()[0]
+                if token.isdigit():
+                    memory[f"{name.lower()}_kib"] = int(token)
+    try:
+        load_average = list(os.getloadavg())
+    except (AttributeError, OSError):
+        load_average = []
+    version = run([str(cosign), "version"], check=False, timeout=15)
+    mount: dict[str, Any] = {"available": False}
+    findmnt = shutil.which("findmnt")
+    if findmnt:
+        observed = run(
+            [findmnt, "-J", "-T", str(path), "-o", "TARGET,SOURCE,FSTYPE,OPTIONS"],
+            check=False,
+            timeout=15,
+        )
+        mount = {
+            "available": observed.returncode == 0,
+            "returncode": observed.returncode,
+            "stdout": observed.stdout[-4000:],
+            "stderr": observed.stderr[-2000:],
+        }
+    identity: dict[str, Any] = {"pid": os.getpid()}
+    if hasattr(os, "getuid"):
+        identity["uid"] = os.getuid()
+    if hasattr(os, "getgid"):
+        identity["gid"] = os.getgid()
+    return {
+        "identity": identity,
+        "working_directory": str(Path.cwd()),
+        "filesystem_path": str(path),
+        "filesystem_resolved": str(path.resolve()),
+        "disk_total_bytes": disk.total,
+        "disk_used_bytes": disk.used,
+        "disk_free_bytes": disk.free,
+        "load_average": load_average,
+        "memory": memory,
+        "mount": mount,
+        "cosign": {
+            "path": str(cosign.resolve()),
+            "sha256": sha256_file(cosign),
+            "version_returncode": version.returncode,
+            "version_stdout": version.stdout[-4000:],
+            "version_stderr": version.stderr[-2000:],
+        },
+    }
+
+
+def process_snapshot(process_id: int, *, secret: str) -> list[str]:
+    ps = shutil.which("ps")
+    if not ps:
+        return []
+    observed = run([ps, "-eo", "pid,ppid,stat,etime,comm,args"], check=False, timeout=15)
+    lines = []
+    for line in observed.stdout.splitlines():
+        if str(process_id) in line or "cosign" in line:
+            lines.append(sanitize_tool_output(line, secret=secret))
+    return lines[:40]
+
+
+def terminate_process(process: subprocess.Popen[str]) -> dict[str, Any]:
+    result = {"terminate_sent": False, "kill_sent": False, "terminated": False}
+    try:
+        if os.name != "nt":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
+        result["terminate_sent"] = True
+        process.wait(timeout=5)
+        result["terminated"] = True
+        return result
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        pass
+    try:
+        if os.name != "nt":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        result["kill_sent"] = True
+        process.wait(timeout=5)
+        result["terminated"] = True
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        result["terminated"] = process.poll() is not None
+    return result
+
+
+def generate_cosign_key_pair(
+    cosign: Path,
+    prefix: Path,
+    *,
+    password: str,
+    timeout_seconds: int = 60,
+) -> tuple[Path, Path, dict[str, Any]]:
     private_path = Path(str(prefix) + ".key")
     public_path = Path(str(prefix) + ".pub")
-    require(private_path.is_file() and public_path.is_file(), "cosign key pair files missing")
-    public_sha256 = sha256_file(public_path)
-    results: dict[str, Any] = {}
+    private_path.unlink(missing_ok=True)
+    public_path.unlink(missing_ok=True)
+    diagnostic_path = prefix.parent / "cosign-key-generation-diagnostic.json"
+    started_at = datetime.now(UTC)
+    started_monotonic = time.monotonic()
+    command = [str(cosign), "generate-key-pair", "--output-key-prefix", str(prefix)]
+    diagnostic: dict[str, Any] = {
+        "schema_version": "1.0.0",
+        "operation": "cosign_generate_key_pair",
+        "classification": "IN_PROGRESS",
+        "started_at_utc": to_utc_iso(started_at),
+        "timeout_seconds": timeout_seconds,
+        "command": command,
+        "output_key_prefix": str(prefix),
+        "cosign_password_present": True,
+        "cosign_password_logged": False,
+        "retry_count": 0,
+        "retry_reason": None,
+        "resources_before": host_resource_snapshot(prefix.parent, cosign),
+    }
+    write_json(diagnostic_path, diagnostic)
+    merged = os.environ.copy()
+    merged["COSIGN_PASSWORD"] = password
+    process = subprocess.Popen(
+        command,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=merged,
+        start_new_session=True,
+    )
+    diagnostic["process_id"] = process.pid
+    write_json(diagnostic_path, diagnostic)
     try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        diagnostic.update(
+            {
+                "classification": "TIMEOUT",
+                "timed_out": True,
+                "elapsed_seconds": round(time.monotonic() - started_monotonic, 6),
+                "process_snapshot": process_snapshot(process.pid, secret=password),
+                "stdout": sanitize_tool_output(exc.stdout, secret=password),
+                "stderr": sanitize_tool_output(exc.stderr, secret=password),
+                "partial_files_before_cleanup": {
+                    "private_exists": private_path.exists(),
+                    "private_bytes": private_path.stat().st_size if private_path.exists() else 0,
+                    "public_exists": public_path.exists(),
+                    "public_bytes": public_path.stat().st_size if public_path.exists() else 0,
+                },
+            }
+        )
+        diagnostic["termination"] = terminate_process(process)
+        try:
+            trailing_stdout, trailing_stderr = process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            trailing_stdout, trailing_stderr = "", ""
+        diagnostic["stdout"] += sanitize_tool_output(trailing_stdout, secret=password)
+        diagnostic["stderr"] += sanitize_tool_output(trailing_stderr, secret=password)
+        private_path.unlink(missing_ok=True)
+        diagnostic["private_key_removed"] = not private_path.exists()
+        diagnostic["public_key_exists_after_failure"] = public_path.exists()
+        diagnostic["resources_after"] = host_resource_snapshot(prefix.parent, cosign)
+        diagnostic["completed_at_utc"] = to_utc_iso(datetime.now(UTC))
+        write_json(diagnostic_path, diagnostic)
+        raise CosignKeyGenerationError(
+            f"cosign key generation timed out after {timeout_seconds} seconds; diagnostic={diagnostic_path}",
+            diagnostic,
+        ) from exc
+    diagnostic.update(
+        {
+            "returncode": process.returncode,
+            "timed_out": False,
+            "elapsed_seconds": round(time.monotonic() - started_monotonic, 6),
+            "stdout": sanitize_tool_output(stdout, secret=password),
+            "stderr": sanitize_tool_output(stderr, secret=password),
+            "private_exists": private_path.exists(),
+            "private_bytes": private_path.stat().st_size if private_path.exists() else 0,
+            "public_exists": public_path.exists(),
+            "public_bytes": public_path.stat().st_size if public_path.exists() else 0,
+            "resources_after": host_resource_snapshot(prefix.parent, cosign),
+            "completed_at_utc": to_utc_iso(datetime.now(UTC)),
+        }
+    )
+    if process.returncode != 0 or not private_path.is_file() or not public_path.is_file():
+        diagnostic["classification"] = "TOOL_FAILURE"
+        private_path.unlink(missing_ok=True)
+        diagnostic["private_key_removed"] = not private_path.exists()
+        write_json(diagnostic_path, diagnostic)
+        raise CosignKeyGenerationError(
+            f"cosign key generation failed with return code {process.returncode}; diagnostic={diagnostic_path}",
+            diagnostic,
+        )
+    diagnostic["classification"] = "SUCCESS"
+    write_json(diagnostic_path, diagnostic)
+    return private_path, public_path, diagnostic
+
+
+def cosign_sign_and_verify(cosign: Path, statements: dict[str, Path], workspace: Path) -> dict[str, Any]:
+    prefix = workspace / "image-signing"
+    private_path = Path(str(prefix) + ".key")
+    public_path = Path(str(prefix) + ".pub")
+    diagnostic_path = workspace / "cosign-key-generation-diagnostic.json"
+    password = secrets.token_urlsafe(32)
+    environment = {"COSIGN_PASSWORD": password}
+    results: dict[str, Any] = {}
+    diagnostic: dict[str, Any] = {}
+    try:
+        private_path, public_path, diagnostic = generate_cosign_key_pair(
+            cosign,
+            prefix,
+            password=password,
+            timeout_seconds=60,
+        )
+        public_sha256 = sha256_file(public_path)
         for role, statement in statements.items():
             bundle = workspace / f"{role}.cosign.bundle"
             signed = run(
@@ -542,6 +766,7 @@ def cosign_sign_and_verify(cosign: Path, statements: dict[str, Path], workspace:
                     "sign-blob",
                     "--yes",
                     "--tlog-upload=false",
+                    "--use-signing-config=false",
                     "--key",
                     str(private_path),
                     "--bundle",
@@ -571,16 +796,24 @@ def cosign_sign_and_verify(cosign: Path, statements: dict[str, Path], workspace:
                 "bundle": str(bundle),
                 "bundle_sha256": sha256_file(bundle),
                 "verified": verified.returncode == 0,
-                "verification_stderr": verified.stderr[-2000:],
+                "verification_stderr": sanitize_tool_output(verified.stderr, secret=password),
             }
             require(verified.returncode == 0, f"cosign verification failed for {role}: {verified.stderr}")
+    except CosignKeyGenerationError as exc:
+        diagnostic = exc.diagnostic
+        raise
     finally:
         private_path.unlink(missing_ok=True)
+        if diagnostic:
+            diagnostic["private_key_removed"] = not private_path.exists()
+            diagnostic["public_key_retained"] = public_path.exists()
+            write_json(diagnostic_path, diagnostic)
         password = ""
     return {
         "public_key": str(public_path),
         "public_key_sha256": public_sha256,
         "private_key_removed": not private_path.exists(),
+        "key_generation": diagnostic,
         "signatures": results,
         "passed": not private_path.exists() and all(item["verified"] for item in results.values()),
     }
@@ -681,7 +914,22 @@ def static_attack_matrix(workspace: Path) -> dict[str, Any]:
         try:
             extract_archive_safely(archive_path, destination, max_total_bytes=1024 * 1024)
         except IsolationFailure as exc:
-            archive_results[name] = {"denied": True, "expected_reason": expected, "reason": str(exc)}
+            archive_results[name] = {
+                "denied": True,
+                "expected_reason": expected,
+                "reason": str(exc),
+                "exception_type": type(exc).__name__,
+            }
+        except ValueError as exc:
+            traversal_denial = name == "zip_traversal" and "may not traverse parents" in str(exc)
+            if not traversal_denial:
+                raise
+            archive_results[name] = {
+                "denied": True,
+                "expected_reason": expected,
+                "reason": str(exc),
+                "exception_type": type(exc).__name__,
+            }
         else:
             archive_results[name] = {"denied": False, "reason": "accepted"}
         require(archive_results[name]["denied"], f"archive case accepted: {name}")
@@ -1137,6 +1385,11 @@ def main() -> int:
         "source_commit": args.source_commit,
         "base_image": f"{BASE_IMAGE_NAME}@{args.base_digest}",
         "docker_engine": {"daemon_mode": "rootful", "rootless_claimed": False},
+        "harness": {
+            "path": str(Path(__file__).resolve()),
+            "sha256": sha256_file(Path(__file__).resolve()),
+        },
+        "tools": {},
         "images": {},
         "sealed_image_manifest": {},
         "static_attack_matrix": {},
@@ -1155,6 +1408,11 @@ def main() -> int:
         require(args.trivy.is_file(), "Trivy binary missing")
         require(args.cosign.is_file(), "Cosign binary missing")
         require(args.sealed_manifest.is_file(), "sealed twelve-image manifest missing")
+        report["tools"] = {
+            "trivy": {"path": str(args.trivy.resolve()), "sha256": sha256_file(args.trivy)},
+            "cosign": {"path": str(args.cosign.resolve()), "sha256": sha256_file(args.cosign)},
+            "clamav_image": args.clamav_image,
+        }
         images_document = json.loads(args.images.read_text(encoding="utf-8"))
         image_map = images_document.get("images")
         require(isinstance(image_map, dict), "images manifest missing")
@@ -1478,6 +1736,12 @@ def main() -> int:
             "purpose_built_signer_workflow_passed": report["purpose_built_signer_p3_rerun"]["passed"],
             "private_key_leak_count_zero": not private_leaks,
             "rootful_engine_truth_recorded": report["docker_engine"] == {"daemon_mode": "rootful", "rootless_claimed": False},
+            "harness_identity_recorded": len(report["harness"]["sha256"]) == 64,
+            "scanner_identities_recorded": (
+                len(report["tools"]["trivy"]["sha256"]) == 64
+                and len(report["tools"]["cosign"]["sha256"]) == 64
+                and report["tools"]["clamav_image"].startswith("clamav/clamav@sha256:")
+            ),
         }
         report["private_key_scan"] = {"findings": private_leaks, "passed": not private_leaks}
         report["checks"] = checks
@@ -1486,12 +1750,32 @@ def main() -> int:
         report["run_outcome"] = "COMPLETE"
         return_code = 0
     except Exception as exc:
+        diagnostic = getattr(exc, "diagnostic", None)
+        if isinstance(diagnostic, dict):
+            report["cosign_key_generation_diagnostic"] = diagnostic
         report["error"] = {"type": type(exc).__name__, "message": str(exc)}
         report["run_outcome"] = "INFRA_FAILED"
         return_code = 1
     finally:
-        for path in private_paths:
-            path.unlink(missing_ok=True)
+        discovered_private_paths = {
+            *private_paths,
+            *workspace.rglob("*.key"),
+            *workspace.rglob("*private*.pem"),
+        }
+        private_paths_detected = sorted(
+            path.relative_to(workspace).as_posix()
+            for path in discovered_private_paths
+            if path.exists() and workspace in path.parents
+        )
+        for path in discovered_private_paths:
+            if workspace in path.parents:
+                path.unlink(missing_ok=True)
+        residual_private_paths = sorted(
+            path.relative_to(workspace).as_posix()
+            for pattern in ("*.key", "*private*.pem")
+            for path in workspace.rglob(pattern)
+            if path.exists()
+        )
         for container_id in list(OWNED_CONTAINER_IDS):
             remove_exact(container_id)
         containers_after = container_ids()
@@ -1501,7 +1785,9 @@ def main() -> int:
             "owned_container_ids": list(OWNED_CONTAINER_IDS),
             "owned_container_count": len(OWNED_CONTAINER_IDS),
             "unrelated_container_ids_preserved": containers_before == containers_after,
-            "ephemeral_private_files_removed": all(not path.exists() for path in private_paths),
+            "private_paths_detected": private_paths_detected,
+            "residual_private_paths": residual_private_paths,
+            "ephemeral_private_files_removed": not residual_private_paths,
         }
         if report.get("passed") and not report["cleanup"]["unrelated_container_ids_preserved"]:
             report["passed"] = False
