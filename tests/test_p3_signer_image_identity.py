@@ -104,3 +104,13 @@ def test_container_running_different_image_is_flagged(
     api = FakeDockerAPI(resolved_id=SIGNER_ID, container_image_id=OTHER_ID)
     result = run_container(api, monkeypatch, tmp_path)
     assert "signer_image_identity_mismatch" in result["inspect_issues"]
+
+
+def test_signer_distinct_from_runner_compares_resolved_ids() -> None:
+    api = FakeDockerAPI(resolved_id=SIGNER_ID, container_image_id=SIGNER_ID)
+    assert p3.signer_image_is_distinct_from_runner(api, SIGNER_TAG) is True
+
+
+def test_signer_tag_pointing_at_runner_image_is_not_distinct() -> None:
+    api = FakeDockerAPI(resolved_id=p3.P2_RUNNER_IMAGE, container_image_id=p3.P2_RUNNER_IMAGE)
+    assert p3.signer_image_is_distinct_from_runner(api, SIGNER_TAG) is False

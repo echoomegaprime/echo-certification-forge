@@ -451,6 +451,13 @@ def resolve_image_id(api: DockerAPI, reference: str) -> str:
     return image_id
 
 
+def signer_image_is_distinct_from_runner(api: DockerAPI, reference: str) -> bool:
+    """True only when the signer reference resolves to a different local image
+    ID than the pinned P2 runner image ID. String-form comparison would pass
+    trivially for any tag reference; identity must be compared ID-to-ID."""
+    return resolve_image_id(api, reference) != P2_RUNNER_IMAGE
+
+
 def run_signer_container(
     api: DockerAPI,
     *,
@@ -1216,7 +1223,7 @@ def main() -> int:
             "signing_database_contains_no_private_key": not signing_database_contains_private_key,
             "custody_has_no_verdict_key": custody_health.get("private_verdict_signing_key_loaded") is False,
             "all_key_domains_distinct": len({key_record.key_id, auth_authority.key_id, anchor_key_id}) == 3,
-            "signer_image_distinct_from_runner_image": args.signer_image.split("@", 1)[-1] != P2_RUNNER_IMAGE,
+            "signer_image_distinct_from_runner_image": signer_image_is_distinct_from_runner(api, args.signer_image),
             "anchor_storage_independent": anchor_root.resolve() != custody_db.resolve().parent,
         }
 
