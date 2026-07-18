@@ -90,7 +90,7 @@ def main() -> int:
     identities = {
         item.persona_id: item
         for item in (AdapterIdentity.from_mapping(raw) for raw in snapshot.get("personas", []))
-        if item.maturity_state == "CERTIFIED"
+        if item.enabled and item.maturity_state == "CERTIFIED"
     }
 
     failures: list[str] = []
