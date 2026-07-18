@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echoforge.com/contracts/family-routing-receipt-v1.schema.json",
+  "title": "Echo Family 14B Signed Routing Receipt",
+  "type": "object",
+  "required": [
+    "payload",
+    "signature_b64",
+    "key_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "request_id",
+        "request_sha256",
+        "challenge_nonce",
+        "server_build_digest",
+        "base_model_id",
+        "base_model_digest",
+        "requested_model",
+        "requested_persona",
+        "registry_adapter_id",
+        "selected_adapter_id",
+        "selected_adapter_digest",
+        "active_adapter_ids",
+        "routing_mode",
+        "adapter_applied",
+        "persona_applied",
+        "fallback_used",
+        "fallback_reason",
+        "slot_lease_id",
+        "started_at",
+        "completed_at",
+        "signature_key_id"
+      ],
+      "properties": {
+        "schema": {
+          "const": "echo.family-routing-receipt/v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "request_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "challenge_nonce": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 256
+        },
+        "server_build_digest": {
+          "type": "string",
+          "pattern": "^(sha256:)?[0-9a-f]{64}$"
+        },
+        "base_model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_model_digest": {
+          "type": "string",
+          "pattern": "^(sha256:)?[0-9a-f]{64}$"
+        },
+        "requested_model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_persona": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "registry_adapter_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selected_adapter_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selected_adapter_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(sha256:)?[0-9a-f]{64}$"
+        },
+        "active_adapter_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "maxItems": 1
+        },
+        "routing_mode": {
+          "enum": [
+            "lora_adapter",
+            "base",
+            "failure"
+          ]
+        },
+        "adapter_applied": {
+          "type": "boolean"
+        },
+        "persona_applied": {
+          "type": "boolean"
+        },
+        "fallback_used": {
+          "type": "boolean"
+        },
+        "fallback_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "slot_lease_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "signature_key_id": {
+          "type": "string",
+          "pattern": "^ed25519:[0-9a-f]{32}$"
+        }
+      }
+    },
+    "signature_b64": {
+      "type": "string",
+      "minLength": 1
+    },
+    "key_id": {
+      "type": "string",
+      "pattern": "^ed25519:[0-9a-f]{32}$"
+    }
+  }
+}
