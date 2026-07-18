@@ -27,7 +27,9 @@ class AdapterIdentity:
     requested_model: str
     adapter_id: str
     adapter_digest: str
+    adapter_version: str
     maturity_state: str
+    enabled: bool
     registry_revision: str
 
     @classmethod
@@ -36,14 +38,18 @@ class AdapterIdentity:
             "persona_id",
             "requested_model",
             "adapter_id",
-            "adapter_digest",
+            "adapter_version",
             "maturity_state",
+            "enabled",
             "registry_revision",
         )
         missing = [field for field in required if not value.get(field)]
         if missing:
             raise RoutingProofError(f"adapter identity missing fields: {missing}")
-        digest = str(value["adapter_digest"]).removeprefix("sha256:")
+        digest_value = value.get("adapter_artifact_digest", value.get("adapter_digest"))
+        if not digest_value:
+            raise RoutingProofError("adapter identity missing adapter_artifact_digest")
+        digest = str(digest_value).removeprefix("sha256:")
         if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
             raise RoutingProofError("adapter_digest must be a lowercase SHA-256 digest")
         return cls(
@@ -51,7 +57,9 @@ class AdapterIdentity:
             requested_model=str(value["requested_model"]),
             adapter_id=str(value["adapter_id"]),
             adapter_digest=digest,
+            adapter_version=str(value["adapter_version"]),
             maturity_state=str(value["maturity_state"]).upper(),
+            enabled=value["enabled"] is True,
             registry_revision=str(value["registry_revision"]),
         )
 
@@ -196,6 +204,9 @@ def verify_persona_routing(
     _check(checks, "selected_adapter_id", payload.get("selected_adapter_id") == expected.adapter_id, payload.get("selected_adapter_id"), expected.adapter_id)
     selected_digest = str(payload.get("selected_adapter_digest", "")).removeprefix("sha256:")
     _check(checks, "selected_adapter_digest", selected_digest == expected.adapter_digest, selected_digest, expected.adapter_digest)
+    _check(checks, "adapter_version", payload.get("adapter_version") == expected.adapter_version, payload.get("adapter_version"), expected.adapter_version)
+    _check(checks, "registry_revision", payload.get("registry_revision") == expected.registry_revision, payload.get("registry_revision"), expected.registry_revision)
+    _check(checks, "persona_enabled", expected.enabled is True, expected.enabled, True)
     _check(checks, "maturity_certified", expected.maturity_state == CERTIFIED_MATURITY, expected.maturity_state, CERTIFIED_MATURITY)
     _check(checks, "routing_mode", payload.get("routing_mode") == "lora_adapter", payload.get("routing_mode"), "lora_adapter")
     _check(checks, "adapter_applied", payload.get("adapter_applied") is True, payload.get("adapter_applied"), True)
@@ -279,6 +290,9 @@ def verify_unloaded_adapter_failure(
     _check(checks, "request_sha256", payload.get("request_sha256") == sha256_json(dict(request_payload)), payload.get("request_sha256"), sha256_json(dict(request_payload)))
     _check(checks, "requested_model", payload.get("requested_model") == expected.requested_model, payload.get("requested_model"), expected.requested_model)
     _check(checks, "registry_adapter_id", payload.get("registry_adapter_id") == expected.adapter_id, payload.get("registry_adapter_id"), expected.adapter_id)
+    _check(checks, "adapter_version", payload.get("adapter_version") == expected.adapter_version, payload.get("adapter_version"), expected.adapter_version)
+    _check(checks, "registry_revision", payload.get("registry_revision") == expected.registry_revision, payload.get("registry_revision"), expected.registry_revision)
+    _check(checks, "persona_enabled", expected.enabled is True, expected.enabled, True)
     _check(checks, "routing_mode", payload.get("routing_mode") == "failure", payload.get("routing_mode"), "failure")
     _check(checks, "adapter_applied", payload.get("adapter_applied") is False, payload.get("adapter_applied"), False)
     _check(checks, "persona_applied", payload.get("persona_applied") is False, payload.get("persona_applied"), False)
