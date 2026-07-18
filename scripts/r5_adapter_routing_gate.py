@@ -199,7 +199,7 @@ def main() -> int:
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("personas"), list):
         raise SystemExit("registry snapshot must contain a personas list")
     identities = [AdapterIdentity.from_mapping(item) for item in snapshot["personas"]]
-    enabled = [item for item in identities if item.maturity_state == "CERTIFIED"]
+    enabled = [item for item in identities if item.enabled and item.maturity_state == "CERTIFIED"]
     trusted = load_trust_store(args.trust_store)
 
     report: dict[str, Any] = {
