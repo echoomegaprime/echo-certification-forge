@@ -1,9 +1,7 @@
-"""Standalone signed routing receipts for the ANVIL Family 14B server.
+"""Signed routing receipts for the ANVIL Family 14B server.
 
-This module is designed to be imported by ``serve_echo_family.py``.  The caller
-must supply route state obtained from the live PEFT/model objects immediately
-before and after generation.  A request label or routing-table lookup is not
-accepted as proof that an adapter was applied.
+The caller must supply state read from the live PEFT model object. Requested
+labels or routing-table lookups are not accepted as proof that an adapter ran.
 """
 from __future__ import annotations
 
@@ -21,7 +19,7 @@ RECEIPT_SCHEMA = "echo.family-routing-receipt/v1"
 
 
 class AdapterRouteMismatch(RuntimeError):
-    """Raised before generation when actual model state contradicts the route."""
+    """Raised when actual runtime state contradicts the registered route."""
 
 
 def canonical_json(value: Any) -> str:
@@ -36,11 +34,10 @@ def sha256_json(value: Any) -> str:
     return sha256_bytes(canonical_json(value).encode("utf-8"))
 
 
-def utc_iso(value: datetime | None = None) -> str:
-    current = value or datetime.now(UTC)
-    if current.tzinfo is None:
+def utc_iso(value: datetime) -> str:
+    if value.tzinfo is None:
         raise ValueError("routing receipt timestamps must be timezone-aware")
-    return current.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def normalize_digest(value: str, field: str) -> str:
@@ -57,15 +54,18 @@ class ExpectedAdapter:
     adapter_id: str
     adapter_digest: str
     adapter_version: str
+    maturity_state: str
     registry_revision: str
 
     def __post_init__(self) -> None:
         normalize_digest(self.adapter_digest, "adapter_digest")
+        if not self.maturity_state:
+            raise ValueError("maturity_state is required")
 
 
 @dataclass(frozen=True, slots=True)
 class ActualRouteState:
-    """State read from the live model/PEFT objects, never from request labels."""
+    """State read from live model/PEFT objects immediately around generation."""
 
     selected_adapter_id: str | None
     selected_adapter_digest: str | None
@@ -104,7 +104,11 @@ class RoutingReceiptSigner:
         self._public_key = private_key.public_key()
 
     @classmethod
-    def from_private_pem(cls, pem: bytes, password: bytes | None = None) -> "RoutingReceiptSigner":
+    def from_private_pem(
+        cls,
+        pem: bytes,
+        password: bytes | None = None,
+    ) -> "RoutingReceiptSigner":
         key = serialization.load_pem_private_key(pem, password=password)
         if not isinstance(key, Ed25519PrivateKey):
             raise TypeError("routing receipt private key must be Ed25519")
@@ -138,7 +142,6 @@ class RoutingReceiptSigner:
 
 
 def assert_persona_route(expected: ExpectedAdapter, actual: ActualRouteState) -> None:
-    expected_digest = normalize_digest(expected.adapter_digest, "adapter_digest")
     actual_digest = (
         normalize_digest(actual.selected_adapter_digest, "selected_adapter_digest")
         if actual.selected_adapter_digest is not None
@@ -149,7 +152,7 @@ def assert_persona_route(expected: ExpectedAdapter, actual: ActualRouteState) ->
         failures.append("adapter_applied_false")
     if actual.selected_adapter_id != expected.adapter_id:
         failures.append("selected_adapter_id_mismatch")
-    if actual_digest != expected_digest:
+    if actual_digest != normalize_digest(expected.adapter_digest, "adapter_digest"):
         failures.append("selected_adapter_digest_mismatch")
     if actual.active_adapter_ids != (expected.adapter_id,):
         failures.append("active_adapter_ids_mismatch")
@@ -181,11 +184,11 @@ def _common_payload(
     base_model_id: str,
     base_model_digest: str,
     requested_model: str,
+    slot_lease_id: str | None,
     started_at: datetime,
     completed_at: datetime,
-    slot_lease_id: str | None,
 ) -> dict[str, Any]:
-    if not challenge_nonce or len(challenge_nonce) < 16:
+    if len(challenge_nonce) < 16:
         raise ValueError("routing challenge nonce must contain at least 16 characters")
     if not request_id:
         raise ValueError("request_id is required")
@@ -222,7 +225,6 @@ def persona_receipt(
     started_at: datetime,
     completed_at: datetime,
 ) -> dict[str, Any]:
-    """Create a receipt only after the exact expected adapter is active."""
     assert_persona_route(expected, actual)
     payload = _common_payload(
         signer=signer,
@@ -242,10 +244,9 @@ def persona_receipt(
             "requested_persona": expected.persona_id,
             "registry_adapter_id": expected.adapter_id,
             "selected_adapter_id": actual.selected_adapter_id,
-            "selected_adapter_digest": normalize_digest(
-                str(actual.selected_adapter_digest), "selected_adapter_digest"
-            ),
+            "selected_adapter_digest": normalize_digest(str(actual.selected_adapter_digest), "selected_adapter_digest"),
             "adapter_version": expected.adapter_version,
+            "maturity_state": expected.maturity_state,
             "registry_revision": expected.registry_revision,
             "active_adapter_ids": list(actual.active_adapter_ids),
             "routing_mode": "lora_adapter",
@@ -291,6 +292,9 @@ def base_receipt(
             "registry_adapter_id": None,
             "selected_adapter_id": None,
             "selected_adapter_digest": None,
+            "adapter_version": None,
+            "maturity_state": None,
+            "registry_revision": None,
             "active_adapter_ids": [],
             "routing_mode": "base",
             "adapter_applied": False,
@@ -337,6 +341,7 @@ def adapter_not_active_receipt(
             "selected_adapter_id": None,
             "selected_adapter_digest": None,
             "adapter_version": expected.adapter_version,
+            "maturity_state": expected.maturity_state,
             "registry_revision": expected.registry_revision,
             "active_adapter_ids": [],
             "routing_mode": "failure",
