@@ -1,0 +1,34 @@
+{
+  "schema": "echo.r5-live-probe/v1",
+  "captured_at_utc": "2026-07-18T21:16:28.479Z",
+  "family_url": "http://192.168.1.49:8200",
+  "request": {
+    "model": "echo-gs343",
+    "challenge_nonce": "r5-envelope-1784409355288-1273c376e5c24",
+    "challenge_header": "X-Echo-Routing-Challenge",
+    "temperature": 0,
+    "max_tokens": 80
+  },
+  "response": {
+    "http_status": 200,
+    "content_type": "application/json",
+    "content_length": 436,
+    "server": "uvicorn",
+    "response_model": "echo-gs343",
+    "observed_top_level_fields": [
+      "model",
+      "object",
+      "choices"
+    ],
+    "routing_receipt_present": false,
+    "applied_adapter_metadata_present": false,
+    "raw_response_sha256": "53cdf9fafb7fc52ecd428ef8c3b8684502953e5d789efd7b2fa6e1d0703658d2"
+  },
+  "classification": {
+    "run_outcome": "INCONCLUSIVE",
+    "release_verdict": "NOT_READY",
+    "phase_status": "BLOCK",
+    "failure_code": "SIGNED_ROUTING_PROVENANCE_MISSING",
+    "reason": "The server returned the requested model label but no challenge-bound signed evidence proving that the requested LoRA adapter was active."
+  }
+}
