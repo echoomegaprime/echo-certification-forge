@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1.0",
+  "policy_id": "p4.signer.production.v1",
+  "required_role": "signer",
+  "expected_image_digest": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+  "approved_base_digests": [
+    "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+  ],
+  "approved_source_commits": [
+    "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+  ],
+  "approved_dockerfile_sha256": "2e1bfbed018d690dd7d977f09174a37fbe09391949682ae186ae0c22a98f8634",
+  "approved_lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+  "trusted_attestation_keys": {
+    "ed25519:d1a2b83569e5a4d3d33025410088a5fe": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4dwMCuPuVi7BX5oorE1YN3Ie05cL2sFMgJFimDPQnhU=\n-----END PUBLIC KEY-----\n"
+  },
+  "revoked_image_digests": [],
+  "compromised_key_ids": []
+}

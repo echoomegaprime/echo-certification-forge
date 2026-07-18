@@ -1,0 +1,66 @@
+{
+  "details": {
+    "artifacts": {
+      "attestation": {
+        "actual_sha256": "9da27435601bdff09815c6ac9da140e27509ae8a5b3021dc19087bca38bbe5ae",
+        "expected_sha256": "9da27435601bdff09815c6ac9da140e27509ae8a5b3021dc19087bca38bbe5ae",
+        "passed": true,
+        "read_only": true,
+        "source": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.attestation.json",
+        "target": "/input/runner.attestation.json"
+      },
+      "policy": {
+        "actual_sha256": "3658b04f0a3164290e317834bcdbb403e56e671dc36f776a3d2b50f96e4384ab",
+        "expected_sha256": "3658b04f0a3164290e317834bcdbb403e56e671dc36f776a3d2b50f96e4384ab",
+        "passed": true,
+        "read_only": true,
+        "source": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.admission-policy.json",
+        "target": "/input/runner.admission-policy.json"
+      },
+      "sbom": {
+        "actual_sha256": "0886ee19641c7c4a30c806893f0633bcfc6c93d4297f3a2af811348482c50679",
+        "expected_sha256": "0886ee19641c7c4a30c806893f0633bcfc6c93d4297f3a2af811348482c50679",
+        "passed": true,
+        "read_only": true,
+        "source": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.spdx.json",
+        "target": "/input/runner.spdx.json"
+      }
+    },
+    "check_count": 19,
+    "containment": {
+      "all_capabilities_dropped": true,
+      "apparmor": true,
+      "cpu_limited": true,
+      "docker_socket_absent": true,
+      "memory_limited": true,
+      "network_none": true,
+      "no_new_privileges": true,
+      "pids_limited": true,
+      "read_only_root": true
+    },
+    "harness": {
+      "core_path": "/home/forge/grok-build-workspace-certforge/scripts/p4_hostile_acceptance.py",
+      "core_sha256": "58a953a25319facbc044f69a5556a43c1777618425216591a299b88804bfe7bf",
+      "exact_path": "/home/forge/grok-build-workspace-certforge/scripts/p4_hostile_acceptance_exact.py",
+      "exact_sha256": "a4a7e202987b55beae91179a7f9f655d273199653106d9cf61e31fad09a6d505",
+      "path": "/home/forge/grok-build-workspace-certforge/scripts/p4_hostile_acceptance_hardened.py",
+      "service_health_deadline_seconds": 30,
+      "sha256": "ad7cf439bdfc7a00efb4c23ea4c120b9807449bf773c6d3abfa0845e78b48fd4"
+    },
+    "verifier_limits": {
+      "memory": "256m",
+      "nofile": 256,
+      "pids": 64,
+      "timeout_seconds": 60,
+      "workspace_size": "8m"
+    }
+  },
+  "failures": [],
+  "passed": true,
+  "phase": "P4",
+  "release_verdict": "NOT_READY",
+  "report": "/home/forge/grok-build-workspace-certforge/artifacts/p4_forge_acceptance.json",
+  "report_sha256": "c7b5031265883386b7b0df6409600dd51a622a796ccdd75abd221c0e373b4c56",
+  "schema_version": "1.0.0",
+  "verified_at_utc": "2026-07-18T07:08:51.307088Z"
+}

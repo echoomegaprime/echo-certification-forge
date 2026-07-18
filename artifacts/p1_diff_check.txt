@@ -1,7 +1,0 @@
-warning: in the working copy of '.github/workflows/ci.yml', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'artifacts/p1_acceptance.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'artifacts/p1_acceptance_report.json', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'artifacts/p1_pip_check.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'artifacts/p1_pytest.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'artifacts/p1_runtime_smoke.json', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'artifacts/p1_runtime_smoke.txt', LF will be replaced by CRLF the next time Git touches it

