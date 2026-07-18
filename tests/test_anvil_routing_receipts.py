@@ -33,7 +33,8 @@ def expected() -> ExpectedAdapter:
         requested_model="echo-gs343",
         adapter_id="echo-gs343",
         adapter_digest="a" * 64,
-        adapter_version="1.0.0",
+        adapter_version="v3",
+        maturity_state="CONFORMANCE_PENDING",
         registry_revision="1",
     )
 
@@ -73,15 +74,15 @@ def client_identity() -> AdapterIdentity:
             "requested_model": "echo-gs343",
             "adapter_id": "echo-gs343",
             "adapter_artifact_digest": "a" * 64,
-            "adapter_version": "1.0.0",
-            "maturity_state": "CERTIFIED",
+            "adapter_version": "v3",
+            "maturity_state": "CONFORMANCE_PENDING",
             "enabled": True,
             "registry_revision": "1",
         }
     )
 
 
-def test_persona_receipt_round_trips_through_independent_verifier():
+def test_persona_receipt_round_trips_before_qualification():
     route_signer = signer()
     actual = ActualRouteState.from_runtime(
         selected_adapter_id="echo-gs343",
@@ -103,6 +104,7 @@ def test_persona_receipt_round_trips_through_independent_verifier():
         trusted_public_keys=trust(route_signer),
     )
     assert result.ok is True
+    assert result.receipt_payload["maturity_state"] == "CONFORMANCE_PENDING"
 
 
 @pytest.mark.parametrize(
