@@ -33,6 +33,8 @@ def expected() -> ExpectedAdapter:
         requested_model="echo-gs343",
         adapter_id="echo-gs343",
         adapter_digest="a" * 64,
+        adapter_version="1.0.0",
+        registry_revision="1",
     )
 
 
@@ -70,8 +72,10 @@ def client_identity() -> AdapterIdentity:
             "persona_id": "gs343",
             "requested_model": "echo-gs343",
             "adapter_id": "echo-gs343",
-            "adapter_digest": "a" * 64,
+            "adapter_artifact_digest": "a" * 64,
+            "adapter_version": "1.0.0",
             "maturity_state": "CERTIFIED",
+            "enabled": True,
             "registry_revision": "1",
         }
     )
