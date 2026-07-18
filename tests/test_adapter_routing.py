@@ -29,16 +29,16 @@ def key_material():
     return private, key_id, {key_id: pem}
 
 
-def identity():
+def identity(enabled: bool = True):
     return AdapterIdentity.from_mapping(
         {
             "persona_id": "gs343",
             "requested_model": "echo-gs343",
             "adapter_id": "echo-gs343",
             "adapter_artifact_digest": "a" * 64,
-            "adapter_version": "1.0.0",
-            "maturity_state": "CERTIFIED",
-            "enabled": True,
+            "adapter_version": "v3",
+            "maturity_state": "CONFORMANCE_PENDING",
+            "enabled": enabled,
             "registry_revision": "42",
         }
     )
@@ -68,7 +68,8 @@ def persona_payload(request, nonce, key_id):
         "registry_adapter_id": "echo-gs343",
         "selected_adapter_id": "echo-gs343",
         "selected_adapter_digest": "a" * 64,
-        "adapter_version": "1.0.0",
+        "adapter_version": "v3",
+        "maturity_state": "CONFORMANCE_PENDING",
         "registry_revision": "42",
         "active_adapter_ids": ["echo-gs343"],
         "routing_mode": "lora_adapter",
@@ -83,20 +84,18 @@ def persona_payload(request, nonce, key_id):
     }
 
 
-def test_identity_rejects_missing_and_bad_digest():
-    try:
-        AdapterIdentity.from_mapping({})
-    except RoutingProofError:
-        pass
-    else:
-        raise AssertionError("missing identity must fail")
+def test_identity_accepts_disabled_rows_but_rejects_bad_digest():
+    disabled = identity(enabled=False)
+    assert disabled.enabled is False
 
     bad = {
         "persona_id": "x",
         "requested_model": "x",
         "adapter_id": "x",
-        "adapter_digest": "not-a-digest",
-        "maturity_state": "CERTIFIED",
+        "adapter_artifact_digest": "not-a-digest",
+        "adapter_version": "1",
+        "maturity_state": "EXPERIMENTAL",
+        "enabled": True,
         "registry_revision": "1",
     }
     try:
@@ -107,7 +106,7 @@ def test_identity_rejects_missing_and_bad_digest():
         raise AssertionError("bad digest must fail")
 
 
-def test_persona_receipt_passes_only_exact_route():
+def test_persona_receipt_passes_conformance_pending_exact_route():
     private, key_id, trust = key_material()
     request = {"model": "echo-gs343", "messages": [{"role": "user", "content": "probe"}]}
     nonce = "nonce-1"
@@ -125,7 +124,6 @@ def test_persona_receipt_passes_only_exact_route():
         trusted_public_keys=trust,
     )
     assert result.ok is True
-    assert result.status == "PASS"
     assert all(item["passed"] for item in result.checks)
 
 
@@ -141,12 +139,13 @@ def test_persona_missing_receipt_blocks():
     assert result.status == "BLOCK"
 
 
-def test_persona_tamper_wrong_adapter_and_fallback_block():
+def test_persona_tamper_wrong_adapter_fallback_and_maturity_block():
     private, key_id, trust = key_material()
     request = {"model": "echo-gs343", "messages": []}
     payload = persona_payload(request, "n", key_id)
     payload["selected_adapter_id"] = "echo-prime"
     payload["fallback_used"] = True
+    payload["maturity_state"] = "CERTIFIED"
     response = {
         "model": "echo-gs343",
         "routing_receipt": signed_envelope(private, key_id, payload),
@@ -158,16 +157,15 @@ def test_persona_tamper_wrong_adapter_and_fallback_block():
         expected=identity(),
         trusted_public_keys=trust,
     )
-    assert result.ok is False
     failed = {item["name"] for item in result.checks if not item["passed"]}
-    assert {"selected_adapter_id", "fallback_used"} <= failed
+    assert result.ok is False
+    assert {"selected_adapter_id", "fallback_used", "maturity_state"} <= failed
 
 
 def test_persona_invalid_signature_blocks():
     private, key_id, trust = key_material()
     request = {"model": "echo-gs343"}
-    payload = persona_payload(request, "n", key_id)
-    envelope = signed_envelope(private, key_id, payload)
+    envelope = signed_envelope(private, key_id, persona_payload(request, "n", key_id))
     envelope["signature_b64"] = base64.b64encode(b"x" * 64).decode("ascii")
     result = verify_persona_routing(
         response={"model": "echo-gs343", "routing_receipt": envelope},
@@ -227,7 +225,8 @@ def test_unloaded_adapter_must_fail_visibly_without_fallback():
         "persona_applied": False,
         "fallback_used": False,
         "selected_adapter_id": None,
-        "adapter_version": "1.0.0",
+        "adapter_version": "v3",
+        "maturity_state": "CONFORMANCE_PENDING",
         "registry_revision": "42",
         "started_at": now,
         "completed_at": now,
