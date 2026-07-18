@@ -2,11 +2,12 @@
 
 ## Status
 
-`BLOCK` until the live ANVIL Family server returns a trusted signed routing receipt for every enabled `CERTIFIED` persona and passes the unloaded-adapter negative controls. A requested or echoed model label is not routing proof.
+`BLOCK` until the live ANVIL Family server returns a trusted signed routing receipt for every enabled registry persona and passes the unloaded-adapter negative controls. A requested or echoed model label is not routing proof. R5 binds the current maturity state; it does not promote an adapter. GS343 and R2D2 qualification remain R6 and R7.
 
 ## Trust boundaries
 
-- `personality_registry` owns persona-to-adapter identity, version, digest, maturity, and enabled state.
+- `personality_registry` owns persona-to-adapter identity and enabled state.
+- The R5 snapshot adds exact deployed adapter version, LoRA weight digest, and current maturity state.
 - ANVIL reads actual active PEFT/LoRA state immediately before and after generation.
 - ANVIL holds a dedicated Ed25519 routing-attestation key. It is not a verdict-signing key.
 - Certification Forge holds only trusted public routing keys.
@@ -77,8 +78,8 @@ The angle-bracket values are supplied from immutable build/evidence records at e
 
 ## Mandatory predicates
 
-- Every enabled `CERTIFIED` registry persona has at least three successful signed receipts.
-- Receipt adapter ID, artifact digest, adapter version, and registry revision match the signed snapshot.
+- Every enabled registry persona has at least three successful signed receipts, regardless of whether its maturity is `EXPERIMENTAL`, `CONFORMANCE_PENDING`, `CERTIFIED`, or `DEGRADED`.
+- Receipt adapter ID, LoRA weight digest, adapter version, maturity state, and registry revision match the snapshot exactly.
 - Actual active adapter list contains exactly the requested adapter.
 - `fallback_used=false` for every persona response.
 - Explicit base control proves no adapter is active.
