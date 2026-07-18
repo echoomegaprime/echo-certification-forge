@@ -26,6 +26,8 @@
         "registry_adapter_id",
         "selected_adapter_id",
         "selected_adapter_digest",
+        "adapter_version",
+        "registry_revision",
         "active_adapter_ids",
         "routing_mode",
         "adapter_applied",
@@ -143,6 +145,20 @@
         "signature_key_id": {
           "type": "string",
           "pattern": "^ed25519:[0-9a-f]{32}$"
+        },
+        "adapter_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "registry_revision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
         }
       }
     },
