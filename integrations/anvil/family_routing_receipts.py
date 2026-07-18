@@ -56,6 +56,8 @@ class ExpectedAdapter:
     requested_model: str
     adapter_id: str
     adapter_digest: str
+    adapter_version: str
+    registry_revision: str
 
     def __post_init__(self) -> None:
         normalize_digest(self.adapter_digest, "adapter_digest")
@@ -243,6 +245,8 @@ def persona_receipt(
             "selected_adapter_digest": normalize_digest(
                 str(actual.selected_adapter_digest), "selected_adapter_digest"
             ),
+            "adapter_version": expected.adapter_version,
+            "registry_revision": expected.registry_revision,
             "active_adapter_ids": list(actual.active_adapter_ids),
             "routing_mode": "lora_adapter",
             "adapter_applied": True,
@@ -332,6 +336,8 @@ def adapter_not_active_receipt(
             "registry_adapter_id": expected.adapter_id,
             "selected_adapter_id": None,
             "selected_adapter_digest": None,
+            "adapter_version": expected.adapter_version,
+            "registry_revision": expected.registry_revision,
             "active_adapter_ids": [],
             "routing_mode": "failure",
             "adapter_applied": False,
