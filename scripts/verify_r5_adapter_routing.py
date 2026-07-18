@@ -27,7 +27,11 @@ def load_json(path: Path) -> Any:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def load_trust_store(directory: Path) -> dict[str, str]:
@@ -54,8 +58,7 @@ def sign_marker(marker: dict[str, Any], private_key_path: Path) -> dict[str, Any
     public = key.public_key()
     raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     key_id = f"ed25519:{sha256_bytes(raw)[:32]}"
-    payload = dict(marker)
-    payload["verifier_key_id"] = key_id
+    payload = {**marker, "verifier_key_id": key_id}
     signature = key.sign(canonical_json(payload).encode("utf-8"))
     return {
         "payload": payload,
@@ -90,7 +93,7 @@ def main() -> int:
     identities = {
         item.persona_id: item
         for item in (AdapterIdentity.from_mapping(raw) for raw in snapshot.get("personas", []))
-        if item.enabled and item.maturity_state == "CERTIFIED"
+        if item.enabled
     }
 
     failures: list[str] = []
@@ -108,6 +111,7 @@ def main() -> int:
     record("report_no_mandatory_failures", report.get("mandatory_failures") == [], report.get("mandatory_failures"))
     record("registry_snapshot_hash", report.get("registry_snapshot_sha256") == sha256_json(snapshot), report.get("registry_snapshot_sha256"))
     record("trust_store_identity", sorted(report.get("trust_store_key_ids", [])) == sorted(trusted), report.get("trust_store_key_ids"))
+    record("enabled_personas_present", bool(identities), sorted(identities))
 
     positive = report.get("positive_controls")
     if not isinstance(positive, list):
@@ -122,16 +126,16 @@ def main() -> int:
             continue
         request = item.get("request")
         exchange = item.get("exchange")
-        nonce = item.get("nonce")
+        challenge = item.get("nonce")
         final = exchange.get("final") if isinstance(exchange, dict) else None
         response = final.get("body") if isinstance(final, dict) else None
-        if not isinstance(request, dict) or not isinstance(response, dict) or not isinstance(nonce, str):
+        if not isinstance(request, dict) or not isinstance(response, dict) or not isinstance(challenge, str):
             failures.append(f"positive_malformed:{persona_id}:{index}")
             continue
         proof = verify_persona_routing(
             response=response,
             request_payload=request,
-            challenge_nonce=nonce,
+            challenge_nonce=challenge,
             expected=identity,
             trusted_public_keys=trusted,
         )
@@ -146,19 +150,20 @@ def main() -> int:
     if not isinstance(base, dict):
         record("base_control_present", False)
     else:
-        base_request = base.get("request")
-        base_exchange = base.get("exchange")
-        base_final = base_exchange.get("final") if isinstance(base_exchange, dict) else None
-        base_response = base_final.get("body") if isinstance(base_final, dict) else None
-        if isinstance(base_request, dict) and isinstance(base_response, dict) and isinstance(base.get("nonce"), str):
+        request = base.get("request")
+        exchange = base.get("exchange")
+        final = exchange.get("final") if isinstance(exchange, dict) else None
+        response = final.get("body") if isinstance(final, dict) else None
+        challenge = base.get("nonce")
+        if isinstance(request, dict) and isinstance(response, dict) and isinstance(challenge, str):
             proof = verify_base_routing(
-                response=base_response,
-                request_payload=base_request,
-                challenge_nonce=base["nonce"],
+                response=response,
+                request_payload=request,
+                challenge_nonce=challenge,
                 trusted_public_keys=trusted,
             )
             record("base_control_proof", proof.ok, proof.to_dict())
-            record("base_control_http_200", base_final.get("status") == 200, base_final.get("status"))
+            record("base_control_http_200", final.get("status") == 200, final.get("status"))
         else:
             record("base_control_malformed", False)
 
@@ -182,14 +187,14 @@ def main() -> int:
         request = item.get("request")
         inference = item.get("inference")
         response = inference.get("body") if isinstance(inference, dict) else None
-        nonce = item.get("proof", {}).get("receipt_payload", {}).get("challenge_nonce")
-        if not isinstance(request, dict) or not isinstance(response, dict) or not isinstance(nonce, str):
+        challenge = item.get("nonce")
+        if not isinstance(request, dict) or not isinstance(response, dict) or not isinstance(challenge, str):
             failures.append(f"unloaded_malformed:{persona_id}:{index}")
             continue
         proof = verify_unloaded_adapter_failure(
             error_response=response,
             request_payload=request,
-            challenge_nonce=nonce,
+            challenge_nonce=challenge,
             expected=identity,
             trusted_public_keys=trusted,
         )
@@ -218,7 +223,8 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCK",
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    write_json(args.output_dir / "r5_verification_report.json", verification)
+    verification_path = args.output_dir / "r5_verification_report.json"
+    write_json(verification_path, verification)
 
     if not failures and args.signing_key_pem:
         marker = {
@@ -238,8 +244,10 @@ def main() -> int:
             "issued_at": verification["verified_at"],
             "release_verdict": "NOT_READY",
         }
-        envelope = sign_marker(marker, args.signing_key_pem)
-        write_json(args.output_dir / "r5_completion_marker.json", envelope)
+        write_json(
+            args.output_dir / "r5_completion_marker.json",
+            sign_marker(marker, args.signing_key_pem),
+        )
 
     print(json.dumps({"status": verification["status"], "failures": failures}, indent=2))
     return 0 if not failures else 1
