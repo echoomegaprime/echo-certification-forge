@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -35,7 +34,11 @@ def load_json(path: Path) -> Any:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def load_trust_store(directory: Path) -> dict[str, str]:
@@ -49,22 +52,22 @@ def load_trust_store(directory: Path) -> dict[str, str]:
         if not isinstance(key, Ed25519PublicKey):
             raise TypeError(f"{path} is not an Ed25519 public key")
         raw = key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-        key_id = f"ed25519:{sha256_bytes(raw)[:32]}"
-        trusted[key_id] = pem
+        trusted[f"ed25519:{sha256_bytes(raw)[:32]}"] = pem
     if not trusted:
         raise ValueError("routing trust store contains no Ed25519 public keys")
     return trusted
 
 
 def http_json(
-    *,
     method: str,
     url: str,
     payload: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     timeout: float = 120.0,
 ) -> dict[str, Any]:
-    data = None if payload is None else json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    data = None
+    if payload is not None:
+        data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     request_headers = dict(headers or {})
     if data is not None:
         request_headers["Content-Type"] = "application/json"
@@ -93,23 +96,19 @@ def http_json(
         }
 
 
-def make_nonce(prefix: str, ordinal: int) -> str:
-    entropy = os.urandom(16).hex()
-    return f"{prefix}-{ordinal}-{entropy}"
+def nonce(prefix: str, ordinal: int) -> str:
+    return f"{prefix}-{ordinal}-{os.urandom(16).hex()}"
 
 
-def build_probe(identity: AdapterIdentity, nonce: str) -> dict[str, Any]:
+def probe(identity: AdapterIdentity, challenge: str) -> dict[str, Any]:
     return {
         "model": identity.requested_model,
         "messages": [
-            {
-                "role": "system",
-                "content": "Return one JSON object only. Do not issue a release verdict.",
-            },
+            {"role": "system", "content": "Return one JSON object only. Do not issue a release verdict."},
             {
                 "role": "user",
                 "content": (
-                    f"Adapter routing proof challenge={nonce}. "
+                    f"Adapter routing proof challenge={challenge}. "
                     "Classify: the harness reached the configured port and the application "
                     "then returned 500 with NullReferenceException in product code."
                 ),
@@ -120,58 +119,45 @@ def build_probe(identity: AdapterIdentity, nonce: str) -> dict[str, Any]:
     }
 
 
-def completion(
-    family_url: str,
-    payload: dict[str, Any],
-    nonce: str,
-    timeout: float,
-) -> dict[str, Any]:
+def completion(base_url: str, payload: dict[str, Any], challenge: str, timeout: float) -> dict[str, Any]:
     return http_json(
-        method="POST",
-        url=family_url.rstrip("/") + "/v1/chat/completions",
-        payload=payload,
-        headers={"X-Echo-Routing-Challenge": nonce},
-        timeout=timeout,
+        "POST",
+        base_url.rstrip("/") + "/v1/chat/completions",
+        payload,
+        {"X-Echo-Routing-Challenge": challenge},
+        timeout,
     )
 
 
 def retry_completion(
-    family_url: str,
+    base_url: str,
     payload: dict[str, Any],
-    nonce: str,
+    challenge: str,
     timeout: float,
     attempts: int,
 ) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     for attempt in range(1, attempts + 1):
-        result = completion(family_url, payload, nonce, timeout)
+        result = completion(base_url, payload, challenge, timeout)
         result["attempt"] = attempt
         records.append(result)
         if result["status"] not in {429, 503}:
-            return {"attempts": records, "final": result}
-        retry_after = result["headers"].get("retry-after", "2")
+            break
         try:
-            delay = min(max(float(retry_after), 0.5), 10.0)
+            delay = float(result["headers"].get("retry-after", "2"))
         except ValueError:
             delay = 2.0
-        time.sleep(delay)
+        time.sleep(min(max(delay, 0.5), 10.0))
     return {"attempts": records, "final": records[-1]}
 
 
-def admin_call(
-    *,
-    admin_url: str,
-    path: str,
-    token: str,
-    payload: dict[str, Any],
-    timeout: float,
-) -> dict[str, Any]:
+def admin_call(base_url: str, path: str, token: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     return http_json(
-        method="POST",
-        url=admin_url.rstrip("/") + path,
-        payload=payload,
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=timeout,
+        "POST",
+        base_url.rstrip("/") + path,
+        payload,
+        {"Authorization": f"Bearer {token}"},
+        timeout,
     )
 
 
@@ -189,17 +175,14 @@ def main() -> int:
     parser.add_argument("--admin-url")
     parser.add_argument("--admin-token-env", default="ECHO_FAMILY_ADMIN_TOKEN")
     args = parser.parse_args()
-
     if args.positive_repetitions < 3:
         parser.error("--positive-repetitions must be at least 3")
-    if args.retry_attempts < 1:
-        parser.error("--retry-attempts must be positive")
 
     snapshot = load_json(args.registry_snapshot)
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("personas"), list):
         raise SystemExit("registry snapshot must contain a personas list")
     identities = [AdapterIdentity.from_mapping(item) for item in snapshot["personas"]]
-    enabled = [item for item in identities if item.enabled and item.maturity_state == "CERTIFIED"]
+    enabled = [item for item in identities if item.enabled]
     trusted = load_trust_store(args.trust_store)
 
     report: dict[str, Any] = {
@@ -220,8 +203,8 @@ def main() -> int:
         "mandatory_failures": [],
     }
 
-    health = http_json(method="GET", url=args.family_url.rstrip("/") + "/health", timeout=20.0)
-    models = http_json(method="GET", url=args.family_url.rstrip("/") + "/v1/models", timeout=20.0)
+    health = http_json("GET", args.family_url.rstrip("/") + "/health", timeout=20.0)
+    models = http_json("GET", args.family_url.rstrip("/") + "/v1/models", timeout=20.0)
     report["health"] = health
     report["models"] = models
     if health["status"] != 200 or health["body"].get("status") != "ok":
@@ -238,35 +221,37 @@ def main() -> int:
         if identity.requested_model not in model_ids:
             report["mandatory_failures"].append(f"model_not_listed:{identity.requested_model}")
         for ordinal in range(args.positive_repetitions):
-            nonce = make_nonce(identity.persona_id, ordinal)
-            request_payload = build_probe(identity, nonce)
+            challenge = nonce(identity.persona_id, ordinal)
+            request_payload = probe(identity, challenge)
             exchange = retry_completion(
                 args.family_url,
                 request_payload,
-                nonce,
+                challenge,
                 args.request_timeout,
                 args.retry_attempts,
             )
             final = exchange["final"]
-            response_body = final.get("body") if isinstance(final.get("body"), dict) else {}
+            body = final.get("body") if isinstance(final.get("body"), dict) else {}
             proof = verify_persona_routing(
-                response=response_body,
+                response=body,
                 request_payload=request_payload,
-                challenge_nonce=nonce,
+                challenge_nonce=challenge,
                 expected=identity,
                 trusted_public_keys=trusted,
             )
-            item = {
-                "persona_id": identity.persona_id,
-                "adapter_id": identity.adapter_id,
-                "adapter_digest": identity.adapter_digest,
-                "ordinal": ordinal,
-                "nonce": nonce,
-                "request": request_payload,
-                "exchange": exchange,
-                "proof": proof.to_dict(),
-            }
-            report["positive_controls"].append(item)
+            report["positive_controls"].append(
+                {
+                    "persona_id": identity.persona_id,
+                    "adapter_id": identity.adapter_id,
+                    "adapter_digest": identity.adapter_digest,
+                    "maturity_state": identity.maturity_state,
+                    "ordinal": ordinal,
+                    "nonce": challenge,
+                    "request": request_payload,
+                    "exchange": exchange,
+                    "proof": proof.to_dict(),
+                }
+            )
             if final["status"] != 200:
                 report["mandatory_failures"].append(
                     f"positive_request_failed:{identity.persona_id}:{ordinal}:{final['status']}"
@@ -276,17 +261,17 @@ def main() -> int:
                     f"positive_routing_unproven:{identity.persona_id}:{ordinal}"
                 )
 
-    base_nonce = make_nonce("base", 0)
+    base_challenge = nonce("base", 0)
     base_request = {
         "model": "echo-prime",
-        "messages": [{"role": "user", "content": f"Base routing control challenge={base_nonce}."}],
+        "messages": [{"role": "user", "content": f"Base routing control challenge={base_challenge}."}],
         "temperature": 0.0,
         "max_tokens": 32,
     }
     base_exchange = retry_completion(
         args.family_url,
         base_request,
-        base_nonce,
+        base_challenge,
         args.request_timeout,
         args.retry_attempts,
     )
@@ -295,11 +280,11 @@ def main() -> int:
     base_proof = verify_base_routing(
         response=base_body,
         request_payload=base_request,
-        challenge_nonce=base_nonce,
+        challenge_nonce=base_challenge,
         trusted_public_keys=trusted,
     )
     report["base_control"] = {
-        "nonce": base_nonce,
+        "nonce": base_challenge,
         "request": base_request,
         "exchange": base_exchange,
         "proof": base_proof.to_dict(),
@@ -308,48 +293,42 @@ def main() -> int:
         report["mandatory_failures"].append("explicit_base_control_failed")
 
     if args.run_slot_contention_control:
-        target = enabled[0] if enabled else None
-        if target is None:
-            report["mandatory_failures"].append("slot_contention_no_certified_adapter")
+        if not enabled:
+            report["mandatory_failures"].append("slot_contention_no_enabled_adapter")
         else:
-            requests: list[tuple[str, dict[str, Any]]] = []
-            for ordinal in range(2):
-                nonce = make_nonce("contention", ordinal)
-                requests.append((nonce, build_probe(target, nonce)))
+            target = enabled[0]
+            requests = [(nonce("contention", i), None) for i in range(2)]
+            requests = [(challenge, probe(target, challenge)) for challenge, _ in requests]
             with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [
                     executor.submit(
                         completion,
                         args.family_url,
                         payload,
-                        nonce,
+                        challenge,
                         args.request_timeout,
                     )
-                    for nonce, payload in requests
+                    for challenge, payload in requests
                 ]
                 results = [future.result() for future in futures]
             statuses = [item["status"] for item in results]
             silent_base = any(
                 isinstance(item.get("body"), dict)
                 and item["body"].get("model") == "echo-prime"
-                and requests[index][1]["model"] != "echo-prime"
-                for index, item in enumerate(results)
+                for item in results
             )
-            contention_ok = (
+            passed = (
                 all(status in {200, 429, 503} for status in statuses)
-                and not silent_base
                 and any(status == 200 for status in statuses)
+                and not silent_base
             )
             report["slot_contention_control"] = {
-                "requests": [
-                    {"nonce": nonce, "request": payload}
-                    for nonce, payload in requests
-                ],
+                "requests": [{"nonce": c, "request": p} for c, p in requests],
                 "results": results,
                 "silent_base_fallback": silent_base,
-                "passed": contention_ok,
+                "passed": passed,
             }
-            if not contention_ok:
+            if not passed:
                 report["mandatory_failures"].append("slot_contention_control_failed")
 
     if args.run_unloaded_negative_control:
@@ -358,62 +337,65 @@ def main() -> int:
             report["mandatory_failures"].append("unloaded_control_admin_authority_missing")
         else:
             lease = admin_call(
-                admin_url=args.admin_url,
-                path="/admin/adapter-routing/lease",
-                token=token,
-                payload={"purpose": "R5_UNLOADED_NEGATIVE_CONTROL", "adapter_ids": [item.adapter_id for item in enabled]},
-                timeout=30.0,
+                args.admin_url,
+                "/admin/adapter-routing/lease",
+                token,
+                {"purpose": "R5_UNLOADED_NEGATIVE_CONTROL", "adapter_ids": [i.adapter_id for i in enabled]},
+                30.0,
             )
             lease_id = lease.get("body", {}).get("lease_id") if isinstance(lease.get("body"), dict) else None
             if lease["status"] != 200 or not lease_id:
                 report["mandatory_failures"].append("unloaded_control_lease_failed")
             else:
                 for identity in enabled:
+                    quoted = urllib.parse.quote(identity.adapter_id, safe="")
                     unload = admin_call(
-                        admin_url=args.admin_url,
-                        path=f"/admin/adapters/{urllib.parse.quote(identity.adapter_id, safe='')}/unload",
-                        token=token,
-                        payload={"lease_id": lease_id},
-                        timeout=60.0,
+                        args.admin_url,
+                        f"/admin/adapters/{quoted}/unload",
+                        token,
+                        {"lease_id": lease_id},
+                        60.0,
                     )
-                    nonce = make_nonce("unloaded", 0)
-                    request_payload = build_probe(identity, nonce)
+                    challenge = nonce("unloaded", 0)
+                    request_payload = probe(identity, challenge)
                     inference = completion(
                         args.family_url,
                         request_payload,
-                        nonce,
+                        challenge,
                         args.request_timeout,
                     )
                     body = inference.get("body") if isinstance(inference.get("body"), dict) else {}
                     proof = verify_unloaded_adapter_failure(
                         error_response=body,
                         request_payload=request_payload,
-                        challenge_nonce=nonce,
+                        challenge_nonce=challenge,
                         expected=identity,
                         trusted_public_keys=trusted,
                     )
-                    load = admin_call(
-                        admin_url=args.admin_url,
-                        path=f"/admin/adapters/{urllib.parse.quote(identity.adapter_id, safe='')}/load",
-                        token=token,
-                        payload={"lease_id": lease_id},
-                        timeout=120.0,
+                    reload_result = admin_call(
+                        args.admin_url,
+                        f"/admin/adapters/{quoted}/load",
+                        token,
+                        {"lease_id": lease_id},
+                        120.0,
                     )
-                    control = {
-                        "persona_id": identity.persona_id,
-                        "adapter_id": identity.adapter_id,
-                        "unload": unload,
-                        "request": request_payload,
-                        "inference": inference,
-                        "proof": proof.to_dict(),
-                        "reload": load,
-                    }
-                    report["unloaded_negative_controls"].append(control)
+                    report["unloaded_negative_controls"].append(
+                        {
+                            "persona_id": identity.persona_id,
+                            "adapter_id": identity.adapter_id,
+                            "nonce": challenge,
+                            "unload": unload,
+                            "request": request_payload,
+                            "inference": inference,
+                            "proof": proof.to_dict(),
+                            "reload": reload_result,
+                        }
+                    )
                     if unload["status"] != 200:
                         report["mandatory_failures"].append(f"adapter_unload_failed:{identity.adapter_id}")
                     if inference["status"] not in {409, 503} or not proof.ok:
                         report["mandatory_failures"].append(f"unloaded_negative_control_failed:{identity.adapter_id}")
-                    if load["status"] != 200:
+                    if reload_result["status"] != 200:
                         report["mandatory_failures"].append(f"adapter_reload_failed:{identity.adapter_id}")
 
     report["completed_at"] = utc_now()
@@ -421,7 +403,6 @@ def main() -> int:
     if not report["mandatory_failures"]:
         report["run_outcome"] = "COMPLETE"
         report["phase_status"] = "PASS"
-
     args.output_dir.mkdir(parents=True, exist_ok=True)
     output = args.output_dir / "r5_adapter_routing_report.json"
     write_json(output, report)
