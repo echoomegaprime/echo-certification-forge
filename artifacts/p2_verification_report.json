@@ -26,7 +26,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p2_pytest.txt",
-      "log_sha256": "fa4080ab78cb13f2457309ba7ea0fb2ab7b0f9afda0abc95fdc29c4d76e1a1aa",
+      "log_sha256": "62f4ffb6e576c6315cdc127c59b716bd4c60583c5ea5e3e160da46cca8869884",
       "name": "pytest"
     },
     {
@@ -112,7 +112,7 @@
       "untrusted_control_plane_blocked": true
     }
   },
-  "generated_at_utc": "2026-07-18T07:41:35.003780Z",
+  "generated_at_utc": "2026-07-18T07:46:27.571050Z",
   "passed": true,
   "phase": "P2",
   "platform": "linux",

@@ -14,7 +14,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p3_p2_regression.txt",
-      "log_sha256": "e7d531bed0049a17762e40b046029117004de3d301b58f9e57a746a7e6d3d4f7",
+      "log_sha256": "b19a696662df808b7b8f551895f25f037e68dd57dd08296f15cf0aa276854b1b",
       "name": "p2_regression"
     },
     {
@@ -27,7 +27,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p3_actor_signing_denials.txt",
-      "log_sha256": "f8ba9dd1d3bd4714173fc34a296ab4a22096ec857c6c139c9b9b3b5b1abd1e7d",
+      "log_sha256": "5f36ee33cc54abc75ccf4c7ae408cb51c47e9a446dd32290b6516f60e6576263",
       "name": "actor_signing_denials"
     }
   ],
@@ -78,7 +78,7 @@
       "valid": true
     }
   },
-  "p2_regression_report_sha256": "5f59e0a1cfbd574cefebe8d3b7563d09101f6cc3e9df574511ec4d1ce3502c75",
+  "p2_regression_report_sha256": "d6cbeba061a181d8eb1c7bdd53ae74c9ba196ba5ac8fb824a82a45b44e4cc465",
   "passed": true,
   "phase": "P3",
   "release_verdict": "NOT_READY",

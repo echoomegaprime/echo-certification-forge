@@ -26,7 +26,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p1_pytest.txt",
-      "log_sha256": "f26082363422a4dd9212b58da6bd2f3c60b1073d7c94ef32df6165318d011f1e",
+      "log_sha256": "b394ab716ee30a3d7999bfb5eeed9c924a2f92faa8d102d072eaa4ef288c79e5",
       "name": "pytest"
     },
     {
@@ -36,7 +36,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p1_acceptance.txt",
-      "log_sha256": "dbd010a7879e6e2d60bc4610b7f1d307cab208e3418e7ff2061779cc926f9afa",
+      "log_sha256": "629c9afccaebe2ca22b296df40157c19b8ccdb6a28e7664a5de1a2714353cb8c",
       "name": "acceptance"
     },
     {
@@ -46,7 +46,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p1_runtime_smoke.txt",
-      "log_sha256": "638193f6ed524d77b8b95380233280860515b8ca57a2da8b319b41842b0570c1",
+      "log_sha256": "8be53e69e1be90ac2278b368a84c1f06abcea220c3a37f8281377658212873ec",
       "name": "runtime_smoke"
     },
     {
@@ -74,7 +74,7 @@
     }
   ],
   "forbidden_source_tokens": [],
-  "generated_at_utc": "2026-07-18T07:32:08.098506Z",
+  "generated_at_utc": "2026-07-18T07:43:09.002461Z",
   "passed": true,
   "phase": "P1",
   "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",

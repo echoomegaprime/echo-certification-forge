@@ -33,10 +33,10 @@
     },
     "verified_ready": {
       "deploy_gate_allowed": true,
-      "evidence_merkle_root": "ea9ab31fc061869428e42e330b12c5cfb08faaf07e3c4c0866e898fb4b8b19ce",
+      "evidence_merkle_root": "708aef8bde26001bf820c4a74931c2b2b56c92273fc692c63ab583df3b0bae1b",
       "passed": true,
-      "payload_sha256": "3d6da3440d9bc82655537d5e89cf757b627978007f93ebabfde27cf55eb5a141",
-      "signing_key_id": "ed25519:925591b03220251aecfc9196360f4498",
+      "payload_sha256": "69507ce4dc9775b3d06cd4a1283efbec5827fcf95a904e757c4c19b34277e529",
+      "signing_key_id": "ed25519:523938c752437ec06a06ac442ec0752b",
       "verdict": "PRODUCTION_READY"
     }
   },

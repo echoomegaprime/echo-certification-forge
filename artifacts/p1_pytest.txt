@@ -32,4 +32,4 @@ src/echo_certification_forge/verifier_cli.py         30      1      4      1    
 ---------------------------------------------------------------------------------------------
 TOTAL                                              3520    372   1014    267    85%
 [32mRequired test coverage of 85.0% reached. Total coverage: 85.33%
-[0m[32m[32m[1m141 passed[0m[32m in 41.08s[0m[0m
+[0m[32m[32m[1m141 passed[0m[32m in 43.41s[0m[0m
