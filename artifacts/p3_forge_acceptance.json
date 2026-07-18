@@ -1,21 +1,21 @@
 {
   "anchor": {
-    "chain_hash": "4b59c9b24ec0557da6e865c57ad16fe7662e0a5e9deff45fb34294983c3aa82a",
-    "custody_database": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/custody.sqlite3",
+    "chain_hash": "0d8e27ea82e60311ef96672954c2f2bb3d0e758893024fcc6fd90405df7e8b88",
+    "custody_database": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/custody.sqlite3",
     "first_service_stop": {
-      "pid": 257591,
-      "returncode": 0,
+      "pid": 719028,
+      "returncode": -15,
       "stopped": true
     },
     "health": {
       "provider_id": "anchor.p3.acceptance",
-      "provider_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
+      "provider_key_id": "ed25519:1deacb149700b3240831959d9ecf1ea6",
       "status": "ok",
-      "storage_root": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/independent-anchor-provider",
+      "storage_root": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/independent-anchor-provider",
       "storage_separate_from_custody_database": true
     },
     "log": {
-      "chain_tip": "4b59c9b24ec0557da6e865c57ad16fe7662e0a5e9deff45fb34294983c3aa82a",
+      "chain_tip": "0d8e27ea82e60311ef96672954c2f2bb3d0e758893024fcc6fd90405df7e8b88",
       "entry_count": 1,
       "invalid_log_indices": [],
       "valid": true
@@ -25,18 +25,18 @@
       "valid": true
     },
     "provider_id": "anchor.p3.acceptance",
-    "provider_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
-    "receipt_hash": "f3bdb7a16993924cc7a1145b023d9f5ac69d2c5aef1a62b1b604b1f897dcd3ac",
-    "receipt_id": "anchor.095f5d407cb768340fd52b065cba56e6",
+    "provider_key_id": "ed25519:1deacb149700b3240831959d9ecf1ea6",
+    "receipt_hash": "860b43dfef222302a186a6c1c0935c8db62dffc712d42ce70173ac1d0e5cffe4",
+    "receipt_id": "anchor.3d49d3001351aba6eb62c0a397e40a83",
     "restart_health": {
       "provider_id": "anchor.p3.acceptance",
-      "provider_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
+      "provider_key_id": "ed25519:1deacb149700b3240831959d9ecf1ea6",
       "status": "ok",
-      "storage_root": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/independent-anchor-provider",
+      "storage_root": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/independent-anchor-provider",
       "storage_separate_from_custody_database": true
     },
-    "statement_sha256": "eb96857e35e64e68c949fda668fdee8a5d68cadf3b1b901f97fc40b19301ef72",
-    "storage_root": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/independent-anchor-provider",
+    "statement_sha256": "ad78a7f1d50f5a95fb732e5c3cb48aeba3635d8da86884646b77177aa25d1bb5",
+    "storage_root": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/independent-anchor-provider",
     "tampered_receipt_verification": {
       "reason": "anchor_chain_hash_mismatch",
       "valid": false
@@ -80,40 +80,40 @@
   },
   "cleanup": {
     "anchor_service": {
-      "pid": 257733,
-      "returncode": 0,
+      "pid": 719042,
+      "returncode": -15,
       "stopped": true
     },
     "container_cleanup_errors": [],
-    "containers_after": 21,
-    "containers_before": 21,
+    "containers_after": 22,
+    "containers_before": 22,
     "custody_service": {
-      "pid": 257469,
-      "returncode": 0,
+      "pid": 718998,
+      "returncode": -15,
       "stopped": true
     },
     "owned_container_ids": [
-      "3158196bd244e87920249605edd4a083b6fa66d7bdffa5eef8a53875013495e9",
-      "7844b601488a6ae0431ed96192b1a9fa9c4a26ec7b69f4810730da45c4573a5b",
-      "7c787f9d4855290fb8278b6a1c6b2df204e43fbe0d3863a456206000b1bf9fd6",
-      "ab967c337effd44026ddb3900cf6f88839dc383659a88a5f5f03e0a183513883",
-      "c56ae6600e8100deeb9e5839b3f16f911301adfa2247264537ad39f5ef238fc1",
-      "d0607c66eadf637745e43d20831d82ef62b6fa2abf2d9f93b5ed929d3412d316"
+      "5253f03a7f9acce5064a0424c67a47ace7760e76c4740418c19379fb6bcae144",
+      "755142f4e99f08313125dff5a4b1bdf3b82f2831a85294477bf7da651069dda6",
+      "916c671b388437abe40578e8a069ebfdcc7ff1bcc6ba66b0d6ad811aa071bf6b",
+      "9e08885f415ccdeb2601b59d1ca8dac95952ed7a70ce9cd4f8aa13727585ca9a",
+      "b918dfc250ee2e33084c331101a931cc0606fc7f0acd51b8c743a9b90cfc6afb",
+      "dee20be4f5e9bb256f87915a58058a4f6f68c010d7849a8fbc3a69e989a2e8f1"
     ],
     "private_key_files_removed": {
-      "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/anchor-private.pem": true,
-      "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input/verdict-key.pem": true
+      "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/anchor-private.pem": true,
+      "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input/verdict-key.pem": true
     },
     "unrelated_container_ids_preserved": true
   },
-  "completed_at_utc": "2026-07-16T08:56:19.933459Z",
+  "completed_at_utc": "2026-07-18T07:28:50.800133Z",
   "custody": {
-    "audit_chain_tip": "75459f4cadc1b49a28f0d9392b7a6cc7d947dc8eec67f6ae5ecbf8cd12177020",
+    "audit_chain_tip": "3637f34a32c5f05adb32da6dae8b26cdd28650a487ab2360c204425ae2c7eccb",
     "authorized_metadata": {
       "artifact_id": "artifact.p3.acceptance",
-      "created_at": "2026-07-16T08:55:56.748441Z",
-      "leaf_hash": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
-      "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
+      "created_at": "2026-07-18T07:28:25.813531Z",
+      "leaf_hash": "e15e6fbf084d5923859d203a2f97b6d5e9a8f968ec38bb19c3d6b48cc59ad44f",
+      "manifest_sha256": "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc",
       "media_type": "application/octet-stream",
       "ordinal": 1,
       "purpose": "P3 real FORGE acceptance evidence",
@@ -126,9 +126,9 @@
     },
     "descriptor": {
       "artifact_id": "artifact.p3.acceptance",
-      "created_at": "2026-07-16T08:55:56.748441Z",
-      "leaf_hash": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
-      "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
+      "created_at": "2026-07-18T07:28:25.813531Z",
+      "leaf_hash": "e15e6fbf084d5923859d203a2f97b6d5e9a8f968ec38bb19c3d6b48cc59ad44f",
+      "manifest_sha256": "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc",
       "media_type": "application/octet-stream",
       "ordinal": 1,
       "purpose": "P3 real FORGE acceptance evidence",
@@ -140,8 +140,8 @@
       "visibility": "RESTRICTED"
     },
     "first_service_stop": {
-      "pid": 257273,
-      "returncode": 0,
+      "pid": 718984,
+      "returncode": -15,
       "stopped": true
     },
     "health": {
@@ -157,8 +157,8 @@
       {
         "body": {
           "artifact_id": "artifact.p3.acceptance",
-          "created_at": "2026-07-16T08:55:54.057709Z",
-          "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
+          "created_at": "2026-07-18T07:28:25.166025Z",
+          "manifest_sha256": "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc",
           "run_id": "run.p3.acceptance",
           "tenant_id": "tenant.p3.acceptance"
         },
@@ -170,7 +170,7 @@
           "artifact_id": "artifact.p3.acceptance",
           "complete": false,
           "expected_total_chunks": 2,
-          "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
+          "manifest_sha256": "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc",
           "missing_chunks": [
             1
           ],
@@ -188,7 +188,7 @@
       "artifact_id": "artifact.p3.acceptance",
       "complete": false,
       "expected_total_chunks": 2,
-      "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
+      "manifest_sha256": "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc",
       "missing_chunks": [
         1
       ],
@@ -219,7 +219,7 @@
     "verification_after_tamper": {
       "artifact_count": 1,
       "audit": {
-        "chain_tip": "afd4d3351438ab1e995993069d8b45468034d20189570f212a954052f7544339",
+        "chain_tip": "ade8c59f805512203aa18dfe42ccef007dbe8a0ec0f35e66ba81eb611a1ac9fc",
         "event_count": 7,
         "invalid_event_ids": [],
         "valid": true
@@ -233,7 +233,7 @@
           "reason": "digest_mismatch,size_mismatch"
         }
       ],
-      "merkle_root": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
+      "merkle_root": "e15e6fbf084d5923859d203a2f97b6d5e9a8f968ec38bb19c3d6b48cc59ad44f",
       "run_id": "run.p3.acceptance",
       "tenant_id": "tenant.p3.acceptance",
       "valid": false
@@ -241,14 +241,14 @@
     "verification_before_anchor": {
       "artifact_count": 1,
       "audit": {
-        "chain_tip": "75459f4cadc1b49a28f0d9392b7a6cc7d947dc8eec67f6ae5ecbf8cd12177020",
+        "chain_tip": "3637f34a32c5f05adb32da6dae8b26cdd28650a487ab2360c204425ae2c7eccb",
         "event_count": 5,
         "invalid_event_ids": [],
         "valid": true
       },
       "incomplete_artifacts": [],
       "invalid_artifacts": [],
-      "merkle_root": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
+      "merkle_root": "e15e6fbf084d5923859d203a2f97b6d5e9a8f968ec38bb19c3d6b48cc59ad44f",
       "run_id": "run.p3.acceptance",
       "tenant_id": "tenant.p3.acceptance",
       "valid": true
@@ -273,14 +273,14 @@
       "reason": "signing_key_compromised",
       "valid": false
     },
-    "anchor_provider_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
-    "authorization_key_id": "ed25519:96b682f0c3aee75a5ef97db427062900",
+    "anchor_provider_key_id": "ed25519:1deacb149700b3240831959d9ecf1ea6",
+    "authorization_key_id": "ed25519:3c88f9b6b9b77a1e7ac465df685522f3",
     "cases": {
       "conflict": {
         "case": "conflict",
         "config_user": "1000:1002",
-        "container_id": "7844b601488a6ae0431ed96192b1a9fa9c4a26ec7b69f4810730da45c4573a5b",
-        "container_name": "certforge-p3-signer-conflict-7f0b207f9f",
+        "container_id": "dee20be4f5e9bb256f87915a58058a4f6f68c010d7849a8fbc3a69e989a2e8f1",
+        "container_name": "certforge-p3-signer-conflict-4f99ac6d48",
         "host_config": {
           "CapDrop": [
             "ALL"
@@ -293,7 +293,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/source/src",
+              "Source": "/home/forge/grok-build-workspace-certforge/src",
               "Target": "/app/src",
               "Type": "bind"
             },
@@ -302,7 +302,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input",
               "Target": "/input",
               "Type": "bind"
             },
@@ -310,7 +310,7 @@
               "BindOptions": {
                 "Propagation": "rprivate"
               },
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-output",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-output",
               "Target": "/output",
               "Type": "bind"
             }
@@ -332,27 +332,27 @@
         "image": "sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
         "inspect_issues": [],
         "logs": "{\"error\":\"SigningConflict\",\"ok\":false,\"reason\":\"conflicting_idempotent_signing_request\"}\n",
-        "ownership_token": "owner.7f0b207f9f",
+        "ownership_token": "owner.4f99ac6d48",
         "passed": false,
         "state": {
           "Dead": false,
           "Error": "",
           "ExitCode": 1,
-          "FinishedAt": "2026-07-16T08:56:13.759233307Z",
+          "FinishedAt": "2026-07-18T07:28:44.799824843Z",
           "OOMKilled": false,
           "Paused": false,
           "Pid": 0,
           "Restarting": false,
           "Running": false,
-          "StartedAt": "2026-07-16T08:56:12.208213315Z",
+          "StartedAt": "2026-07-18T07:28:43.189190201Z",
           "Status": "exited"
         }
       },
       "idempotent_retry": {
         "case": "retry",
         "config_user": "1000:1002",
-        "container_id": "ab967c337effd44026ddb3900cf6f88839dc383659a88a5f5f03e0a183513883",
-        "container_name": "certforge-p3-signer-retry-862710ce00",
+        "container_id": "5253f03a7f9acce5064a0424c67a47ace7760e76c4740418c19379fb6bcae144",
+        "container_name": "certforge-p3-signer-retry-27235d4954",
         "host_config": {
           "CapDrop": [
             "ALL"
@@ -365,7 +365,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/source/src",
+              "Source": "/home/forge/grok-build-workspace-certforge/src",
               "Target": "/app/src",
               "Type": "bind"
             },
@@ -374,7 +374,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input",
               "Target": "/input",
               "Type": "bind"
             },
@@ -382,7 +382,7 @@
               "BindOptions": {
                 "Propagation": "rprivate"
               },
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-output",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-output",
               "Target": "/output",
               "Type": "bind"
             }
@@ -403,28 +403,28 @@
         },
         "image": "sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
         "inspect_issues": [],
-        "logs": "{\"anchor_receipt_id\":\"anchor.095f5d407cb768340fd52b065cba56e6\",\"key_id\":\"ed25519:a574dd0fee97965ad65b6777d3efe137\",\"ok\":true,\"payload_sha256\":\"0bc1e2a8e349d04e6e6be69ec23279d5ed124024c053d96482e3a0245b3a93ff\",\"request_id\":\"sign.p3.acceptance.1\",\"run_id\":\"run.p3.acceptance\"}\n",
-        "ownership_token": "owner.862710ce00",
+        "logs": "{\"anchor_receipt_id\":\"anchor.3d49d3001351aba6eb62c0a397e40a83\",\"key_id\":\"ed25519:d4e68fd22fab12c91a146a55a24eaa95\",\"ok\":true,\"payload_sha256\":\"2fd55c8b5cdb1a391ce5d6456822222b9d91f15781a15f4f6afe15a545dda2dd\",\"request_id\":\"sign.p3.acceptance.1\",\"run_id\":\"run.p3.acceptance\"}\n",
+        "ownership_token": "owner.27235d4954",
         "passed": true,
         "state": {
           "Dead": false,
           "Error": "",
           "ExitCode": 0,
-          "FinishedAt": "2026-07-16T08:56:08.691527954Z",
+          "FinishedAt": "2026-07-18T07:28:37.555294608Z",
           "OOMKilled": false,
           "Paused": false,
           "Pid": 0,
           "Restarting": false,
           "Running": false,
-          "StartedAt": "2026-07-16T08:56:07.191705429Z",
+          "StartedAt": "2026-07-18T07:28:35.392387039Z",
           "Status": "exited"
         }
       },
       "key_unavailable": {
         "case": "outage",
         "config_user": "1000:1002",
-        "container_id": "7c787f9d4855290fb8278b6a1c6b2df204e43fbe0d3863a456206000b1bf9fd6",
-        "container_name": "certforge-p3-signer-outage-6bf608738f",
+        "container_id": "755142f4e99f08313125dff5a4b1bdf3b82f2831a85294477bf7da651069dda6",
+        "container_name": "certforge-p3-signer-outage-a252fa7abb",
         "host_config": {
           "CapDrop": [
             "ALL"
@@ -437,7 +437,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/source/src",
+              "Source": "/home/forge/grok-build-workspace-certforge/src",
               "Target": "/app/src",
               "Type": "bind"
             },
@@ -446,7 +446,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input",
               "Target": "/input",
               "Type": "bind"
             },
@@ -454,7 +454,7 @@
               "BindOptions": {
                 "Propagation": "rprivate"
               },
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-output",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-output",
               "Target": "/output",
               "Type": "bind"
             }
@@ -476,27 +476,27 @@
         "image": "sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
         "inspect_issues": [],
         "logs": "{\"error\":\"FileNotFoundError\",\"ok\":false,\"reason\":\"[Errno 2] No such file or directory: '/input/missing-key.pem'\"}\n",
-        "ownership_token": "owner.6bf608738f",
+        "ownership_token": "owner.a252fa7abb",
         "passed": false,
         "state": {
           "Dead": false,
           "Error": "",
           "ExitCode": 1,
-          "FinishedAt": "2026-07-16T08:56:17.778471603Z",
+          "FinishedAt": "2026-07-18T07:28:48.953770899Z",
           "OOMKilled": false,
           "Paused": false,
           "Pid": 0,
           "Restarting": false,
           "Running": false,
-          "StartedAt": "2026-07-16T08:56:16.306267415Z",
+          "StartedAt": "2026-07-18T07:28:47.275330423Z",
           "Status": "exited"
         }
       },
       "replay": {
         "case": "replay",
         "config_user": "1000:1002",
-        "container_id": "d0607c66eadf637745e43d20831d82ef62b6fa2abf2d9f93b5ed929d3412d316",
-        "container_name": "certforge-p3-signer-replay-9987990622",
+        "container_id": "9e08885f415ccdeb2601b59d1ca8dac95952ed7a70ce9cd4f8aa13727585ca9a",
+        "container_name": "certforge-p3-signer-replay-c774599cf8",
         "host_config": {
           "CapDrop": [
             "ALL"
@@ -509,7 +509,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/source/src",
+              "Source": "/home/forge/grok-build-workspace-certforge/src",
               "Target": "/app/src",
               "Type": "bind"
             },
@@ -518,7 +518,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input",
               "Target": "/input",
               "Type": "bind"
             },
@@ -526,7 +526,7 @@
               "BindOptions": {
                 "Propagation": "rprivate"
               },
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-output",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-output",
               "Target": "/output",
               "Type": "bind"
             }
@@ -548,27 +548,27 @@
         "image": "sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
         "inspect_issues": [],
         "logs": "{\"error\":\"SigningAuthorizationError\",\"ok\":false,\"reason\":\"signing_request_replay\"}\n",
-        "ownership_token": "owner.9987990622",
+        "ownership_token": "owner.c774599cf8",
         "passed": false,
         "state": {
           "Dead": false,
           "Error": "",
           "ExitCode": 1,
-          "FinishedAt": "2026-07-16T08:56:10.974691551Z",
+          "FinishedAt": "2026-07-18T07:28:42.980079869Z",
           "OOMKilled": false,
           "Paused": false,
           "Pid": 0,
           "Restarting": false,
           "Running": false,
-          "StartedAt": "2026-07-16T08:56:09.495818972Z",
+          "StartedAt": "2026-07-18T07:28:41.187184871Z",
           "Status": "exited"
         }
       },
       "runner_request": {
         "case": "runner",
         "config_user": "1000:1002",
-        "container_id": "3158196bd244e87920249605edd4a083b6fa66d7bdffa5eef8a53875013495e9",
-        "container_name": "certforge-p3-signer-runner-b8435658a7",
+        "container_id": "b918dfc250ee2e33084c331101a931cc0606fc7f0acd51b8c743a9b90cfc6afb",
+        "container_name": "certforge-p3-signer-runner-631b380192",
         "host_config": {
           "CapDrop": [
             "ALL"
@@ -581,7 +581,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/source/src",
+              "Source": "/home/forge/grok-build-workspace-certforge/src",
               "Target": "/app/src",
               "Type": "bind"
             },
@@ -590,7 +590,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input",
               "Target": "/input",
               "Type": "bind"
             },
@@ -598,7 +598,7 @@
               "BindOptions": {
                 "Propagation": "rprivate"
               },
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-output",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-output",
               "Target": "/output",
               "Type": "bind"
             }
@@ -620,27 +620,27 @@
         "image": "sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
         "inspect_issues": [],
         "logs": "{\"error\":\"SigningAuthorizationError\",\"ok\":false,\"reason\":\"only_control_plane_may_request_signing\"}\n",
-        "ownership_token": "owner.b8435658a7",
+        "ownership_token": "owner.631b380192",
         "passed": false,
         "state": {
           "Dead": false,
           "Error": "",
           "ExitCode": 1,
-          "FinishedAt": "2026-07-16T08:56:15.919224048Z",
+          "FinishedAt": "2026-07-18T07:28:46.667904739Z",
           "OOMKilled": false,
           "Paused": false,
           "Pid": 0,
           "Restarting": false,
           "Running": false,
-          "StartedAt": "2026-07-16T08:56:14.262597287Z",
+          "StartedAt": "2026-07-18T07:28:45.044769011Z",
           "Status": "exited"
         }
       },
       "success": {
         "case": "success",
         "config_user": "1000:1002",
-        "container_id": "c56ae6600e8100deeb9e5839b3f16f911301adfa2247264537ad39f5ef238fc1",
-        "container_name": "certforge-p3-signer-success-2a51b35702",
+        "container_id": "916c671b388437abe40578e8a069ebfdcc7ff1bcc6ba66b0d6ad811aa071bf6b",
+        "container_name": "certforge-p3-signer-success-ca2e1f16ea",
         "host_config": {
           "CapDrop": [
             "ALL"
@@ -653,7 +653,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/source/src",
+              "Source": "/home/forge/grok-build-workspace-certforge/src",
               "Target": "/app/src",
               "Type": "bind"
             },
@@ -662,7 +662,7 @@
                 "Propagation": "rprivate"
               },
               "ReadOnly": true,
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-input",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-input",
               "Target": "/input",
               "Type": "bind"
             },
@@ -670,7 +670,7 @@
               "BindOptions": {
                 "Propagation": "rprivate"
               },
-              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-6f3b92a71c/runtime3/signer-output",
+              "Source": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2/signer-output",
               "Target": "/output",
               "Type": "bind"
             }
@@ -691,20 +691,20 @@
         },
         "image": "sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
         "inspect_issues": [],
-        "logs": "{\"anchor_receipt_id\":\"anchor.095f5d407cb768340fd52b065cba56e6\",\"key_id\":\"ed25519:a574dd0fee97965ad65b6777d3efe137\",\"ok\":true,\"payload_sha256\":\"0bc1e2a8e349d04e6e6be69ec23279d5ed124024c053d96482e3a0245b3a93ff\",\"request_id\":\"sign.p3.acceptance.1\",\"run_id\":\"run.p3.acceptance\"}\n",
-        "ownership_token": "owner.2a51b35702",
+        "logs": "{\"anchor_receipt_id\":\"anchor.3d49d3001351aba6eb62c0a397e40a83\",\"key_id\":\"ed25519:d4e68fd22fab12c91a146a55a24eaa95\",\"ok\":true,\"payload_sha256\":\"2fd55c8b5cdb1a391ce5d6456822222b9d91f15781a15f4f6afe15a545dda2dd\",\"request_id\":\"sign.p3.acceptance.1\",\"run_id\":\"run.p3.acceptance\"}\n",
+        "ownership_token": "owner.ca2e1f16ea",
         "passed": true,
         "state": {
           "Dead": false,
           "Error": "",
           "ExitCode": 0,
-          "FinishedAt": "2026-07-16T08:56:06.976874991Z",
+          "FinishedAt": "2026-07-18T07:28:34.776469255Z",
           "OOMKilled": false,
           "Paused": false,
           "Pid": 0,
           "Restarting": false,
           "Running": false,
-          "StartedAt": "2026-07-16T08:56:04.958080612Z",
+          "StartedAt": "2026-07-18T07:28:28.307843158Z",
           "Status": "exited"
         }
       }
@@ -716,20 +716,20 @@
     },
     "offline_verification_reason": "verified",
     "private_key_persisted_in_signing_database": false,
-    "public_key_id": "ed25519:a574dd0fee97965ad65b6777d3efe137",
+    "public_key_id": "ed25519:d4e68fd22fab12c91a146a55a24eaa95",
     "runner_has_signing_key_mount": false,
     "signer_image": "ghcr.io/home-assistant/home-assistant@sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
-    "verdict_payload_sha256": "0bc1e2a8e349d04e6e6be69ec23279d5ed124024c053d96482e3a0245b3a93ff",
+    "verdict_payload_sha256": "2fd55c8b5cdb1a391ce5d6456822222b9d91f15781a15f4f6afe15a545dda2dd",
     "verdict_signature_verified": true
   },
   "source_identity": {
-    "scripts/p3_forge_acceptance.py": "07d819198aa8b9c4e7fbd71121598b5e5cd5db6e9e4b1cc21dcda002c8e3623f",
+    "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
     "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
     "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
-    "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
+    "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
     "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
-    "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
+    "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
     "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9"
   },
-  "started_at_utc": "2026-07-16T08:55:50.242697Z"
+  "started_at_utc": "2026-07-18T07:28:24.583493Z"
 }

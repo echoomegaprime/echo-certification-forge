@@ -2,7 +2,7 @@
   "checks": [
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "-m",
         "compileall",
         "-q",
@@ -17,7 +17,7 @@
     },
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "-m",
         "pytest",
         "-q",
@@ -26,12 +26,12 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p2_pytest.txt",
-      "log_sha256": "ad609578f5a94143796c4b35d779e2737c2939642a5bae74ff39c8310bc50106",
+      "log_sha256": "fa4080ab78cb13f2457309ba7ea0fb2ab7b0f9afda0abc95fdc29c4d76e1a1aa",
       "name": "pytest"
     },
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "-m",
         "pip",
         "check"
@@ -112,7 +112,7 @@
       "untrusted_control_plane_blocked": true
     }
   },
-  "generated_at_utc": "2026-07-18T07:14:20.900776Z",
+  "generated_at_utc": "2026-07-18T07:41:35.003780Z",
   "passed": true,
   "phase": "P2",
   "platform": "linux",
@@ -123,9 +123,9 @@
   "secret_scan": {
     "findings": [],
     "log": "artifacts/p2_secret_scan.json",
-    "log_sha256": "da0f9492231cc8933f67bc46e448fdc9f6cfaeed70cca0a7c165e06f7551d815",
+    "log_sha256": "0b024dee896729b03e53356e93c8ac6069afd69a996db6a3b614ec63d1223474",
     "passed": true,
-    "scanned_files": 227
+    "scanned_files": 228
   },
   "source_identity": {
     "p2_source_commit": "87c8afcfa5e439219b8737f7fdcb202967810316",
@@ -133,16 +133,17 @@
     "src/echo_certification_forge/runner.py": "19ebf13539dc878611bb21a8aeb1f8621ca2d43e4cf82b290a5bb3f5761b03d4"
   },
   "source_manifest": {
-    "README.md": "20125b3f14fcb10722212df6cc35664fb2d46caece494087c797b079761f0815",
+    "README.md": "edb2feec2d1273fc614f1a53bc955e3a010c007b58a6bd6ff904a6445f0f2788",
     "docs/BASELINE_2026-07-15.md": "226a716f79e4be696738a5125c6a9bfd51fcfe91f7c3bd23db22e98e27be6254",
     "docs/FAMILY14B_QUALIFICATION_BLOCKER_2026-07-15.md": "983dbc3a98716a4b672d78fb4b191f8b33021458daa3aa7e55ed47eb415ef891",
     "docs/P1_GITHUB_ACTIONS_BLOCKER_2026-07-15.md": "7d322dd3b901831b37921ed0f5ad9aa850b6c64dde9e4a2877fb679402a4fb8c",
     "docs/P2_RUNNER_TRANSPORT_FOUNDATION.md": "f981f1a4ae3c527afeed3a3e7de656850df679cfaf81ba41f143eeaf46ff1777",
-    "docs/P3_PRODUCTION_EVIDENCE_CUSTODY_AND_SIGNING.md": "659461c2d9604433a7d5d8849b4c357b3f13c0c3e3247b63ef7481ca4e30921f",
+    "docs/P3_PRODUCTION_EVIDENCE_CUSTODY_AND_SIGNING.md": "67815b08696cfb3d1b1850c08ec89353d6a644e15b0c4479d7d06a1b494b1082",
     "docs/P4_HOSTILE_RUNNER_AND_IMAGE_SUPPLY_CHAIN.md": "1d60cce69556ecc6c57a1eeacd67352265d9c44aa2ac2eae96e63fc329422e7f",
     "docs/P4_RERUN5_READINESS.md": "8dfe864cc22733d08b9a3ccb1ac78b810bbb362883cb9886b747ed6d0933e052",
+    "docs/P4_RERUN6_RESULT.md": "b9dcf46cf3f38ce48caa62fadb1fd506a497f51f5510ef530dc30073dd2e0891",
     "docs/P4_SIGNER_IDENTITY_FIX.md": "1ae52efa3f9180d01319f91e76caa841cafc72926912d165549b382f5049ac0b",
-    "docs/PHASE_LEDGER.md": "eadc55a7a131797efe6801cbe03047f54ff9a80e8dc5c54946990524ae8a99e9",
+    "docs/PHASE_LEDGER.md": "8760fa66129e2491edfec7dbb9f8499f46e18b4402b65824ca98906250f0e70b",
     "docs/PROJECT_CONTRACT.md": "aa1a1b1b07a09246602e8738198e03958f6b51e1564a3cc233823de24eb31ae8",
     "docs/SPEC.md": "238845c7dcda9f2ac87a7fac344e27582408b618543f06c9d5f8c472f98d852e",
     "docs/SPEC_SOURCE.json": "3773f4f3ecdf9f6a05a4111d7809e215899f5a0ae79c6fc967220e196fb618cf",
@@ -165,8 +166,8 @@
     "scripts/seal_p4_images.py": "a039910c825fa3c10748b262d744c41a53b8bd91db3eb91ea2d3c61ec1b1340c",
     "scripts/verify_p1.py": "af19e85e7a980fb644462da54f2c338104176c4dfa9c7a53fef5b64d6db415e5",
     "scripts/verify_p2.py": "8b06ff2463adb6c868124b78df60cdafce622aa3d0df8cf3bbb207cda61ee737",
-    "scripts/verify_p3.py": "2ec31fb8571dec3921af94b740442851575f82f203bf6f10087be61a8268c28a",
-    "scripts/verify_p4.py": "e20d3c2ae90bd8522e736b74f2ab2d3028b84f68f966b3e78f95e86cad148f8c",
+    "scripts/verify_p3.py": "85add863a56796a9f73984708e418b89b297801310af48c73935999319feb1d4",
+    "scripts/verify_p4.py": "07470ba781f05b621f5670e405ed5f1f8ed60cc824e0a5917d457383d9fde80f",
     "scripts/verify_p4_hardening.py": "dc1c9b13b4ec7a58d9a710e21362166319c243460414c67bac2cee2f802ccdcd",
     "src/echo_certification_forge/__init__.py": "7d2516bb6d9f2918c6cc0d1bd621dbb5c8207fc6911fc079a070ab55da62eb31",
     "src/echo_certification_forge/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",

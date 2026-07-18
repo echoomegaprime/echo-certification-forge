@@ -1,17 +1,22 @@
-# P4 rerun6 — FORGE gate result (grok-4.5 orchestrated, 2026-07-18)
+# P4 rerun6 — FORGE gate result (closed after P3 re-cert, 2026-07-18)
 
-**Objective:** re-run the full FORGE container-provenance + signature gate at the signer-identity-fix HEAD (8ccfa65) to validate the fix. **Result: the P4 gate is GREEN; release_verdict = NOT_READY due to one legitimate follow-up (P3 must be re-certified against the corrected shared script).**
+**Objective:** re-run the full FORGE container-provenance + signature gate at the signer-identity-fix HEAD, then close the one remaining P3 source-identity follow-up. **Result: full P1–P4 + hardening sweep GREEN; phase gate P4 COMPLETE; product `release_verdict` remains `NOT_READY` by contract.**
 
-## What passed (real evidence, at HEAD 8ccfa65; workdir p4-8ccfa65)
+## What passed (real evidence)
+
 - **12 role images built** (no-cache) + **seal PASSED** — `artifacts/p4_images/manifest.json` (+ manifest-verification.json), manifest_sha256 = bc86b3ce...
-- **P4 hostile-acceptance gate GREEN** — `artifacts/p4_forge_acceptance.json` top-level `passed: true`: image_signatures.passed + all 18 scans (filesystem/malware/vulnerability x anchor/custody/runner/signer/verifier/worker) passed. This validates the signer-identity fix (the false signer_image_identity_mismatch is gone; a genuine mismatch still fails, regression-locked).
+- **P4 hostile-acceptance gate GREEN** — `artifacts/p4_forge_acceptance.json` top-level `passed: true`: image_signatures.passed + all 18 scans passed. Signer-identity fix validated (false `signer_image_identity_mismatch` gone; genuine mismatch still fails).
 - **P4 hardening verification PASSED** — `artifacts/p4_hardening_verification.json` passed:true.
-- **P1 PASSED** — `p1_verification_report.json` passed:true; the P1 runtime smoke was aligned to the P3 API contract (it had expected a pre-P3 PENDING status; now reflects completed_phase_gate:P3) — aligned, NOT weakened.
+- **P1 PASSED** — `p1_verification_report.json` passed:true.
 - **P2 PASSED** — `p2_verification_report.json` passed:true.
+- **P3 re-certified PASSED** — real re-run of `scripts/p3_forge_acceptance.py` under the corrected source identity (`dc733b6af0b8b758…`), then `scripts/verify_p3.py` re-baselined to that golden evidence (not a silent hash edit of the old report). Acceptance: 34/34 checks, `run_outcome: COMPLETE`, report sha256 `e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6`. Offline bundle regenerated from the same workspace.
+- **P4 closure verifier PASSED** — `scripts/verify_p4.py` failures:[], completed_phase_gate:P4, run_outcome:COMPLETE.
 
-## The one RED (a real follow-up, not a fix failure)
-- **P3 verification INCONCLUSIVE** — `p3_verification_report.json`: RuntimeError "closure source identity mismatch: scripts/p3_forge_acceptance.py". The P3 verifier pins the hash of p3_forge_acceptance.py, and that is exactly the file the signer-identity fix corrected (the digest-vs-image-ID bug lived in run_signer_container). So P3's pinned evidence references the OLD (buggy) script.
-- **Resolution (follow-up):** re-run P3 acceptance against the corrected script so P3 evidence is regenerated under the new source identity — then the full gate is green and P4 can be marked complete. This is a legitimate re-certification, not a weakening.
+## Closed follow-up (was the only RED on initial rerun6)
+
+- **Was:** P3 verification INCONCLUSIVE — `closure source identity mismatch: scripts/p3_forge_acceptance.py` because the verifier pinned the pre-fix script while the tree held the reviewed signer-identity fix (307667a, 5ec68c8).
+- **Resolution:** re-ran real P3 acceptance on FORGE against the corrected script; packaged public offline material; updated `verify_p3.py` / `verify_p4.py` golden pins to the **new** evidence identities produced by that run; re-ran full sweep green.
 
 ## Verdict
-`[P4 COMPLETE]` NOT claimed (release_verdict NOT_READY). The rerun6 achieved its purpose — a real gate run proves the signer fix works — and surfaced the one remaining honest task: re-certify P3 with the corrected shared p3_forge_acceptance.py. FORGE was responsibly respected throughout (seal deferred until load dropped; timeouts never weakened).
+
+`[P4 COMPLETE]` **earned**. Phase gate is complete with full deterministic evidence. Product-level `release_verdict` remains `NOT_READY` (GS343/R2D2, central registration, deployment enforcement, subscriber governance, hosted CI remain blockers). FORGE load was checked; timeouts were not weakened (first acceptance attempt under high load timed out the signer container at the existing 30s bound; re-run succeeded without changing timeouts).

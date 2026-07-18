@@ -2,7 +2,7 @@
   "checks": [
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "-m",
         "compileall",
         "-q",
@@ -17,7 +17,7 @@
     },
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "-m",
         "pytest",
         "-q",
@@ -26,32 +26,32 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p1_pytest.txt",
-      "log_sha256": "e7555793359f360f16d439ca00e07b60f006f624079b429d9cc904c13830c37f",
+      "log_sha256": "f26082363422a4dd9212b58da6bd2f3c60b1073d7c94ef32df6165318d011f1e",
       "name": "pytest"
     },
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "scripts/p1_acceptance.py"
       ],
       "exit_code": 0,
       "log": "artifacts/p1_acceptance.txt",
-      "log_sha256": "df805fe446433ff8c294620bbe2693fb45ff98e01929381325b7d19f51d24fde",
+      "log_sha256": "dbd010a7879e6e2d60bc4610b7f1d307cab208e3418e7ff2061779cc926f9afa",
       "name": "acceptance"
     },
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "scripts/p1_runtime_smoke.py"
       ],
       "exit_code": 0,
       "log": "artifacts/p1_runtime_smoke.txt",
-      "log_sha256": "2f44fc28b602ec2feb9a7320dcb4e499257347c52951de46bf579e68bdf48a9f",
+      "log_sha256": "638193f6ed524d77b8b95380233280860515b8ca57a2da8b319b41842b0570c1",
       "name": "runtime_smoke"
     },
     {
       "command": [
-        "/home/forge/.cache/echo-certforge/p4-b9f93c9/.venv/bin/python",
+        "/usr/bin/python3",
         "-m",
         "pip",
         "check"
@@ -74,7 +74,7 @@
     }
   ],
   "forbidden_source_tokens": [],
-  "generated_at_utc": "2026-07-18T07:13:35.531595Z",
+  "generated_at_utc": "2026-07-18T07:32:08.098506Z",
   "passed": true,
   "phase": "P1",
   "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
@@ -97,8 +97,8 @@
     "scripts/seal_p4_images.py": "a039910c825fa3c10748b262d744c41a53b8bd91db3eb91ea2d3c61ec1b1340c",
     "scripts/verify_p1.py": "af19e85e7a980fb644462da54f2c338104176c4dfa9c7a53fef5b64d6db415e5",
     "scripts/verify_p2.py": "8b06ff2463adb6c868124b78df60cdafce622aa3d0df8cf3bbb207cda61ee737",
-    "scripts/verify_p3.py": "2ec31fb8571dec3921af94b740442851575f82f203bf6f10087be61a8268c28a",
-    "scripts/verify_p4.py": "e20d3c2ae90bd8522e736b74f2ab2d3028b84f68f966b3e78f95e86cad148f8c",
+    "scripts/verify_p3.py": "85add863a56796a9f73984708e418b89b297801310af48c73935999319feb1d4",
+    "scripts/verify_p4.py": "07470ba781f05b621f5670e405ed5f1f8ed60cc824e0a5917d457383d9fde80f",
     "scripts/verify_p4_hardening.py": "dc1c9b13b4ec7a58d9a710e21362166319c243460414c67bac2cee2f802ccdcd",
     "src/echo_certification_forge/__init__.py": "7d2516bb6d9f2918c6cc0d1bd621dbb5c8207fc6911fc079a070ab55da62eb31",
     "src/echo_certification_forge/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",

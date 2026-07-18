@@ -32,7 +32,7 @@ The verified execution plane uses hardened non-root containers on a **rootful Do
 - Closure report: `artifacts/p3_verification_report.json`
 - Phase contract: `docs/P3_PRODUCTION_EVIDENCE_CUSTODY_AND_SIGNING.md`
 
-The full acceptance report is 27,332 bytes with SHA-256 `189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27`.
+The full acceptance report is 27,322 bytes with SHA-256 `e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6` (re-certified 2026-07-18 after signer image-identity fix).
 
 ## P4 evidence
 

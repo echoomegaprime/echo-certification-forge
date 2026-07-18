@@ -17,9 +17,12 @@ SUMMARY_REPORT = ARTIFACTS / "p3_forge_acceptance.summary.json"
 OFFLINE_ROOT = ARTIFACTS / "p3_offline_bundle"
 VERIFICATION_REPORT = ARTIFACTS / "p3_verification_report.json"
 
-EXPECTED_REPORT_BYTES = 27332
-EXPECTED_REPORT_SHA256 = "189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27"
-EXPECTED_SOURCE_COMMIT = "87c8afcfa5e439219b8737f7fdcb202967810316"
+# Pins below are the golden evidence from the real FORGE P3 re-cert on 2026-07-18
+# after the reviewed signer image-identity fix (commits 307667a, 5ec68c8). They were
+# derived from a fresh p3_forge_acceptance.py run (not hand-edited hashes alone).
+EXPECTED_REPORT_BYTES = 27322
+EXPECTED_REPORT_SHA256 = "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6"
+EXPECTED_SOURCE_COMMIT = "cbb46be008bb611fe0211eb8fbeb30cdc1cd4405"
 EXPECTED_RUNNER_IMAGE = "sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
 EXPECTED_ISOLATION_PROFILE = "f0722821d2658705626bca74623438db30416de174ead34df15588b80dcc72bc"
 EXPECTED_SIGNER_IMAGE = (
@@ -83,31 +86,31 @@ EXPECTED_CHECKS = {
     "signing_replay_denied",
 }
 EXPECTED_ACCEPTANCE_SOURCE = {
-    "scripts/p3_forge_acceptance.py": "07d819198aa8b9c4e7fbd71121598b5e5cd5db6e9e4b1cc21dcda002c8e3623f",
+    "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
     "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
     "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
-    "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
+    "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
     "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
-    "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
+    "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
     "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9",
 }
 EXPECTED_CLOSURE_SOURCE = {
-    "scripts/p3_forge_acceptance.py": "59fd14eabbc22e89d3d106ecbd4f074358a841e3819376c590ccb97d39e7e5d3",
+    "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
     "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
     "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
-    "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
+    "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
     "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
-    "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
+    "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
     "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9",
-    "contracts/certforge-capabilities.v1.json": "252f43ad416234e300cc6a23e6d9cb360c497da127cd937d32024e06a4632f94",
+    "contracts/certforge-capabilities.v1.json": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c",
 }
 EXPECTED_OFFLINE_FILES = {
-    "anchor-log.jsonl": (448, "b269d4bfd5de8df1c22e7fe67614adfed026371c1d7c35ac5e170baf64d08df0"),
-    "anchor-public.pem": (113, "eb90d8abec9aad5dd8c05fa1a85ce23d6dc47a04e479077f213a0376a58affe1"),
-    "anchor-receipt.json": (1066, "8760ce3ced86c435ca7aa69892e03be8e02e8eac1ea7545eb7fd57ca0fd4df40"),
-    "public-keys.json": (572, "ff42ffb4d9d2a5ead7baa727988b2f9dd4be567bfccdbc4883bd993c056b4199"),
-    "signing-request.json": (3403, "03e2445e1bf25aa23e24940d67688f4b91b27eace6bffe74b6c194fd09b7a859"),
-    "verdict.json": (1546, "61b882dbcebe7f206193d6789dd4f6a41e56de0002ec925b997392ce3c3d3385"),
+    "anchor-log.jsonl": (448, "f17a65ab14822d570d11feb7d81b136db493e6f507ca570778a50e56d5d6a7a1"),
+    "anchor-public.pem": (113, "d4f908471d6d04de09f1c5204ec16d3773875c2e08c1d50bf8159f53689aaf3b"),
+    "anchor-receipt.json": (1066, "48435cc80d7a9695a6544840e4eef2588c195940945c4d7046f10062b2bd718b"),
+    "public-keys.json": (572, "69b1d1f6aaf821d77721367fa3b2637f4021f2a6c351824a82fcd06588cb90aa"),
+    "signing-request.json": (3403, "436f50df1982e144c3f122295957250c2f1b7b787357ef18a5ef1a21c1d41b51"),
+    "verdict.json": (1546, "d3415579b69b15354bf73f4dbf32dfd02fab268c11634227e2aef004532b6879"),
 }
 EXPECTED_CAPABILITIES = {
     "echo.certforge.health",
@@ -138,12 +141,12 @@ EXPECTED_CAPABILITY_FIELDS = {
     "health_criteria",
 }
 EXPECTED_OWNED_CONTAINERS = {
-    "3158196bd244e87920249605edd4a083b6fa66d7bdffa5eef8a53875013495e9",
-    "7844b601488a6ae0431ed96192b1a9fa9c4a26ec7b69f4810730da45c4573a5b",
-    "7c787f9d4855290fb8278b6a1c6b2df204e43fbe0d3863a456206000b1bf9fd6",
-    "ab967c337effd44026ddb3900cf6f88839dc383659a88a5f5f03e0a183513883",
-    "c56ae6600e8100deeb9e5839b3f16f911301adfa2247264537ad39f5ef238fc1",
-    "d0607c66eadf637745e43d20831d82ef62b6fa2abf2d9f93b5ed929d3412d316",
+    "5253f03a7f9acce5064a0424c67a47ace7760e76c4740418c19379fb6bcae144",
+    "755142f4e99f08313125dff5a4b1bdf3b82f2831a85294477bf7da651069dda6",
+    "916c671b388437abe40578e8a069ebfdcc7ff1bcc6ba66b0d6ad811aa071bf6b",
+    "9e08885f415ccdeb2601b59d1ca8dac95952ed7a70ce9cd4f8aa13727585ca9a",
+    "b918dfc250ee2e33084c331101a931cc0606fc7f0acd51b8c743a9b90cfc6afb",
+    "dee20be4f5e9bb256f87915a58058a4f6f68c010d7849a8fbc3a69e989a2e8f1",
 }
 
 
@@ -194,7 +197,11 @@ def verify_source_identities() -> dict[str, Any]:
         "closure_source": current,
         "accepted_closure_delta": {
             "path": "scripts/p3_forge_acceptance.py",
-            "reason": "PEM marker construction split to avoid a secret-scanner self-match; runtime marker bytes unchanged",
+            "reason": (
+                "P3 re-certified 2026-07-18 after reviewed signer image-identity fix "
+                "(307667a, 5ec68c8); acceptance re-run under corrected source so "
+                "acceptance and closure identities match"
+            ),
             "acceptance_sha256": EXPECTED_ACCEPTANCE_SOURCE["scripts/p3_forge_acceptance.py"],
             "closure_sha256": current["scripts/p3_forge_acceptance.py"],
         },
@@ -229,10 +236,10 @@ def verify_full_report() -> dict[str, Any]:
     custody = report["custody"]
     descriptor = custody["descriptor"]
     require(descriptor["sha256"] == "61d4fd7ed282d9c0cb3f358a35c521c3304149b70e56fea7260281121c996a74", "custody artifact digest mismatch")
-    require(descriptor["leaf_hash"] == "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f", "custody leaf hash mismatch")
-    require(descriptor["manifest_sha256"] == "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93", "custody manifest digest mismatch")
+    require(descriptor["leaf_hash"] == "e15e6fbf084d5923859d203a2f97b6d5e9a8f968ec38bb19c3d6b48cc59ad44f", "custody leaf hash mismatch")
+    require(descriptor["manifest_sha256"] == "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc", "custody manifest digest mismatch")
     require(descriptor["visibility"] == "RESTRICTED", "custody visibility mismatch")
-    require(custody["audit_chain_tip"] == "75459f4cadc1b49a28f0d9392b7a6cc7d947dc8eec67f6ae5ecbf8cd12177020", "custody audit-chain tip mismatch")
+    require(custody["audit_chain_tip"] == "3637f34a32c5f05adb32da6dae8b26cdd28650a487ab2360c204425ae2c7eccb", "custody audit-chain tip mismatch")
     require(custody["retention"]["legal_hold"] is True, "custody legal hold missing")
     before = custody["verification_before_anchor"]
     require(before["valid"] is True and before["merkle_root"] == descriptor["leaf_hash"], "pre-anchor custody verification failed")
@@ -242,11 +249,11 @@ def verify_full_report() -> dict[str, Any]:
 
     anchor = report["anchor"]
     require(anchor["provider_id"] == "anchor.p3.acceptance", "anchor provider mismatch")
-    require(anchor["provider_key_id"] == "ed25519:cdad8d031374653b7c1489feaf39c4ef", "anchor public-key id mismatch")
-    require(anchor["receipt_id"] == "anchor.095f5d407cb768340fd52b065cba56e6", "anchor receipt id mismatch")
-    require(anchor["receipt_hash"] == "f3bdb7a16993924cc7a1145b023d9f5ac69d2c5aef1a62b1b604b1f897dcd3ac", "anchor receipt digest mismatch")
-    require(anchor["statement_sha256"] == "eb96857e35e64e68c949fda668fdee8a5d68cadf3b1b901f97fc40b19301ef72", "anchor statement digest mismatch")
-    require(anchor["chain_hash"] == "4b59c9b24ec0557da6e865c57ad16fe7662e0a5e9deff45fb34294983c3aa82a", "anchor chain tip mismatch")
+    require(anchor["provider_key_id"] == "ed25519:1deacb149700b3240831959d9ecf1ea6", "anchor public-key id mismatch")
+    require(anchor["receipt_id"] == "anchor.3d49d3001351aba6eb62c0a397e40a83", "anchor receipt id mismatch")
+    require(anchor["receipt_hash"] == "860b43dfef222302a186a6c1c0935c8db62dffc712d42ce70173ac1d0e5cffe4", "anchor receipt digest mismatch")
+    require(anchor["statement_sha256"] == "ad78a7f1d50f5a95fb732e5c3cb48aeba3635d8da86884646b77177aa25d1bb5", "anchor statement digest mismatch")
+    require(anchor["chain_hash"] == "0d8e27ea82e60311ef96672954c2f2bb3d0e758893024fcc6fd90405df7e8b88", "anchor chain tip mismatch")
     require(anchor["offline_verification"] == {"reason": "verified", "valid": True}, "offline anchor verification mismatch")
     require(anchor["log"]["valid"] is True and anchor["log"]["chain_tip"] == anchor["chain_hash"], "anchor log invalid")
     require(anchor["health"]["storage_separate_from_custody_database"] is True, "anchor storage is not independent")
@@ -254,8 +261,8 @@ def verify_full_report() -> dict[str, Any]:
 
     signing = report["signing"]
     require(signing["signer_image"] == EXPECTED_SIGNER_IMAGE, "signer image digest mismatch")
-    require(signing["public_key_id"] == "ed25519:a574dd0fee97965ad65b6777d3efe137", "verdict public-key id mismatch")
-    require(signing["authorization_key_id"] == "ed25519:96b682f0c3aee75a5ef97db427062900", "authorization public-key id mismatch")
+    require(signing["public_key_id"] == "ed25519:d4e68fd22fab12c91a146a55a24eaa95", "verdict public-key id mismatch")
+    require(signing["authorization_key_id"] == "ed25519:3c88f9b6b9b77a1e7ac465df685522f3", "authorization public-key id mismatch")
     require(signing["anchor_provider_key_id"] == anchor["provider_key_id"], "anchor key binding mismatch")
     require(len({signing["public_key_id"], signing["authorization_key_id"], signing["anchor_provider_key_id"]}) == 3, "key domains are not distinct")
     require(signing["runner_has_signing_key_mount"] is False, "runner had a signing-key mount")
@@ -296,10 +303,10 @@ def verify_full_report() -> dict[str, Any]:
     cleanup = report["cleanup"]
     require(set(cleanup["owned_container_ids"]) == EXPECTED_OWNED_CONTAINERS, "owned-container cleanup set mismatch")
     require(cleanup["container_cleanup_errors"] == [], "container cleanup errors present")
-    require(cleanup["containers_before"] == 21 and cleanup["containers_after"] == 21, "unrelated container count changed")
+    require(cleanup["containers_before"] == 22 and cleanup["containers_after"] == 22, "unrelated container count changed")
     require(cleanup["unrelated_container_ids_preserved"] is True, "unrelated containers were not preserved")
-    require(cleanup["custody_service"] == {"pid": 257469, "returncode": 0, "stopped": True}, "custody service cleanup mismatch")
-    require(cleanup["anchor_service"] == {"pid": 257733, "returncode": 0, "stopped": True}, "anchor service cleanup mismatch")
+    require(cleanup["custody_service"] == {"pid": 718998, "returncode": -15, "stopped": True}, "custody service cleanup mismatch")
+    require(cleanup["anchor_service"] == {"pid": 719042, "returncode": -15, "stopped": True}, "anchor service cleanup mismatch")
     require(len(cleanup["private_key_files_removed"]) == 2 and all(cleanup["private_key_files_removed"].values()), "ephemeral private-key removal mismatch")
     return report
 

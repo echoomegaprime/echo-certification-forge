@@ -7,7 +7,7 @@
   },
   "passed": true,
   "release_verdict": "NOT_READY",
-  "report": "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\artifacts\\p2_verification_report.json",
-  "report_sha256": "268e3343ba13376764d685b22223085241263983d018e6a3dadf55b0ef2e6c00",
+  "report": "/home/forge/grok-build-workspace-certforge/artifacts/p2_verification_report.json",
+  "report_sha256": "5f59e0a1cfbd574cefebe8d3b7563d09101f6cc3e9df574511ec4d1ce3502c75",
   "run_outcome": "COMPLETE"
 }

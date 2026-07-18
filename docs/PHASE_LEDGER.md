@@ -12,12 +12,16 @@
 
 ## Current authoritative state
 
-- `completed_phase_gate`: `P4`
-- `run_outcome`: `COMPLETE`
-- `release_verdict`: `NOT_READY`
+```text
+completed_phase_gate: P4
+run_outcome: COMPLETE
+release_verdict: NOT_READY
+```
+
 - P4 real FORGE hostile acceptance (rerun6): passed
 - P4 signer image-identity fix validated by purpose-built signer workflow: passed
-- P4 deterministic closure verifier: required after evidence import
+- P3 re-certified 2026-07-18 against corrected `scripts/p3_forge_acceptance.py` (signer-identity fix source identity): passed
+- P4 deterministic closure verifier: passed after P3 re-cert
 - Central `echo.certforge.*`: not registered
 - `echo.builds.log`: not registered
 - Hosted CI: `CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED`

@@ -1,12 +1,135 @@
 {
-  "completed_phase_gate": "P2",
-  "error": {
-    "message": "closure source identity mismatch: scripts/p3_forge_acceptance.py: dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
-    "type": "RuntimeError"
+  "acceptance": {
+    "bytes": 27322,
+    "failed_checks": [],
+    "passed": true,
+    "path": "artifacts/p3_forge_acceptance.json",
+    "sha256": "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6"
   },
-  "passed": false,
+  "closure_checks": [
+    {
+      "command": [
+        "/usr/bin/python3",
+        "scripts/verify_p2.py"
+      ],
+      "exit_code": 0,
+      "log": "artifacts/p3_p2_regression.txt",
+      "log_sha256": "e7d531bed0049a17762e40b046029117004de3d301b58f9e57a746a7e6d3d4f7",
+      "name": "p2_regression"
+    },
+    {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_p3_custody_anchor_signing.py::test_signing_denial_matrix"
+      ],
+      "exit_code": 0,
+      "log": "artifacts/p3_actor_signing_denials.txt",
+      "log_sha256": "f8ba9dd1d3bd4714173fc34a296ab4a22096ec857c6c139c9b9b3b5b1abd1e7d",
+      "name": "actor_signing_denials"
+    }
+  ],
+  "completed_phase_gate": "P3",
+  "evidence_hashes": {
+    "artifacts/p2_forge_acceptance.json": "d563aefcb121f91f5b6beda0f82ce80d776dd7bc6f2caaf6253226370883ef68",
+    "artifacts/p2_forge_acceptance.summary.json": "3d17fee069b44b30794ee1f5ef871934406a785307e2b64724f8a59956b81093",
+    "artifacts/p3_forge_acceptance.json": "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6",
+    "artifacts/p3_forge_acceptance.summary.json": "45086ec043c4089942901348c246e7918fa2e4c6fd0dc14648b6554f24902d95",
+    "artifacts/p3_offline_bundle/anchor-log.jsonl": "f17a65ab14822d570d11feb7d81b136db493e6f507ca570778a50e56d5d6a7a1",
+    "artifacts/p3_offline_bundle/anchor-public.pem": "d4f908471d6d04de09f1c5204ec16d3773875c2e08c1d50bf8159f53689aaf3b",
+    "artifacts/p3_offline_bundle/anchor-receipt.json": "48435cc80d7a9695a6544840e4eef2588c195940945c4d7046f10062b2bd718b",
+    "artifacts/p3_offline_bundle/manifest.json": "029777effa24c26026204ecfb7ddd3b12f9f34c993d42d1285d137cf2cefdcdf",
+    "artifacts/p3_offline_bundle/public-keys.json": "69b1d1f6aaf821d77721367fa3b2637f4021f2a6c351824a82fcd06588cb90aa",
+    "artifacts/p3_offline_bundle/signing-request.json": "436f50df1982e144c3f122295957250c2f1b7b787357ef18a5ef1a21c1d41b51",
+    "artifacts/p3_offline_bundle/verdict.json": "d3415579b69b15354bf73f4dbf32dfd02fab268c11634227e2aef004532b6879",
+    "contracts/certforge-capabilities.v1.json": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c"
+  },
+  "offline_bundle": {
+    "files": {
+      "anchor-log.jsonl": {
+        "bytes": 448,
+        "sha256": "f17a65ab14822d570d11feb7d81b136db493e6f507ca570778a50e56d5d6a7a1"
+      },
+      "anchor-public.pem": {
+        "bytes": 113,
+        "sha256": "d4f908471d6d04de09f1c5204ec16d3773875c2e08c1d50bf8159f53689aaf3b"
+      },
+      "anchor-receipt.json": {
+        "bytes": 1066,
+        "sha256": "48435cc80d7a9695a6544840e4eef2588c195940945c4d7046f10062b2bd718b"
+      },
+      "public-keys.json": {
+        "bytes": 572,
+        "sha256": "69b1d1f6aaf821d77721367fa3b2637f4021f2a6c351824a82fcd06588cb90aa"
+      },
+      "signing-request.json": {
+        "bytes": 3403,
+        "sha256": "436f50df1982e144c3f122295957250c2f1b7b787357ef18a5ef1a21c1d41b51"
+      },
+      "verdict.json": {
+        "bytes": 1546,
+        "sha256": "d3415579b69b15354bf73f4dbf32dfd02fab268c11634227e2aef004532b6879"
+      }
+    },
+    "verification": {
+      "reason": "verified",
+      "valid": true
+    }
+  },
+  "p2_regression_report_sha256": "5f59e0a1cfbd574cefebe8d3b7563d09101f6cc3e9df574511ec4d1ce3502c75",
+  "passed": true,
   "phase": "P3",
   "release_verdict": "NOT_READY",
-  "run_outcome": "INCONCLUSIVE",
-  "schema_version": "1.0.0"
+  "run_outcome": "COMPLETE",
+  "schema_version": "1.0.0",
+  "sdk_contract": {
+    "capability_ids": [
+      "echo.certforge.cancel",
+      "echo.certforge.deploy_gate",
+      "echo.certforge.evidence",
+      "echo.certforge.findings",
+      "echo.certforge.health",
+      "echo.certforge.status",
+      "echo.certforge.submit",
+      "echo.certforge.verdict",
+      "echo.certforge.verify"
+    ],
+    "path": "contracts/certforge-capabilities.v1.json",
+    "registration_state": "NOT_REGISTERED",
+    "sha256": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c"
+  },
+  "source_identity": {
+    "acceptance_source": {
+      "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
+      "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
+      "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
+      "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
+      "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
+      "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
+      "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9"
+    },
+    "accepted_closure_delta": {
+      "acceptance_sha256": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
+      "closure_sha256": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
+      "path": "scripts/p3_forge_acceptance.py",
+      "reason": "P3 re-certified 2026-07-18 after reviewed signer image-identity fix (307667a, 5ec68c8); acceptance re-run under corrected source so acceptance and closure identities match"
+    },
+    "closure_source": {
+      "contracts/certforge-capabilities.v1.json": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c",
+      "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
+      "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
+      "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
+      "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
+      "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
+      "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
+      "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9"
+    }
+  },
+  "summary": {
+    "bytes": 5433,
+    "path": "artifacts/p3_forge_acceptance.summary.json",
+    "sha256": "45086ec043c4089942901348c246e7918fa2e4c6fd0dc14648b6554f24902d95"
+  }
 }
