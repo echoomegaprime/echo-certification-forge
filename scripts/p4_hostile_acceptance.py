@@ -1235,6 +1235,84 @@ print(json.dumps({'denied':denied}))
     return cases
 
 
+def public_verifier_probe(
+    *,
+    image: str,
+    artifacts: dict[str, Path],
+    image_digest: str,
+    now: datetime,
+    ownership_token: str,
+) -> dict[str, Any]:
+    targets = {
+        "attestation": "/input/runner.attestation.json",
+        "policy": "/input/runner.admission-policy.json",
+        "sbom": "/input/runner.spdx.json",
+    }
+    require(set(artifacts) == set(targets), f"public verifier artifact set mismatch: {sorted(artifacts)}")
+    mounts: list[tuple[Path, str, bool]] = []
+    artifact_identities: dict[str, dict[str, Any]] = {}
+    for name, target in targets.items():
+        source = artifacts[name].resolve(strict=True)
+        require(source.is_file(), f"public verifier artifact is not a file: {name}")
+        mounts.append((source, target, True))
+        artifact_identities[name] = {
+            "source": str(source),
+            "target": target,
+            "sha256": sha256_file(source),
+            "read_only": True,
+        }
+    result = execute_container(
+        image=image,
+        role="verifier",
+        case="public-verify",
+        ownership_token=ownership_token,
+        entrypoint="python",
+        command=[
+            "-m",
+            "echo_certification_forge.verifier_cli",
+            "--attestation",
+            targets["attestation"],
+            "--policy",
+            targets["policy"],
+            "--sbom",
+            targets["sbom"],
+            "--image-digest",
+            image_digest,
+            "--now",
+            to_utc_iso(now),
+        ],
+        mounts=mounts,
+        timeout_seconds=60,
+        memory="256m",
+        pids=64,
+        workspace_size="8m",
+        nofile=256,
+    )
+    output = parse_last_json(result["logs"])
+    passed = (
+        result["exit_code"] == 0
+        and not result["timed_out"]
+        and not result["oom_killed"]
+        and all(result["containment"].values())
+        and output.get("passed") is True
+        and output.get("private_key_loaded") is False
+        and output.get("sbom_valid") is True
+        and (output.get("admission") or {}).get("allowed") is True
+    )
+    return {
+        "exit_code": result["exit_code"],
+        "timed_out": result["timed_out"],
+        "oom_killed": result["oom_killed"],
+        "logs_sha256": sha256_bytes(result["logs"].encode("utf-8", errors="replace")),
+        "sanitized_logs": result["sanitized_logs"],
+        "containment": result["containment"],
+        "artifacts": artifact_identities,
+        "output": output,
+        "private_key_mounted": False,
+        "passed": passed,
+    }
+
+
 def image_crash_case(image: str, role: ImageRole, ownership_token: str) -> tuple[dict[str, Any], bool]:
     result = execute_container(
         image=image,
@@ -1449,6 +1527,7 @@ def main() -> int:
         sealed_parent = args.sealed_manifest.resolve().parent
         attestations: dict[ImageRole, Any] = {}
         policies: dict[ImageRole, ImageAdmissionPolicy] = {}
+        sealed_artifacts: dict[ImageRole, dict[str, Path]] = {}
         statements: dict[str, Path] = {}
 
         for role in ROLE_ORDER:
@@ -1567,6 +1646,11 @@ def main() -> int:
             statements[role.value] = statement_path
             attestations[role] = attestation
             policies[role] = policy
+            sealed_artifacts[role] = {
+                "attestation": attestation_path,
+                "policy": policy_path,
+                "sbom": sbom_path,
+            }
 
             filesystem = scan_image_filesystem(primary, role, ownership_token, workspace)
             require(filesystem["passed"], f"forbidden image file found: {role.value}:{filesystem['findings']}")
@@ -1635,34 +1719,13 @@ def main() -> int:
         report["service_runtime"]["signer_crash"] = signer_crash
         require(signer_crash_passed, "signer crash not contained")
 
-        verifier_result = execute_container(
+        report["service_runtime"]["verifier"] = public_verifier_probe(
             image=image_map["verifier"]["primary"],
-            role="verifier",
-            case="public-verify",
+            artifacts=sealed_artifacts[ImageRole.RUNNER],
+            image_digest=attestations[ImageRole.RUNNER].identity.image_digest,
+            now=started + timedelta(seconds=1),
             ownership_token=ownership_token,
-            entrypoint="python",
-            command=[
-                "-m",
-                "echo_certification_forge.verifier_cli",
-                "--attestation",
-                "/input/runner.attestation.json",
-                "--policy",
-                "/input/runner.admission-policy.json",
-                "--sbom",
-                "/input/runner.spdx.json",
-                "--image-digest",
-                attestations[ImageRole.RUNNER].identity.image_digest,
-                "--now",
-                to_utc_iso(started + timedelta(seconds=1)),
-            ],
-            mounts=[(workspace, "/input", True)],
         )
-        report["service_runtime"]["verifier"] = {
-            "exit_code": verifier_result["exit_code"],
-            "output": parse_last_json(verifier_result["logs"]),
-            "private_key_mounted": False,
-            "passed": verifier_result["exit_code"] == 0 and parse_last_json(verifier_result["logs"]).get("passed") is True,
-        }
         require(report["service_runtime"]["verifier"]["passed"], "public verifier image failed")
 
         p3_workspace = workspace / "p3-purpose-built-signer"
@@ -1733,6 +1796,7 @@ def main() -> int:
                 report["service_runtime"][role.value]["passed"]
                 for role in (ImageRole.CUSTODY, ImageRole.ANCHOR, ImageRole.WORKER)
             ),
+            "public_verifier_passed": report["service_runtime"]["verifier"]["passed"],
             "purpose_built_signer_workflow_passed": report["purpose_built_signer_p3_rerun"]["passed"],
             "private_key_leak_count_zero": not private_leaks,
             "rootful_engine_truth_recorded": report["docker_engine"] == {"daemon_mode": "rootful", "rootless_claimed": False},
