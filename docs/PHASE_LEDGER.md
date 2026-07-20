@@ -20,7 +20,7 @@ suite stays green on an independent re-run.
 | Phase | State | Evidence |
 |---|---|---|
 | T4.P1 run intake — submit + status + idempotency-key binding | **[T4.P1 COMPLETE]** | `tests/test_t4p1_intake.py` (6 acceptance cases incl. cross-tenant idempotency isolation) — full suite **196 passed** on independent re-run 2026-07-20; commit b5fb61e + strengthening follow-up. Adversarial review (sentinel lane) REJECTED on 2 misreadings (refuted vs primary evidence) + 1 real test-gap (cross-tenant isolation) which is now closed by a passing test. |
-| T4.P2 read surface: status/cancel/findings/evidence/verify/verdict + tenant isolation | NOT_STARTED | — |
+| T4.P2 read surface: status/cancel/findings/evidence/verify/verdict + tenant isolation | **[T4.P2 COMPLETE]** | `tests/test_t4p2_read_surface.py` (6 adversarial cases: cross-tenant 404-no-leak across all 6 endpoints, cancel-then-409, findings list, redacted evidence index, on-disk tamper→valid:false+id, verdict-404-until-signed→independently-verifiable envelope) — full suite **202 passed** independent re-run 2026-07-20; commit 52a3f50. All 9 `echo.certforge.*` caps now have real mapped endpoints. Verifier note: external LLM review lanes both unavailable (sentinel weak; vertex billing-denied), so the gate rests on the adversarial acceptance suite + in-session hole analysis (no uncovered leak/bypass found). |
 | T4.P3 signer/control-plane separation + mandatory external anchoring | NOT_STARTED | — |
 | T4.P4 runner↔control-plane narrow protocol + adapter maturity states | NOT_STARTED | — |
 | T4.P5 billing-failure + data-retention + hostile/supply-chain in run path | NOT_STARTED | — |
