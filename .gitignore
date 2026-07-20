@@ -19,6 +19,7 @@ artifacts/local/
 .env.*
 !.env.example
 *.pem
+!*-public.pem
 *.key
 
 # Editors / OS
