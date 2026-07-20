@@ -34,6 +34,8 @@ test -f policies/mandatory-rules.v1.json || { echo "!! policy manifest missing";
 echo "== [4/7] staging boot on 127.0.0.1:$STAGING_PORT =="
 ECHO_CERTFORGE_DB="$REPO_DIR/var/staging.sqlite3" \
 ECHO_CERTFORGE_EVIDENCE_ROOT="$REPO_DIR/var/staging-evidence" \
+ECHO_CERTFORGE_POLICY="$REPO_DIR/policies/mandatory-rules.v1.json" \
+ECHO_CERTFORGE_TRUSTED_KEYS="$REPO_DIR/var/trusted-public-keys" \
   ./.venv/bin/python -m uvicorn echo_certification_forge.app:app \
     --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >/tmp/certforge_staging.log 2>&1 &
 STAGING_PID=$!
