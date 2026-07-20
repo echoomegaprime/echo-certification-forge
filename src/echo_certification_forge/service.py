@@ -40,9 +40,14 @@ def create_app(context: ServiceContext) -> FastAPI:
 
     @app.get("/healthz")
     def healthz() -> dict[str, object]:
+        # Shape matches the echo.certforge.health output_schema
+        # (contracts/certforge-capabilities.v1.json): status, version, custody, anchor, signing.
         return {
             "status": "ok",
             "version": "0.3.0",
+            "custody": "append_only_merkle_verified",
+            "anchor": "independent_provider_required",
+            "signing": "isolated_out_of_process",
             "control_plane_executes_customer_code": False,
             "private_signing_key_loaded": False,
         }
