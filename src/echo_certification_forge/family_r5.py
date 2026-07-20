@@ -155,6 +155,35 @@ class Operator:
             },
         }
 
+    def run_preflight(self) -> dict[str, Any]:
+        """Read-only preflight: health + attestation + identity/key verification.
+
+        Fires NO lease, fault, unload, or inference — it does not mutate routing
+        state. Used as the dry-run that proves the whole path (grant -> SSH ->
+        loopback -> attestation) without touching the live family server.
+        """
+        blocker: str | None = None
+        try:
+            self._preflight()
+        except Exception as error:  # noqa: BLE001 - deterministic gate boundary
+            blocker = f"{type(error).__name__}: {error}"
+        passed = blocker is None
+        return {
+            "schema": SCHEMA,
+            "mode": "preflight",
+            "run_outcome": "PREFLIGHT_OK" if passed else "INCONCLUSIVE",
+            "release_verdict": "NOT_READY",
+            "r5_gate": "BLOCK",  # preflight NEVER passes the gate; live controls do
+            "deployment_authorized": False,
+            "completion_marker": None,
+            "controls": [],
+            "blocker": blocker,
+            "expected_identity": {
+                name: getattr(self.expected, name)
+                for name in self.expected.__dataclass_fields__
+            },
+        }
+
     def _add(self, name: str, value: Any) -> None:
         if name in self.evidence:
             raise R5Error(f"duplicate evidence: {name}")
@@ -488,10 +517,47 @@ def write_evidence(directory: Path, evidence: Mapping[str, Any], report: Mapping
     return manifest
 
 
-def execute(expected: ExpectedIdentity, *, transport: Transport | None = None,
+def _build_bundle(operator: "Operator", mode: str) -> dict[str, Any]:
+    """Assemble the material FORGE independently re-verifies: the attested public
+    key + key_id + (for the full run) each negative-control routing receipt with
+    its signature. No tokens or private material — receipts are public evidence."""
+    pem = operator.trusted_public_key_pem
+    attestation = operator.evidence.get("attestation") or {}
+    receipts: list[dict[str, Any]] = []
+    if mode == "full":
+        for control, key in (("wrong_active_adapter", "wrong-active-response"),
+                             ("unloaded_adapter", "unloaded-response")):
+            body = (operator.evidence.get(key) or {}).get("body") or {}
+            receipt = body.get("routing_receipt")
+            if isinstance(receipt, dict):
+                receipts.append({
+                    "control": control,
+                    "key_id": receipt.get("key_id"),
+                    "payload": receipt.get("payload"),
+                    "signature_b64": receipt.get("signature_b64"),
+                })
+    return {
+        "schema": "echo.certification-forge.forge-verification-bundle/v1",
+        "mode": mode,
+        "public_key_pem": pem,
+        "attested_key_id": attestation.get("key_id"),
+        "attested_server_build_digest": attestation.get("server_build_digest"),
+        "attested_registry_snapshot_digest": attestation.get("registry_snapshot_digest"),
+        "attested_registry_revision": attestation.get("registry_revision"),
+        "attested_base_model_digest": attestation.get("base_model_digest"),
+        "attested_base_model_revision": attestation.get("base_model_revision"),
+        "receipts": receipts,
+    }
+
+
+def execute(expected: ExpectedIdentity, *, mode: str = "full",
+            transport: Transport | None = None,
             evidence_directory: Path | None = None) -> dict[str, Any]:
+    if mode not in {"full", "preflight"}:
+        raise ValueError("mode must be 'full' or 'preflight'")
     operator = Operator(transport or LoopbackTransport(), expected)
-    report = operator.run()
+    report = operator.run_preflight() if mode == "preflight" else operator.run()
+    report["forge_verification_bundle"] = _build_bundle(operator, mode)
     if evidence_directory is not None:
         report["evidence_manifest"] = write_evidence(
             evidence_directory, operator.evidence, report)
@@ -507,6 +573,7 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.add_argument("--" + option, required=True)
     parser.add_argument("--target-model", default="echo-gs343")
     parser.add_argument("--wrong-model", default="echo-r2d2")
+    parser.add_argument("--mode", choices=("full", "preflight"), default="full")
     parser.add_argument("--evidence-directory", required=True, type=Path)
     return parser.parse_args(argv)
 
@@ -525,8 +592,11 @@ def main(argv: list[str] | None = None) -> int:
         target_model=args.target_model,
         wrong_model=args.wrong_model,
     )
-    report = execute(expected, evidence_directory=args.evidence_directory)
+    report = execute(expected, mode=args.mode,
+                     evidence_directory=args.evidence_directory)
     print(json.dumps(report, indent=2, sort_keys=True))
+    if args.mode == "preflight":
+        return 0 if report["run_outcome"] == "PREFLIGHT_OK" else 2
     return 0 if report["r5_gate"] == "PASS" else 2
 
 
