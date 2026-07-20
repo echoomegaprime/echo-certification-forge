@@ -92,7 +92,8 @@ def _bundle(pem: str, kid: str, *, mode: str, priv=None, tamper=False, wrong_kid
 def test_validate_identity_ok():
     _, _, kid = _keypair()
     out = core.validate_identity(_identity(kid))
-    assert out["signing_key_id"] == kid
+    assert out["signature_key_id"] == kid
+    assert "signing_key_id" not in out
     assert out["target_adapter_digest"] != out["wrong_adapter_digest"]
 
 
@@ -127,6 +128,8 @@ def test_build_command_is_fixed_and_quoted():
     assert "--mode preflight" in cmd
     assert "--target-model echo-gs343" in cmd
     assert "--wrong-model echo-r2d2" in cmd
+    assert "--signature-key-id" in cmd
+    assert "--signing-key-id" not in cmd
     assert core.EVIDENCE_ROOT + "/run-1" in cmd
     # no caller-controlled shell metacharacter can appear unquoted
     assert ";" not in cmd and "$(" not in cmd and "&&" not in cmd

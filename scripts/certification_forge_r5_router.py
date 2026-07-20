@@ -132,9 +132,11 @@ async def run_negative_controls(
 
     # 2) Action-Broker grant (fail-closed)
     if not await _grant_active():
-        await audit("certforge.r5.grant_denied",
-                    {"agent": core.GRANT_AGENT, "task": core.GRANT_TASK,
-                     "scope": core.GRANT_SCOPE, "run_id": run_id, "mode": mode})
+        await audit(
+            "certforge-r5", "grant_denied", core.GRANT_AGENT, run_id,
+            {"agent": core.GRANT_AGENT, "task": core.GRANT_TASK,
+             "scope": core.GRANT_SCOPE, "run_id": run_id, "mode": mode},
+        )
         raise HTTPException(status_code=403, detail="action-broker grant not active")
 
     if not _ASYNCSSH:
@@ -155,8 +157,11 @@ async def run_negative_controls(
     try:
         exit_code, stdout, stderr = await _ssh_run(node, command, timeout=timeout)
     except (asyncio.TimeoutError, OSError, Exception) as exc:  # noqa: BLE001
-        await audit("certforge.r5.ssh_failure",
-                    {"run_id": run_id, "mode": mode, "error": f"{type(exc).__name__}: {exc}"})
+        await audit(
+            "certforge-r5", "ssh_failure", core.GRANT_AGENT, run_id,
+            {"run_id": run_id, "mode": mode,
+             "error": f"{type(exc).__name__}: {exc}"},
+        )
         raise HTTPException(status_code=502,
                             detail=f"anvil operator transport failed: {type(exc).__name__}") from exc
 
@@ -183,11 +188,12 @@ async def run_negative_controls(
                                   exit_code=exit_code, evidence_run_id=run_id)
     result["stderr_tail"] = stderr[-500:] if stderr else ""
 
-    await audit("certforge.r5.run", {
-        "run_id": run_id, "mode": mode, "exit_code": exit_code,
-        "r5_gate": result["r5_gate"], "run_outcome": result["run_outcome"],
-        "forge_all_ok": forge_verify.get("all_ok"),
-    })
+    await audit(
+        "certforge-r5", "run", core.GRANT_AGENT, run_id,
+        {"run_id": run_id, "mode": mode, "exit_code": exit_code,
+         "r5_gate": result["r5_gate"], "run_outcome": result["run_outcome"],
+         "forge_all_ok": forge_verify.get("all_ok")},
+    )
     return result
 
 

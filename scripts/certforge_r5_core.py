@@ -50,7 +50,7 @@ _IDENTITY_FIELDS = (
     ("expected_server_build_digest", "server_build_digest", "sha256"),
     ("expected_registry_snapshot_digest", "registry_snapshot_digest", "sha256"),
     ("expected_registry_revision", "registry_revision", "rev"),
-    ("expected_signing_key_id", "signing_key_id", "keyid"),
+    ("expected_signing_key_id", "signature_key_id", "keyid"),
     ("expected_base_model_digest", "base_model_digest", "sha256"),
     ("expected_base_model_revision", "base_model_revision", "rev"),
     ("expected_gs343_digest", "target_adapter_digest", "sha256"),
@@ -185,7 +185,7 @@ def verify_forge_bundle(
 
     key = _load_public_key(bundle.get("public_key_pem"))
     derived = _derive_key_id(key)
-    expected_kid = ident["signing_key_id"]
+    expected_kid = ident["signature_key_id"]
     key_id_ok = derived == expected_kid and bundle.get("attested_key_id") == expected_kid
     if not key_id_ok:
         problems.append("key_id mismatch")
