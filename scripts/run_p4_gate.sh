@@ -29,7 +29,10 @@ BASE_DIGEST="${BASE_DIGEST:-sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed335688
 CLAMAV_IMAGE="${CLAMAV_IMAGE:-clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a}"
 COSIGN="${COSIGN:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign}"
 TRIVY="${TRIVY:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/trivy/trivy}"
-PY="${PY:-/home/forge/echo-worker-server/venv/bin/python}"
+# Use a CLEAN interpreter: the echo-worker venv intermittently fires a flywheel
+# engine-classification side-effect on import that can trip preflight. System
+# python3 on FORGE carries cryptography+pydantic with no side-effect.
+PY="${PY:-/usr/bin/python3}"
 WORK_ROOT="${WORK_ROOT:-/home/forge/.cache/echo-certforge/p4-runs}"
 ROLES=(runner custody anchor signer worker verifier)
 
