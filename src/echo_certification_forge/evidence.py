@@ -537,6 +537,38 @@ class EvidenceStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_findings(self, run_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT finding_id, severity, title, blocks_release, evidence_ids_json, created_at "
+                "FROM findings WHERE run_id = ? AND tenant_id = ? ORDER BY created_at, finding_id",
+                (run_id, tenant_id),
+            ).fetchall()
+        return [
+            {
+                "finding_id": row["finding_id"],
+                "severity": row["severity"],
+                "title": row["title"],
+                "blocks_release": bool(row["blocks_release"]),
+                "evidence_ids": json.loads(row["evidence_ids_json"]),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def list_evidence(self, run_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        """Redacted evidence index — metadata only, never raw content or secrets."""
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT artifact_id, sha256, size_bytes, media_type, source_component, "
+                "redaction_status, ordinal, created_at FROM evidence_artifacts "
+                "WHERE run_id = ? AND tenant_id = ? ORDER BY ordinal",
+                (run_id, tenant_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def verify_evidence(self, run_id: str, tenant_id: str) -> VerificationReport:
         self.get_run(run_id, tenant_id)
         with self._connection() as connection:
