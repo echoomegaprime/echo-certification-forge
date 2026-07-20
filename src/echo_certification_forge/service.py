@@ -4,11 +4,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .deploy_gate import DeployGate
 from .evidence import EvidenceStore
+from .intake import SubmitError, SubmitRequest, project_run, submit
 from .models import SignedVerdictEnvelope
 from .policy import RuleManifest
 from .signing import TrustedPublicKeyRegistry
@@ -64,18 +65,33 @@ def create_app(context: ServiceContext) -> FastAPI:
             "runner_isolation": "P2_FOUNDATION_VERIFIED",
         }
 
+    @app.post("/v1/certifications", status_code=201)
+    def submit_certification(
+        request: SubmitRequest,
+        response: Response,
+        x_tenant_id: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        tenant_id = tenant(x_tenant_id)
+        try:
+            status_code, body = submit(context.store, context.manifest, request, tenant_id)
+        except SubmitError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        response.status_code = status_code
+        return body
+
     @app.get("/v1/certifications")
     def list_runs(x_tenant_id: str | None = Header(default=None)) -> list[dict[str, object]]:
         tenant_id = tenant(x_tenant_id)
-        return context.store.list_runs(tenant_id)
+        return [project_run(context.store, row) for row in context.store.list_runs(tenant_id)]
 
     @app.get("/v1/certifications/{run_id}")
     def get_run(run_id: str, x_tenant_id: str | None = Header(default=None)) -> dict[str, object]:
         tenant_id = tenant(x_tenant_id)
         try:
-            return context.store.get_run(run_id, tenant_id)
+            row = context.store.get_run(run_id, tenant_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
+        return project_run(context.store, row)
 
     @app.get("/v1/certifications/{run_id}/evidence/verify")
     def verify_evidence(run_id: str, x_tenant_id: str | None = Header(default=None)) -> dict[str, object]:

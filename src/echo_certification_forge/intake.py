@@ -1,0 +1,167 @@
+"""Run intake: submit request models, public-state projection, idempotent submission.
+
+Backs `echo.certforge.submit` (POST /v1/certifications) and the schema-conforming projection
+used by `echo.certforge.status`. Default-deny: a fresh run carries release_verdict NOT_READY
+until a signed verdict is issued.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .canonical import sha256_json
+from .evidence import EvidenceStore
+from .models import ReleaseVerdict, RunState
+from .policy import RuleManifest
+
+# Internal fine-grained RunState -> coarse public state (contracts/schemas/certification-run.v1.json).
+_PUBLIC_STATE: dict[RunState, str] = {
+    RunState.CREATED: "CREATED",
+    RunState.QUEUED: "QUEUED",
+    RunState.ACQUIRING_TARGET: "DISCOVERING",
+    RunState.DISCOVERING: "DISCOVERING",
+    RunState.PLANNING: "BUILDING",
+    RunState.PROVISIONING: "BUILDING",
+    RunState.BUILDING: "BUILDING",
+    RunState.STARTING_APPLICATION: "EXECUTING_TESTS",
+    RunState.VERIFYING_READINESS: "EXECUTING_TESTS",
+    RunState.EXECUTING_TESTS: "EXECUTING_TESTS",
+    RunState.COLLECTING_EVIDENCE: "VERIFYING_EVIDENCE",
+    RunState.CLASSIFYING_FINDINGS: "ISSUING_VERDICT",
+    RunState.CALCULATING_VERDICT: "ISSUING_VERDICT",
+    RunState.FINALIZING_REPORT: "ISSUING_VERDICT",
+    RunState.REGISTERING_RESULT: "ISSUING_VERDICT",
+    RunState.COMPLETED: "COMPLETE",
+    RunState.CANCELLED: "CANCELLED",
+    RunState.INFRASTRUCTURE_FAILURE: "FAILED",
+}
+
+
+class SubmitTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_type: str = Field(pattern=r"^(git|archive|container|package|deployment|mcp|sdk|cli)$")
+    identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reference: str = Field(min_length=1, max_length=2048)
+
+
+class SubmitEnvironment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    runner_image_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class SubmitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(min_length=1, max_length=128)
+    target: SubmitTarget
+    environment: SubmitEnvironment
+    policy_version: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+    def request_digest(self) -> str:
+        """Semantic identity of the request (excludes the idempotency key itself)."""
+        return sha256_json(
+            {
+                "tenant_id": self.tenant_id,
+                "target": self.target.model_dump(),
+                "environment": self.environment.model_dump(),
+                "policy_version": self.policy_version,
+            }
+        )
+
+    def run_id(self) -> str:
+        return "cert_" + sha256_json({"d": self.request_digest(), "k": self.idempotency_key})[:40]
+
+
+def to_public_state(internal: str) -> str:
+    return _PUBLIC_STATE[RunState(internal)]
+
+
+def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
+    """Project an internal run row into a certification-run.v1.json-conforming object."""
+    run_id = row["run_id"]
+    tenant_id = row["tenant_id"]
+    release_verdict = ReleaseVerdict.NOT_READY.value
+    evidence_merkle_root: str | None = None
+    verdict_row = store.latest_signed_verdict(run_id, tenant_id)
+    if verdict_row is not None:
+        payload = json.loads(verdict_row["payload_json"])
+        release_verdict = payload.get("release_verdict", release_verdict)
+        evidence_merkle_root = payload.get("evidence_merkle_root")
+    return {
+        "run_id": run_id,
+        "tenant_id": tenant_id,
+        "state": to_public_state(row["state"]),
+        "run_outcome": row["run_outcome"],
+        "release_verdict": release_verdict,
+        "target_identity_digest": row["target_identity_digest"],
+        "environment_identity_digest": row["environment_identity_digest"],
+        "policy_version": row["policy_version"] or row["rule_manifest_id"],
+        "evidence_merkle_root": evidence_merkle_root,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+class SubmitError(Exception):
+    """Raised on a fail-closed intake rejection. Carries HTTP status + machine code."""
+
+    def __init__(self, status_code: int, code: str) -> None:
+        super().__init__(code)
+        self.status_code = status_code
+        self.code = code
+
+
+def submit(
+    store: EvidenceStore,
+    manifest: RuleManifest,
+    request: SubmitRequest,
+    tenant_header: str,
+) -> tuple[int, dict[str, Any]]:
+    """Idempotent, tenant-fail-closed run submission.
+
+    Returns (201, run) for a new run; (200, run) for an idempotent replay of the same request;
+    raises SubmitError(409, "idempotency_conflict") when a key is reused for a different request,
+    SubmitError(403, "tenant_mismatch") when the header and body tenants disagree,
+    SubmitError(422, "policy_unknown") when the requested policy is not the active manifest.
+    """
+    if request.tenant_id != tenant_header:
+        raise SubmitError(403, "tenant_mismatch")
+    if request.policy_version != manifest.manifest_id:
+        raise SubmitError(422, "policy_unknown")
+
+    request_digest = request.request_digest()
+    existing = store.find_idempotent(request.tenant_id, request.idempotency_key)
+    if existing is not None:
+        if existing["request_digest"] != request_digest:
+            raise SubmitError(409, "idempotency_conflict")
+        row = store.get_run(existing["run_id"], request.tenant_id)
+        return 200, project_run(store, row)
+
+    run_id = request.run_id()
+    environment_json = request.environment.model_dump(exclude_none=True)
+    store.register_declared_run(
+        run_id=run_id,
+        tenant_id=request.tenant_id,
+        target_type=request.target.target_type,
+        target_identity_digest=request.target.identity_digest,
+        target_reference=request.target.reference,
+        environment_identity_digest=request.environment.identity_digest,
+        environment_json=environment_json,
+        policy_version=request.policy_version,
+        manifest_id=manifest.manifest_id,
+        manifest_digest=manifest.digest,
+    )
+    store.transition_state(
+        run_id=run_id,
+        tenant_id=request.tenant_id,
+        next_state=RunState.QUEUED,
+        actor="certforge.intake",
+        reason="submitted",
+        workflow_version="t4.p1",
+    )
+    store.bind_idempotent(request.tenant_id, request.idempotency_key, request_digest, run_id)
+    row = store.get_run(run_id, request.tenant_id)
+    return 201, project_run(store, row)

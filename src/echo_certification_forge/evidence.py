@@ -14,6 +14,7 @@ from .canonical import (
     canonical_json,
     contained_path,
     require_identifier,
+    require_sha256,
     sha256_bytes,
     sha256_json,
     to_utc_iso,
@@ -87,9 +88,20 @@ class EvidenceStore:
             run_outcome TEXT NOT NULL,
             state TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            policy_version TEXT,
+            target_reference TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            tenant_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, idempotency_key)
+        );
 
         CREATE TABLE IF NOT EXISTS state_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,6 +204,11 @@ class EvidenceStore:
         """
         with self._connection() as connection:
             connection.executescript(schema)
+            existing = {row["name"] for row in connection.execute("PRAGMA table_info(runs)")}
+            if "policy_version" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN policy_version TEXT")
+            if "target_reference" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN target_reference TEXT")
 
     def register_run(
         self,
@@ -228,6 +245,87 @@ class EvidenceStore:
                     now,
                     now,
                 ),
+            )
+
+    def register_declared_run(
+        self,
+        run_id: str,
+        tenant_id: str,
+        target_type: str,
+        target_identity_digest: str,
+        target_reference: str,
+        environment_identity_digest: str,
+        environment_json: dict[str, Any],
+        policy_version: str,
+        manifest_id: str,
+        manifest_digest: str,
+    ) -> None:
+        """Register a run from a client-declared, pre-computed target identity digest.
+
+        Intake (`echo.certforge.submit`) provides the immutable target binding as a digest, not
+        the full canonical field set, so the digest is stored as the authoritative commitment;
+        target acquisition later verifies the acquired artifact hashes to this digest.
+        """
+        require_identifier(run_id, "run_id")
+        require_identifier(tenant_id, "tenant_id")
+        require_identifier(target_type, "target_type")
+        require_sha256(target_identity_digest, "target_identity_digest")
+        require_sha256(environment_identity_digest, "environment_identity_digest")
+        require_identifier(policy_version, "policy_version")
+        require_identifier(manifest_id, "manifest_id")
+        if not target_reference.strip():
+            raise ValueError("target_reference is required")
+        target_json = {
+            "tenant_id": tenant_id,
+            "target_type": target_type,
+            "declared_identity_digest": target_identity_digest,
+            "reference": target_reference,
+        }
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO runs(
+                    run_id, tenant_id, target_identity_json, target_identity_digest,
+                    environment_identity_json, environment_identity_digest,
+                    rule_manifest_id, rule_manifest_digest, run_outcome, state,
+                    created_at, updated_at, policy_version, target_reference
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    tenant_id,
+                    canonical_json(target_json),
+                    target_identity_digest,
+                    canonical_json(environment_json),
+                    environment_identity_digest,
+                    manifest_id,
+                    manifest_digest,
+                    RunOutcome.INCONCLUSIVE.value,
+                    RunState.CREATED.value,
+                    now,
+                    now,
+                    policy_version,
+                    target_reference,
+                ),
+            )
+
+    def find_idempotent(self, tenant_id: str, idempotency_key: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM idempotency_keys WHERE tenant_id = ? AND idempotency_key = ?",
+                (tenant_id, idempotency_key),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def bind_idempotent(
+        self, tenant_id: str, idempotency_key: str, request_digest: str, run_id: str
+    ) -> None:
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO idempotency_keys(tenant_id, idempotency_key, request_digest, run_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                (tenant_id, idempotency_key, request_digest, run_id, now),
             )
 
     def get_run(self, run_id: str, tenant_id: str | None = None) -> dict[str, Any]:
