@@ -10,6 +10,23 @@
 | P6 deployment enforcement and platform integration | NOT_STARTED | exact-digest evaluator exists; real deployment hook absent | NOT_READY |
 | P7 subscriber productization and governance | NOT_STARTED | none | NOT_READY |
 
+## Task 4 — Certification Forge service + `echo.certforge.*` caps (sub-track)
+
+Service-build sub-track (SPEC: `docs/TASK4_SERVICE_SPEC.md`). A completed T4 phase does **not** upgrade
+the whole-product verdict (still NOT_READY); central `echo.certforge.*` registration remains a blocker
+(lands T4.P6). Marker rule: `[T4.Pn COMPLETE]` only after the phase acceptance test passes AND the full
+suite stays green on an independent re-run.
+
+| Phase | State | Evidence |
+|---|---|---|
+| T4.P1 run intake — submit + status + idempotency-key binding | **[T4.P1 COMPLETE]** | `tests/test_t4p1_intake.py` (6 acceptance cases incl. cross-tenant idempotency isolation) — full suite **196 passed** on independent re-run 2026-07-20; commit b5fb61e + strengthening follow-up. Adversarial review (sentinel lane) REJECTED on 2 misreadings (refuted vs primary evidence) + 1 real test-gap (cross-tenant isolation) which is now closed by a passing test. |
+| T4.P2 read surface: status/cancel/findings/evidence/verify/verdict + tenant isolation | NOT_STARTED | — |
+| T4.P3 signer/control-plane separation + mandatory external anchoring | NOT_STARTED | — |
+| T4.P4 runner↔control-plane narrow protocol + adapter maturity states | NOT_STARTED | — |
+| T4.P5 billing-failure + data-retention + hostile/supply-chain in run path | NOT_STARTED | — |
+| T4.P6 cap registration + R5 async gate path + independent bootstrap cert | NOT_STARTED | — |
+| T4.P7 (=Task 6) real end-to-end certification run | NOT_STARTED | — |
+
 ## Current authoritative state
 
 - `completed_phase_gate`: `P4`
