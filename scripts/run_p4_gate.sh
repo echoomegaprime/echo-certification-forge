@@ -39,6 +39,12 @@ ROLES=(runner custody anchor signer worker verifier)
 log() { printf '[p4-gate %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf '[p4-gate FAIL] %s\n' "$*" >&2; exit 1; }
 
+# Never run python from /tmp (or any dir with loose modules): `python -c/-m`
+# prepends cwd to sys.path, and stray /tmp modules auto-import a flywheel
+# engine-classifier side-effect that corrupts every invocation. Anchor cwd to a
+# clean dir; all real paths below are absolute so this is safe.
+cd /home/forge 2>/dev/null || cd /
+
 # ---- 0. resolve commit + preflight (fail-closed) -------------------------
 git_c() { git -c credential.helper= -c credential.helper="store --file=${GIT_CRED_FILE}" "$@"; }
 
