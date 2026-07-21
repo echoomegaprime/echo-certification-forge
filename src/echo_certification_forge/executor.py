@@ -20,7 +20,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .canonical import to_utc_iso, utc_now
 from .evidence import EvidenceStore
@@ -89,18 +89,19 @@ class RunExecutor:
         self.store.set_retention(run_id, tenant_id, artifact_id, retention.retention_class, expires)
         return artifact_id
 
-    def _run_journey(self, source_root: Path, journey: list[str]) -> tuple[bool, dict]:
-        """Execute a declared critical-journey command in the target (real execution, exit-0 = pass).
-        No shell; bounded timeout + output. Only the executor-launched process is touched."""
+    def _inprocess_journey(self, argv: list[str], workdir: Path) -> tuple[bool, dict]:
+        """In-process journey runner (real execution, exit-0 = pass). UNISOLATED — only safe for
+        TRUSTED targets (the operator's own fixtures / tests). Untrusted targets MUST inject a
+        sandboxed journey_runner (see sandbox.sandboxed_journey_runner)."""
         try:
             proc = subprocess.run(
-                journey, cwd=str(source_root), capture_output=True, text=True,
+                argv, cwd=str(workdir), capture_output=True, text=True,
                 timeout=60, shell=False, check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return False, {"error": f"{type(exc).__name__}", "argv": journey}
+            return False, {"executed": True, "isolation": "none", "error": f"{type(exc).__name__}", "argv": argv}
         return proc.returncode == 0, {
-            "argv": journey, "returncode": proc.returncode,
+            "executed": True, "isolation": "none", "argv": argv, "returncode": proc.returncode,
             "stdout_tail": proc.stdout[-2000:], "stderr_tail": proc.stderr[-2000:],
         }
 
@@ -113,6 +114,7 @@ class RunExecutor:
         entitlement: EntitlementChecker,
         retention: RetentionPolicy | None = None,
         journey: list[str] | None = None,
+        journey_runner: Callable[[list[str], Path], tuple[bool, dict]] | None = None,
         control_attestations: dict[str, bool] | None = None,
     ) -> ExecutionResult:
         retention = retention or RetentionPolicy()
@@ -178,8 +180,9 @@ class RunExecutor:
         journey_passed = False
         journey_detail: dict = {"executed": False, "reason": "no_journey" if journey is None else "hostile_target_skipped"}
         if clean and journey is not None:
-            journey_passed, journey_detail = self._run_journey(source_root, journey)
-            journey_detail = {"executed": True, **journey_detail}
+            # Untrusted targets inject a sandboxed runner; trusted callers/tests use the in-process one.
+            runner = journey_runner or self._inprocess_journey
+            journey_passed, journey_detail = runner(journey, source_root)
 
         self._t(run_id, tenant_id, RunState.COLLECTING_EVIDENCE, "collect")
 

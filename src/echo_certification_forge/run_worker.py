@@ -31,6 +31,7 @@ from .evidence import EvidenceStore
 from .executor import RetentionPolicy, RunExecutor, StaticEntitlement
 from .models import EnvironmentIdentity, RunOutcome, RunState, TargetIdentity
 from .policy import RuleManifest
+from .sandbox import DEFAULT_IMAGE, DockerSandbox, sandboxed_journey_runner
 from .signing import Ed25519VerdictSigner
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -72,7 +73,8 @@ def _load_signer(path: Path) -> Ed25519VerdictSigner:
 
 
 def run(run_id: str, tenant: str, target_spec: dict, *, store: EvidenceStore, manifest: RuleManifest,
-        signer: Ed25519VerdictSigner, entitled: frozenset[str], journey: list[str] | None) -> dict:
+        signer: Ed25519VerdictSigner, entitled: frozenset[str], journey: list[str] | None,
+        sandbox: DockerSandbox | None = None) -> dict:
     workdir = Path(tempfile.mkdtemp(prefix="certforge-acq-"))
     try:
         acquired = acquire_target(target_spec, workdir / "src")
@@ -94,11 +96,15 @@ def run(run_id: str, tenant: str, target_spec: dict, *, store: EvidenceStore, ma
         return {"run_id": run_id, "error": "run_not_pending", "state": existing["state"]}
 
     executor = RunExecutor(store, manifest, signer)
+    # Untrusted targets run the journey inside the isolated Docker sandbox; without a sandbox the
+    # journey runs in-process (only safe for TRUSTED targets — the operator's own fixtures).
+    journey_runner = sandboxed_journey_runner(sandbox) if sandbox is not None else None
     result = executor.execute(
         run_id, tenant, acquired.source_root,
         entitlement=StaticEntitlement(entitled),
         retention=RetentionPolicy(),
         journey=journey,
+        journey_runner=journey_runner,
         # The worker is the trusted control plane: it attests the architectural controls it enforces
         # by deployment — the narrow runner<->control-plane protocol and the run-signer/control-plane
         # key separation (the run-signer private key lives only here, never in the read API).
@@ -111,6 +117,7 @@ def run(run_id: str, tenant: str, target_spec: dict, *, store: EvidenceStore, ma
         "target_identity_digest": target.identity_digest,
         "environment_identity_digest": environment.identity_digest,
         "signer_public_key_id": signer.key_id,
+        "journey_isolation": "docker" if sandbox is not None else "none",
     }
 
 
@@ -125,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence-root", type=Path, default=Path(os.environ.get("ECHO_CERTFORGE_EVIDENCE_ROOT", _REPO / "var" / "evidence")))
     parser.add_argument("--policy", type=Path, default=Path(os.environ.get("ECHO_CERTFORGE_POLICY", _REPO / "policies" / "mandatory-rules.v1.json")))
     parser.add_argument("--signing-key", type=Path, default=Path(os.environ.get("ECHO_CERTFORGE_RUN_SIGNING_KEY", _REPO / "var" / "run-signing-key.pem")))
+    parser.add_argument("--sandbox", action="store_true",
+                        help="run the journey inside the isolated Docker sandbox (REQUIRED for untrusted targets)")
+    parser.add_argument("--sandbox-image", default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE))
+    parser.add_argument("--sandbox-docker", default=os.environ.get("ECHO_CERTFORGE_SANDBOX_DOCKER", "docker"),
+                        help="docker invocation, e.g. 'docker' or 'sudo docker'")
     args = parser.parse_args(argv)
 
     manifest = RuleManifest.load(args.policy)
@@ -137,9 +149,12 @@ def main(argv: list[str] | None = None) -> int:
     entitled = frozenset(t.strip() for t in entitled_raw.split(",") if t.strip())
     target_spec = json.loads(args.target_json)
     journey = json.loads(args.journey_json) if args.journey_json else None
+    sandbox = None
+    if args.sandbox:
+        sandbox = DockerSandbox(image=args.sandbox_image, docker=tuple(args.sandbox_docker.split()))
 
     result = run(args.run_id, args.tenant, target_spec, store=store, manifest=manifest,
-                 signer=signer, entitled=entitled, journey=journey)
+                 signer=signer, entitled=entitled, journey=journey, sandbox=sandbox)
     print(json.dumps(result))
     return 0 if result.get("run_outcome") == RunOutcome.COMPLETE.value else 1
 
