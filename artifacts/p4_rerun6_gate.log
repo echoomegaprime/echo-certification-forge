@@ -1,0 +1,16 @@
+=== p4_hostile_acceptance_hardened start 2026-07-18T06:47:30Z ===
+ 01:47:30 up 6 days,  9:39, 14 users,  load average: 7.88, 14.48, 21.06
+               total        used        free      shared  buff/cache   available
+Mem:            31Gi        13Gi       1.0Gi       221Mi        17Gi        17Gi
+{
+  "bytes": 124342,
+  "core_harness_sha256": "58a953a25319facbc044f69a5556a43c1777618425216591a299b88804bfe7bf",
+  "failed_checks": [],
+  "harness_sha256": "a4a7e202987b55beae91179a7f9f655d273199653106d9cf61e31fad09a6d505",
+  "output": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/rerun6-result.json",
+  "passed": true,
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "sha256": "c7b5031265883386b7b0df6409600dd51a622a796ccdd75abd221c0e373b4c56"
+}
+=== p4_hostile_acceptance_hardened end 2026-07-18T07:07:30Z exit=0 ===

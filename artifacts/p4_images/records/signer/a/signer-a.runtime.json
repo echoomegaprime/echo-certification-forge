@@ -1,0 +1,32 @@
+{
+  "audit_returncode": 0,
+  "audit_stderr": "",
+  "command": [],
+  "container_returncode": 0,
+  "container_stderr": "",
+  "development_packages": [],
+  "entrypoint": [
+    "python",
+    "-m",
+    "echo_certification_forge.signer_cli"
+  ],
+  "forbidden_environment_names": [],
+  "gid": 65532,
+  "health_command": [
+    "CMD",
+    "python",
+    "-c",
+    "import echo_certification_forge.signer_cli"
+  ],
+  "inspection_errors": [],
+  "network_client_packages": [],
+  "network_mode": "none",
+  "passed": true,
+  "privileged_entrypoint": false,
+  "read_only_root_compatible": true,
+  "reference": "echo-certforge-signer:p4-8ccfa65-a",
+  "root_audit_read_only": true,
+  "shell_history": [],
+  "uid": 65532,
+  "unexpected_package_cache": []
+}

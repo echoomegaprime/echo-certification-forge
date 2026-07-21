@@ -2,36 +2,36 @@
   "files": {
     "anchor-log.jsonl": {
       "bytes": 448,
-      "sha256": "b269d4bfd5de8df1c22e7fe67614adfed026371c1d7c35ac5e170baf64d08df0",
+      "sha256": "f17a65ab14822d570d11feb7d81b136db493e6f507ca570778a50e56d5d6a7a1",
       "source_relative_path": "independent-anchor-provider/anchor-log.jsonl"
     },
     "anchor-public.pem": {
       "bytes": 113,
-      "sha256": "eb90d8abec9aad5dd8c05fa1a85ce23d6dc47a04e479077f213a0376a58affe1",
+      "sha256": "d4f908471d6d04de09f1c5204ec16d3773875c2e08c1d50bf8159f53689aaf3b",
       "source_relative_path": "signer-input/anchor-public.pem"
     },
     "anchor-receipt.json": {
       "bytes": 1066,
-      "sha256": "8760ce3ced86c435ca7aa69892e03be8e02e8eac1ea7545eb7fd57ca0fd4df40",
-      "source_relative_path": "independent-anchor-provider/receipts/anchor.095f5d407cb768340fd52b065cba56e6.json"
+      "sha256": "48435cc80d7a9695a6544840e4eef2588c195940945c4d7046f10062b2bd718b",
+      "source_relative_path": "independent-anchor-provider/receipts/anchor.3d49d3001351aba6eb62c0a397e40a83.json"
     },
     "public-keys.json": {
       "bytes": 572,
-      "sha256": "ff42ffb4d9d2a5ead7baa727988b2f9dd4be567bfccdbc4883bd993c056b4199",
+      "sha256": "69b1d1f6aaf821d77721367fa3b2637f4021f2a6c351824a82fcd06588cb90aa",
       "source_relative_path": "signer-output/public-keys.json"
     },
     "signing-request.json": {
       "bytes": 3403,
-      "sha256": "03e2445e1bf25aa23e24940d67688f4b91b27eace6bffe74b6c194fd09b7a859",
+      "sha256": "436f50df1982e144c3f122295957250c2f1b7b787357ef18a5ef1a21c1d41b51",
       "source_relative_path": "signer-input/request.json"
     },
     "verdict.json": {
       "bytes": 1546,
-      "sha256": "61b882dbcebe7f206193d6789dd4f6a41e56de0002ec925b997392ce3c3d3385",
+      "sha256": "d3415579b69b15354bf73f4dbf32dfd02fab268c11634227e2aef004532b6879",
       "source_relative_path": "signer-output/verdict.json"
     }
   },
   "schema_version": "1.0.0",
   "source_node": "forge",
-  "source_root": "/home/forge/.cache/echo-certforge/p3-6f3b92a71c/runtime3"
+  "source_root": "/mnt/storage/forge_cache/echo-certforge/p3-recert-rerun6/workspace2"
 }

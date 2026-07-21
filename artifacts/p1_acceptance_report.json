@@ -3,8 +3,8 @@
   "manifest_id": "certforge.release-strict.v1",
   "passed": true,
   "phase": "P1",
-  "platform": "Windows-11-10.0.22631-SP0",
-  "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "Linux-6.8.0-134-generic-x86_64-with-glibc2.39",
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
   "scenarios": {
     "default_block": {
       "passed": true,
@@ -33,10 +33,10 @@
     },
     "verified_ready": {
       "deploy_gate_allowed": true,
-      "evidence_merkle_root": "0c3062ffe1ac2960c558698f8203c94ded9c6f7b33fb5b1e2ea11c2aa2f60b74",
+      "evidence_merkle_root": "708aef8bde26001bf820c4a74931c2b2b56c92273fc692c63ab583df3b0bae1b",
       "passed": true,
-      "payload_sha256": "8687d5b04d70e8fab0a8725407ea740f9cf2ace06c8a227721fedae1a943cfd0",
-      "signing_key_id": "ed25519:7eccada9f441881cbeff128ab340c44a",
+      "payload_sha256": "69507ce4dc9775b3d06cd4a1283efbec5827fcf95a904e757c4c19b34277e529",
+      "signing_key_id": "ed25519:523938c752437ec06a06ac442ec0752b",
       "verdict": "PRODUCTION_READY"
     }
   },

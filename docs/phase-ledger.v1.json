@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "service": "echo-certification-forge",
-  "completed_phase_gate": "P3",
+  "completed_phase_gate": "P4",
   "run_outcome": "COMPLETE",
   "release_verdict": "NOT_READY",
   "phases": [
@@ -35,8 +35,13 @@
     {
       "phase": "P4",
       "name": "hostile runner, signer image, and supply-chain qualification",
-      "state": "NOT_STARTED",
-      "evidence": []
+      "state": "COMPLETE",
+      "evidence": [
+        "artifacts/p4_forge_acceptance.json",
+        "artifacts/p4_images/manifest.json",
+        "artifacts/p4_evidence_index.json",
+        "artifacts/p4_verification_report.json"
+      ]
     },
     {
       "phase": "P5",

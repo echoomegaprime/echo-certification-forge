@@ -1,0 +1,63 @@
+{
+  "acceptance_report": {
+    "path": "artifacts/p4_forge_acceptance.json",
+    "sha256": "c7b5031265883386b7b0df6409600dd51a622a796ccdd75abd221c0e373b4c56"
+  },
+  "completed_phase_gate": "P4",
+  "files": [
+    {
+      "bytes": 124342,
+      "path": "artifacts/p4_forge_acceptance.json",
+      "sha256": "c7b5031265883386b7b0df6409600dd51a622a796ccdd75abd221c0e373b4c56"
+    },
+    {
+      "bytes": 1066,
+      "path": "artifacts/p4_images/images.json",
+      "sha256": "dd021e53c3997a11106f07e16314f79b61dc8f2aa781feca98dc06bcb7a4bfe3"
+    },
+    {
+      "bytes": 22360,
+      "path": "artifacts/p4_images/manifest-verification.json",
+      "sha256": "5ade36bdc2e3f26abb7783d2d272548bd8c87d8356943a44c458cd27535846e7"
+    },
+    {
+      "bytes": 52714,
+      "path": "artifacts/p4_images/manifest.json",
+      "sha256": "bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a"
+    },
+    {
+      "bytes": 113,
+      "path": "artifacts/p4_images/p4-attestation-public.pem",
+      "sha256": "e238ff5b6af5f08a6142a25df2fe19a75fb8df74238b741901eb796c4b91ec72"
+    },
+    {
+      "bytes": 11997,
+      "path": "artifacts/p4_rerun6_build.json",
+      "sha256": "0bb25d43ad0700c3e5d3a2422a0383505f624c4d8aa64c7ac0c4001e8c396033"
+    },
+    {
+      "bytes": 231,
+      "path": "artifacts/p4_rerun6_build.log",
+      "sha256": "611368255e30a7f939df516c105c6a32fb81f308e3a79b9c99389654449db5e9"
+    },
+    {
+      "bytes": 843,
+      "path": "artifacts/p4_rerun6_gate.log",
+      "sha256": "efd3745be3c456342491c71e258a794fd12ff5a12083cbc3e0162b72881329e8"
+    },
+    {
+      "bytes": 815,
+      "path": "artifacts/p4_rerun6_seal.log",
+      "sha256": "d46ecdc0eee5fbcf1632ee39049f80e2083a0f78d006536c9cc13bb6d118ddee"
+    }
+  ],
+  "image_manifest": {
+    "path": "artifacts/p4_images/manifest.json",
+    "sha256": "bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a"
+  },
+  "phase": "P4",
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "schema_version": "1.0.0",
+  "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+}

@@ -24,7 +24,7 @@ IMAGE_MANIFEST_PATH = ROOT / "artifacts/p4_images/manifest.json"
 P2_REPORT_PATH = ROOT / "artifacts/p2_forge_acceptance.json"
 P3_REPORT_PATH = ROOT / "artifacts/p3_forge_acceptance.json"
 P2_EXPECTED_SHA256 = "d563aefcb121f91f5b6beda0f82ce80d776dd7bc6f2caaf6253226370883ef68"
-P3_EXPECTED_SHA256 = "189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27"
+P3_EXPECTED_SHA256 = "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6"
 BASE_DIGEST = "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
 
 

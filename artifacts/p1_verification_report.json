@@ -2,7 +2,7 @@
   "checks": [
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "-m",
         "compileall",
         "-q",
@@ -11,13 +11,13 @@
         "scripts"
       ],
       "exit_code": 0,
-      "log": "artifacts\\p1_compileall.txt",
+      "log": "artifacts/p1_compileall.txt",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "name": "compileall"
     },
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "-m",
         "pytest",
         "-q",
@@ -25,39 +25,39 @@
         "--cov-report=term-missing"
       ],
       "exit_code": 0,
-      "log": "artifacts\\p1_pytest.txt",
-      "log_sha256": "26270e18bca753d1b2905d0f8081ce6ea25b1312689f8e8c0d5a25d09fee7c61",
+      "log": "artifacts/p1_pytest.txt",
+      "log_sha256": "b394ab716ee30a3d7999bfb5eeed9c924a2f92faa8d102d072eaa4ef288c79e5",
       "name": "pytest"
     },
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "scripts/p1_acceptance.py"
       ],
       "exit_code": 0,
-      "log": "artifacts\\p1_acceptance.txt",
-      "log_sha256": "370ffdfdb2433533cb5f1b1da62374986f80a9b937d016545c465ccba66bd64e",
+      "log": "artifacts/p1_acceptance.txt",
+      "log_sha256": "629c9afccaebe2ca22b296df40157c19b8ccdb6a28e7664a5de1a2714353cb8c",
       "name": "acceptance"
     },
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "scripts/p1_runtime_smoke.py"
       ],
       "exit_code": 0,
-      "log": "artifacts\\p1_runtime_smoke.txt",
-      "log_sha256": "bed98f0aa849d1af8ffb915daecafd832166a96e9d5787f4fee6785aa19565e8",
+      "log": "artifacts/p1_runtime_smoke.txt",
+      "log_sha256": "8be53e69e1be90ac2278b368a84c1f06abcea220c3a37f8281377658212873ec",
       "name": "runtime_smoke"
     },
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "-m",
         "pip",
         "check"
       ],
       "exit_code": 0,
-      "log": "artifacts\\p1_pip_check.txt",
+      "log": "artifacts/p1_pip_check.txt",
       "log_sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
       "name": "pip_check"
     },
@@ -68,39 +68,78 @@
         "--check"
       ],
       "exit_code": 0,
-      "log": "artifacts\\p1_diff_check.txt",
-      "log_sha256": "68775a2155ed53a91f5294a8f72159ec7f2da68fef54c283fe79dc2ccf1990bd",
+      "log": "artifacts/p1_diff_check.txt",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "name": "diff_check"
     }
   ],
   "forbidden_source_tokens": [],
-  "generated_at_utc": "2026-07-16T04:57:39.276553Z",
+  "generated_at_utc": "2026-07-18T07:43:09.002461Z",
   "passed": true,
   "phase": "P1",
-  "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
+  "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
   "schema_version": "1.0.0",
   "source_manifest": {
     "policies/mandatory-rules.v1.json": "aa04ed551e8a01d06526394887ff1a6b7782c55fdee786a8829a8ef08ce846ca",
+    "scripts/build_p4_evidence_index.py": "ba033322d6823c6fdc1b2738f387b8a1f905a2bde566bf63dbc4360645e36c23",
+    "scripts/build_p4_images.py": "14b730bfd73fc4c8e5c9a73212b6e1c498db8f57a0d55fa85fab6f3df6fe9b25",
+    "scripts/generate_p4_attestation_key.py": "97f47819dc84616726e03feb2e08959a793dd4d74ea79e6f76ca7e8d98938890",
     "scripts/p1_acceptance.py": "b2a828f46b083308c3aae68b74d234aa82b768b9900fc41b40b551c8ab15126d",
-    "scripts/p1_runtime_smoke.py": "f93d7e0a2684e288fa51574ebf88476d2af9fcc5150c02ac85d6b98e26494654",
+    "scripts/p1_runtime_smoke.py": "7c57411e66a426d03c13bb76d16d22ec6baa3f9dd2b88d18c45668eb108c4394",
+    "scripts/p2_forge_acceptance.py": "4c83a187509a8e62477bed861dc16523a0400476260e8bf44f2ddae8b0dfd823",
+    "scripts/p3_closure_scan.py": "c922ace032554abdc4a87a66f6f1b9e37593b8db4499ad9e1d28eae9464b068b",
+    "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
+    "scripts/p4_hostile_acceptance.py": "58a953a25319facbc044f69a5556a43c1777618425216591a299b88804bfe7bf",
+    "scripts/p4_hostile_acceptance_exact.py": "a4a7e202987b55beae91179a7f9f655d273199653106d9cf61e31fad09a6d505",
+    "scripts/p4_hostile_acceptance_hardened.py": "ad7cf439bdfc7a00efb4c23ea4c120b9807449bf773c6d3abfa0845e78b48fd4",
+    "scripts/p4_supply_chain_acceptance.py": "7395e6e7acf8e69bf6ddcee53e75f0a4f01da8907e043c8c37c996da7a07b3b1",
     "scripts/qualify_family_adapters.py": "feb307b9c30a262994a5c9a089366675ae3fb8167a5f37329a33101d74b6f05e",
+    "scripts/seal_p4_images.py": "a039910c825fa3c10748b262d744c41a53b8bd91db3eb91ea2d3c61ec1b1340c",
     "scripts/verify_p1.py": "af19e85e7a980fb644462da54f2c338104176c4dfa9c7a53fef5b64d6db415e5",
+    "scripts/verify_p2.py": "8b06ff2463adb6c868124b78df60cdafce622aa3d0df8cf3bbb207cda61ee737",
+    "scripts/verify_p3.py": "85add863a56796a9f73984708e418b89b297801310af48c73935999319feb1d4",
+    "scripts/verify_p4.py": "07470ba781f05b621f5670e405ed5f1f8ed60cc824e0a5917d457383d9fde80f",
+    "scripts/verify_p4_hardening.py": "dc1c9b13b4ec7a58d9a710e21362166319c243460414c67bac2cee2f802ccdcd",
     "src/echo_certification_forge/__init__.py": "7d2516bb6d9f2918c6cc0d1bd621dbb5c8207fc6911fc079a070ab55da62eb31",
     "src/echo_certification_forge/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+    "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
     "src/echo_certification_forge/app.py": "3ce3b45745e5b5d831352da46e97b71e5d9f1e34edfebbd07316ce510911e549",
     "src/echo_certification_forge/canonical.py": "e66eb6a6a9548cefa9f713a198f644cb9d48c82e081bf467e49f097fef1f1e88",
     "src/echo_certification_forge/cli.py": "59e571e8cca7b86999d2ec9bd36e4606a741a5059f87b0b63f8e9b05f1c57bd4",
+    "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
     "src/echo_certification_forge/deploy_gate.py": "a5a563be5717195431f112d5ceff95c3fc4c1dd8304b98ec23b097fcb3eed1ad",
     "src/echo_certification_forge/evidence.py": "7719ee8d7809c67e144dc30bed895c5bd09d791c5bb9665b5d3619f93aa54a17",
+    "src/echo_certification_forge/hostile.py": "573e25e58e470aa15bd32971fdf8888405b2f9fafa6275f81badaeeb9e37c5e2",
     "src/echo_certification_forge/models.py": "6feb76c47967dfc562a55e57b12f184feee4f66abc4c246c10aec6d0023d5799",
+    "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
+    "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
+    "src/echo_certification_forge/p4_manifest.py": "334d508043fe34fd93f6d355a89b9e087584de7b09632c9480e9b5be574a334b",
     "src/echo_certification_forge/policy.py": "eda878bea2e2231f03c4ff4d7c2fc2438168a8365c41da66d7a2e3c5c1ae11ab",
-    "src/echo_certification_forge/service.py": "9ce024436a1611894a6ee67aac35e2221b43741ce8b53288bc97470086c4cad9",
+    "src/echo_certification_forge/runner.py": "4a28c047dd90b90859de540fc5ec021ebc71a975416b7d5caebcc1e24fdc1a14",
+    "src/echo_certification_forge/service.py": "6e478d5a40496b70b02a0c912136570a9c08afc942184731011fcb295152f7d3",
+    "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
     "src/echo_certification_forge/signing.py": "548d3befc5a91f4f2f952a9a2b93fc4611bf67db265b3e332c17c5b6440c5b7e",
+    "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9",
     "src/echo_certification_forge/state_machine.py": "daafc3e09a9852ea8417f1ffb6450252f54680ad22428d118332165d99188f3f",
+    "src/echo_certification_forge/supply_chain.py": "a4d3ceb4a5cefc40233b7983d6ca6120deb647ad895281e4686f26069f7002c5",
     "src/echo_certification_forge/verdict.py": "ba047e47800c39cd40e24fa03d813f685f5db56f6f9b019ce1d12bbab9513eb1",
+    "src/echo_certification_forge/verifier_cli.py": "82ef0e298aed89f7f5bd1322b5f3ecc320bb4449c6b75278e2532d31363db4a3",
     "tests/conftest.py": "ffeb687d8029dfa7fc38077b4768edbcb6386c6c8af154acb4ad6faf46243b78",
     "tests/test_additional_contracts.py": "a722ac594fad0af885d1ee229177dfcba645cecb72835842e21af454c7cff190",
+    "tests/test_build_p4_evidence_index.py": "28c5743d6b53951d5b0c3fb2ba7bd6afd0550ccd789a85cae5a5b7d2aeefa5e2",
     "tests/test_evidence_and_verdict.py": "f3203eb2ce955e388d692b09f7fd49eb43d809fdb01bfbe3e4474a5c2ee6260b",
-    "tests/test_state_and_api.py": "1a20d5c3f52cdd33f7c994b45f01f852419c6f4018fb16a4aca3e314fff04f49"
+    "tests/test_hostile.py": "a1dc57740f11a38ddd499dd89b278d30766b8e941a19634228362d4950663edf",
+    "tests/test_p3_custody_anchor_signing.py": "a054c07120e85220c9726577297a138e371a382d5097d102f6ec7185bf400f29",
+    "tests/test_p3_runtime.py": "1fd1acf77bfeffbe01384a0e32dd0de43bf447f52b4bd8d339fee32ec4e85d41",
+    "tests/test_p3_service.py": "7ee677c41b7a1aef5fc771a8c192f4024765f06106542ee3a2afc9a44ccccc8e",
+    "tests/test_p3_signer_image_identity.py": "447f98ab5eb0f454ee782e16aefce0c620350546bc9b96f8d6a2026be996ddcb",
+    "tests/test_p4_harness_diagnostics.py": "5ff3ce0f824375200545e5a9b480da5fd413cc62f4057d8e7f8f0f9c1cbcbe7f",
+    "tests/test_p4_hostile_acceptance_exact.py": "ede4c8188717f434f15ae623c072063585a16bc059caf5b5653a9eb10c061a2c",
+    "tests/test_p4_hostile_acceptance_hardened.py": "d385a1f8de71f874663a971dfd5898b7c30f8689e12c859456beeb0590de1d1c",
+    "tests/test_p4_manifest.py": "6ce78a2507400d68d1d7fc119c55540057c4b44f439e10f9fa6bd03a81bdf54b",
+    "tests/test_runner.py": "2865b2fd20e0826ea5deee8b27af255ce72930f3c0287fb9acd35de48d2551e3",
+    "tests/test_state_and_api.py": "ffee5f31405d5b90482f47c03818757296bf841e7c99c787873320390fccf43c",
+    "tests/test_supply_chain.py": "27c72df688e4098ce6bf1ce109f3e9b63e8002868e2d830d5d9c4d590d39a41a",
+    "tests/test_verify_p4_hardening.py": "4ce961fd416d4373bf60fe1f610c0efd6326c0b55585cd0b0b79909bdddd67d1"
   }
 }

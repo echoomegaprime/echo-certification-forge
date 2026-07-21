@@ -1,25 +1,25 @@
 {
   "acceptance": {
-    "bytes": 27332,
+    "bytes": 27322,
     "failed_checks": [],
     "passed": true,
     "path": "artifacts/p3_forge_acceptance.json",
-    "sha256": "189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27"
+    "sha256": "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6"
   },
   "closure_checks": [
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "scripts/verify_p2.py"
       ],
       "exit_code": 0,
       "log": "artifacts/p3_p2_regression.txt",
-      "log_sha256": "b85edbde3f48ab930991c523f963b01039cb14a2868b80cf12119c2136470d35",
+      "log_sha256": "b19a696662df808b7b8f551895f25f037e68dd57dd08296f15cf0aa276854b1b",
       "name": "p2_regression"
     },
     {
       "command": [
-        "C:\\ECHO_OMEGA_PRIME\\echo-certification-forge\\.venv\\Scripts\\python.exe",
+        "/usr/bin/python3",
         "-m",
         "pytest",
         "-q",
@@ -27,7 +27,7 @@
       ],
       "exit_code": 0,
       "log": "artifacts/p3_actor_signing_denials.txt",
-      "log_sha256": "c566322516361247c10bc70d844b3bad0bcc5916d8b023c37f98fc55683e82e5",
+      "log_sha256": "5f36ee33cc54abc75ccf4c7ae408cb51c47e9a446dd32290b6516f60e6576263",
       "name": "actor_signing_denials"
     }
   ],
@@ -35,42 +35,42 @@
   "evidence_hashes": {
     "artifacts/p2_forge_acceptance.json": "d563aefcb121f91f5b6beda0f82ce80d776dd7bc6f2caaf6253226370883ef68",
     "artifacts/p2_forge_acceptance.summary.json": "3d17fee069b44b30794ee1f5ef871934406a785307e2b64724f8a59956b81093",
-    "artifacts/p3_forge_acceptance.json": "189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27",
-    "artifacts/p3_forge_acceptance.summary.json": "fbff6c9e1d4c48203e880305750b6c3cc5ad2dfe274c6f5df3bc6a5c5568c193",
-    "artifacts/p3_offline_bundle/anchor-log.jsonl": "b269d4bfd5de8df1c22e7fe67614adfed026371c1d7c35ac5e170baf64d08df0",
-    "artifacts/p3_offline_bundle/anchor-public.pem": "eb90d8abec9aad5dd8c05fa1a85ce23d6dc47a04e479077f213a0376a58affe1",
-    "artifacts/p3_offline_bundle/anchor-receipt.json": "8760ce3ced86c435ca7aa69892e03be8e02e8eac1ea7545eb7fd57ca0fd4df40",
-    "artifacts/p3_offline_bundle/manifest.json": "6d76999b9f0c0b840cf678610bf02ad76bf70d5ed603832b4d0b89098576c9d2",
-    "artifacts/p3_offline_bundle/public-keys.json": "ff42ffb4d9d2a5ead7baa727988b2f9dd4be567bfccdbc4883bd993c056b4199",
-    "artifacts/p3_offline_bundle/signing-request.json": "03e2445e1bf25aa23e24940d67688f4b91b27eace6bffe74b6c194fd09b7a859",
-    "artifacts/p3_offline_bundle/verdict.json": "61b882dbcebe7f206193d6789dd4f6a41e56de0002ec925b997392ce3c3d3385",
-    "contracts/certforge-capabilities.v1.json": "252f43ad416234e300cc6a23e6d9cb360c497da127cd937d32024e06a4632f94"
+    "artifacts/p3_forge_acceptance.json": "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6",
+    "artifacts/p3_forge_acceptance.summary.json": "45086ec043c4089942901348c246e7918fa2e4c6fd0dc14648b6554f24902d95",
+    "artifacts/p3_offline_bundle/anchor-log.jsonl": "f17a65ab14822d570d11feb7d81b136db493e6f507ca570778a50e56d5d6a7a1",
+    "artifacts/p3_offline_bundle/anchor-public.pem": "d4f908471d6d04de09f1c5204ec16d3773875c2e08c1d50bf8159f53689aaf3b",
+    "artifacts/p3_offline_bundle/anchor-receipt.json": "48435cc80d7a9695a6544840e4eef2588c195940945c4d7046f10062b2bd718b",
+    "artifacts/p3_offline_bundle/manifest.json": "029777effa24c26026204ecfb7ddd3b12f9f34c993d42d1285d137cf2cefdcdf",
+    "artifacts/p3_offline_bundle/public-keys.json": "69b1d1f6aaf821d77721367fa3b2637f4021f2a6c351824a82fcd06588cb90aa",
+    "artifacts/p3_offline_bundle/signing-request.json": "436f50df1982e144c3f122295957250c2f1b7b787357ef18a5ef1a21c1d41b51",
+    "artifacts/p3_offline_bundle/verdict.json": "d3415579b69b15354bf73f4dbf32dfd02fab268c11634227e2aef004532b6879",
+    "contracts/certforge-capabilities.v1.json": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c"
   },
   "offline_bundle": {
     "files": {
       "anchor-log.jsonl": {
         "bytes": 448,
-        "sha256": "b269d4bfd5de8df1c22e7fe67614adfed026371c1d7c35ac5e170baf64d08df0"
+        "sha256": "f17a65ab14822d570d11feb7d81b136db493e6f507ca570778a50e56d5d6a7a1"
       },
       "anchor-public.pem": {
         "bytes": 113,
-        "sha256": "eb90d8abec9aad5dd8c05fa1a85ce23d6dc47a04e479077f213a0376a58affe1"
+        "sha256": "d4f908471d6d04de09f1c5204ec16d3773875c2e08c1d50bf8159f53689aaf3b"
       },
       "anchor-receipt.json": {
         "bytes": 1066,
-        "sha256": "8760ce3ced86c435ca7aa69892e03be8e02e8eac1ea7545eb7fd57ca0fd4df40"
+        "sha256": "48435cc80d7a9695a6544840e4eef2588c195940945c4d7046f10062b2bd718b"
       },
       "public-keys.json": {
         "bytes": 572,
-        "sha256": "ff42ffb4d9d2a5ead7baa727988b2f9dd4be567bfccdbc4883bd993c056b4199"
+        "sha256": "69b1d1f6aaf821d77721367fa3b2637f4021f2a6c351824a82fcd06588cb90aa"
       },
       "signing-request.json": {
         "bytes": 3403,
-        "sha256": "03e2445e1bf25aa23e24940d67688f4b91b27eace6bffe74b6c194fd09b7a859"
+        "sha256": "436f50df1982e144c3f122295957250c2f1b7b787357ef18a5ef1a21c1d41b51"
       },
       "verdict.json": {
         "bytes": 1546,
-        "sha256": "61b882dbcebe7f206193d6789dd4f6a41e56de0002ec925b997392ce3c3d3385"
+        "sha256": "d3415579b69b15354bf73f4dbf32dfd02fab268c11634227e2aef004532b6879"
       }
     },
     "verification": {
@@ -78,7 +78,7 @@
       "valid": true
     }
   },
-  "p2_regression_report_sha256": "268e3343ba13376764d685b22223085241263983d018e6a3dadf55b0ef2e6c00",
+  "p2_regression_report_sha256": "d6cbeba061a181d8eb1c7bdd53ae74c9ba196ba5ac8fb824a82a45b44e4cc465",
   "passed": true,
   "phase": "P3",
   "release_verdict": "NOT_READY",
@@ -98,38 +98,38 @@
     ],
     "path": "contracts/certforge-capabilities.v1.json",
     "registration_state": "NOT_REGISTERED",
-    "sha256": "252f43ad416234e300cc6a23e6d9cb360c497da127cd937d32024e06a4632f94"
+    "sha256": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c"
   },
   "source_identity": {
     "acceptance_source": {
-      "scripts/p3_forge_acceptance.py": "07d819198aa8b9c4e7fbd71121598b5e5cd5db6e9e4b1cc21dcda002c8e3623f",
+      "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
       "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
       "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
-      "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
+      "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
       "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
-      "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
+      "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
       "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9"
     },
     "accepted_closure_delta": {
-      "acceptance_sha256": "07d819198aa8b9c4e7fbd71121598b5e5cd5db6e9e4b1cc21dcda002c8e3623f",
-      "closure_sha256": "59fd14eabbc22e89d3d106ecbd4f074358a841e3819376c590ccb97d39e7e5d3",
+      "acceptance_sha256": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
+      "closure_sha256": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
       "path": "scripts/p3_forge_acceptance.py",
-      "reason": "PEM marker construction split to avoid a secret-scanner self-match; runtime marker bytes unchanged"
+      "reason": "P3 re-certified 2026-07-18 after reviewed signer image-identity fix (307667a, 5ec68c8); acceptance re-run under corrected source so acceptance and closure identities match"
     },
     "closure_source": {
-      "contracts/certforge-capabilities.v1.json": "252f43ad416234e300cc6a23e6d9cb360c497da127cd937d32024e06a4632f94",
-      "scripts/p3_forge_acceptance.py": "59fd14eabbc22e89d3d106ecbd4f074358a841e3819376c590ccb97d39e7e5d3",
+      "contracts/certforge-capabilities.v1.json": "ba723dbe3c4bc0eb1926278314e41f932b65f0cf91e8c0fbefe4d8000d36f26c",
+      "scripts/p3_forge_acceptance.py": "dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94",
       "src/echo_certification_forge/anchor.py": "73f800e92e003a0ed09534075f49867f983d4d7ea8d3c2afbb3427219fa25353",
       "src/echo_certification_forge/custody.py": "d2bc817cd1c452937988e0103ce9d79b04681a6a52adfafc837f7cfec5c91fbd",
-      "src/echo_certification_forge/p3_runtime.py": "f235387b53f7cd97cb1534c5c51d9779aaaa860498f1d2a47841e9be7c405a66",
+      "src/echo_certification_forge/p3_runtime.py": "3ae4a5984d3b578d537e1357f9fc6d2fd1e7eead871cddbd2b90f886022c6d90",
       "src/echo_certification_forge/p3_service.py": "4995b4840391026955ba284831b5b3a7f3ad43195329256ec5ee195ccc1f4401",
-      "src/echo_certification_forge/signer_cli.py": "e79117fc8c5b104c00e6aa94f932caa67544499e6d717f5620cce1b22efc2e85",
+      "src/echo_certification_forge/signer_cli.py": "be26768f59a8a5b163a2a1198f198df29107fca4790e81b603a401fe01572654",
       "src/echo_certification_forge/signing_service.py": "f5701f02d7ae965e8096708b6048f40f3e72f313a26e54c00002e9b9742320e9"
     }
   },
   "summary": {
-    "bytes": 5554,
+    "bytes": 5433,
     "path": "artifacts/p3_forge_acceptance.summary.json",
-    "sha256": "fbff6c9e1d4c48203e880305750b6c3cc5ad2dfe274c6f5df3bc6a5c5568c193"
+    "sha256": "45086ec043c4089942901348c246e7918fa2e4c6fd0dc14648b6554f24902d95"
   }
 }

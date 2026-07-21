@@ -1,41 +1,41 @@
 {
-  "schema_version": "1.0.0",
-  "phase": "P3",
   "acceptance": {
-    "path": "artifacts/p3_forge_acceptance.json",
-    "bytes": 27332,
-    "sha256": "189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27",
+    "bytes": 27322,
     "passed": true,
+    "path": "artifacts/p3_forge_acceptance.json",
+    "release_verdict": "NOT_READY",
     "run_outcome": "COMPLETE",
-    "release_verdict": "NOT_READY"
+    "sha256": "e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6"
+  },
+  "anchor": {
+    "chain_tip": "0d8e27ea82e60311ef96672954c2f2bb3d0e758893024fcc6fd90405df7e8b88",
+    "offline_verification": "verified",
+    "provider_id": "anchor.p3.acceptance",
+    "public_key_id": "ed25519:1deacb149700b3240831959d9ecf1ea6",
+    "receipt_id": "anchor.3d49d3001351aba6eb62c0a397e40a83",
+    "receipt_sha256": "860b43dfef222302a186a6c1c0935c8db62dffc712d42ce70173ac1d0e5cffe4",
+    "statement_sha256": "ad78a7f1d50f5a95fb732e5c3cb48aeba3635d8da86884646b77177aa25d1bb5"
   },
   "custody": {
     "artifact_sha256": "61d4fd7ed282d9c0cb3f358a35c521c3304149b70e56fea7260281121c996a74",
-    "leaf_hash": "8d62ac0cb34e022d4cad0073aa02c89d2fe2707c0680774a2214604673a8b88f",
-    "manifest_sha256": "9abe56995126895fa28adf5fcb9d7f72660e50bdba1ee41d3fa3d84272205f93",
-    "audit_chain_tip": "75459f4cadc1b49a28f0d9392b7a6cc7d947dc8eec67f6ae5ecbf8cd12177020"
+    "audit_chain_tip": "3637f34a32c5f05adb32da6dae8b26cdd28650a487ab2360c204425ae2c7eccb",
+    "leaf_hash": "e15e6fbf084d5923859d203a2f97b6d5e9a8f968ec38bb19c3d6b48cc59ad44f",
+    "manifest_sha256": "89bca0d2c87d848bde0aee52ad81f136aa43c55ca08806bc944620e09ac58abc"
   },
-  "anchor": {
-    "provider_id": "anchor.p3.acceptance",
-    "public_key_id": "ed25519:cdad8d031374653b7c1489feaf39c4ef",
-    "receipt_id": "anchor.095f5d407cb768340fd52b065cba56e6",
-    "receipt_sha256": "f3bdb7a16993924cc7a1145b023d9f5ac69d2c5aef1a62b1b604b1f897dcd3ac",
-    "statement_sha256": "eb96857e35e64e68c949fda668fdee8a5d68cadf3b1b901f97fc40b19301ef72",
-    "chain_tip": "4b59c9b24ec0557da6e865c57ad16fe7662e0a5e9deff45fb34294983c3aa82a",
-    "offline_verification": "verified"
-  },
+  "phase": "P3",
   "public_bundle": {
     "path": "artifacts/p3_offline_bundle/manifest.json",
     "private_material_included": false
   },
+  "schema_version": "1.0.0",
   "signer": {
+    "authorization_public_key_id": "ed25519:3c88f9b6b9b77a1e7ac465df685522f3",
     "image": "ghcr.io/home-assistant/home-assistant@sha256:f73512ba4fe06bb4d57636fe3578d0820cdec46f81e8f837ab59e451662ff3cb",
-    "verdict_public_key_id": "ed25519:a574dd0fee97965ad65b6777d3efe137",
-    "authorization_public_key_id": "ed25519:96b682f0c3aee75a5ef97db427062900"
+    "verdict_public_key_id": "ed25519:d4e68fd22fab12c91a146a55a24eaa95"
   },
   "verification": {
-    "script": "scripts/verify_p3.py",
     "report": "artifacts/p3_verification_report.json",
+    "script": "scripts/verify_p3.py",
     "summary": "artifacts/p3_forge_acceptance.summary.json"
   }
 }

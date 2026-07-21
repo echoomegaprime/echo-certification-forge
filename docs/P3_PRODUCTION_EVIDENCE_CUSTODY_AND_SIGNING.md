@@ -20,14 +20,14 @@ Evidence visibility is explicit: `RAW`, `REDACTED`, `PUBLIC`, or `RESTRICTED`. T
 
 The anchor provider uses storage separate from the custody SQLite database. It writes signed receipts and an append-only JSONL chain, supports idempotent duplicate requests, supersession and invalidation linkage, detects altered receipts and chain state, and recovers a receipt-written/log-interrupted window. Verification requires only public material.
 
-Accepted anchor identity:
+Accepted anchor identity (re-certified 2026-07-18 after signer image-identity fix):
 
 - Provider: `anchor.p3.acceptance`
-- Public-key ID: `ed25519:cdad8d031374653b7c1489feaf39c4ef`
-- Receipt ID: `anchor.095f5d407cb768340fd52b065cba56e6`
-- Receipt SHA-256: `f3bdb7a16993924cc7a1145b023d9f5ac69d2c5aef1a62b1b604b1f897dcd3ac`
-- Statement SHA-256: `eb96857e35e64e68c949fda668fdee8a5d68cadf3b1b901f97fc40b19301ef72`
-- Anchor chain tip: `4b59c9b24ec0557da6e865c57ad16fe7662e0a5e9deff45fb34294983c3aa82a`
+- Public-key ID: `ed25519:1deacb149700b3240831959d9ecf1ea6`
+- Receipt ID: `anchor.3d49d3001351aba6eb62c0a397e40a83`
+- Receipt SHA-256: `860b43dfef222302a186a6c1c0935c8db62dffc712d42ce70173ac1d0e5cffe4`
+- Statement SHA-256: `ad78a7f1d50f5a95fb732e5c3cb48aeba3635d8da86884646b77177aa25d1bb5`
+- Anchor chain tip: `0d8e27ea82e60311ef96672954c2f2bb3d0e758893024fcc6fd90405df7e8b88`
 
 ## Isolated verdict signing
 
@@ -41,22 +41,23 @@ It ran non-root with read-only root, network `none`, all capabilities dropped, `
 
 Public identities:
 
-- Verdict key: `ed25519:a574dd0fee97965ad65b6777d3efe137`
-- Signing-authorization key: `ed25519:96b682f0c3aee75a5ef97db427062900`
-- Anchor key: `ed25519:cdad8d031374653b7c1489feaf39c4ef`
+- Verdict key: `ed25519:d4e68fd22fab12c91a146a55a24eaa95`
+- Signing-authorization key: `ed25519:3c88f9b6b9b77a1e7ac465df685522f3`
+- Anchor key: `ed25519:1deacb149700b3240831959d9ecf1ea6`
 
 The domains are distinct. Historical verification succeeds through planned rotation overlap; compromise invalidates the verdict. No private key is persisted in the signing database, evidence, public bundle, service logs, runner mounts, or repository.
 
 ## Real FORGE acceptance
 
-Authoritative imported artifact:
+Authoritative imported artifact (re-run 2026-07-18 under corrected `scripts/p3_forge_acceptance.py`):
 
 - Path: `artifacts/p3_forge_acceptance.json`
-- Bytes: `27332`
-- SHA-256: `189cea8a577c7d60fbc57f3b30e49335ff619d182d76c50a252ef9aebdc53d27`
+- Bytes: `27322`
+- SHA-256: `e805e6b9913a8a3712fee4710aec5d6b180b149ed2e729723bb178e7327a1ee6`
+- Source identity for acceptance script: `dc733b6af0b8b7589c3e2a9c2d1d1e7e8e819bab434dae9f32e5edd2eddccc94`
 - Checks: `34/34` passed
 - Owned signer containers: `6/6` removed
-- Unrelated containers: `21` before and `21` after; exact IDs preserved
+- Unrelated containers: `22` before and `22` after; exact IDs preserved
 - Custody and anchor services: stopped cleanly
 - Ephemeral anchor and verdict private-key files: removed
 

@@ -71,8 +71,10 @@ def main() -> int:
                 health.get("status") == "ok"
                 and health.get("control_plane_executes_customer_code") is False
                 and health.get("private_signing_key_loaded") is False
-                and status.get("external_evidence_anchor") == "PENDING"
-                and status.get("runner_isolation") == "PENDING"
+                and status.get("release_verdict") == "NOT_READY"
+                and status.get("external_evidence_anchor")
+                == "P3_INDEPENDENT_PROVIDER_VERIFIED"
+                and status.get("runner_isolation") == "P2_FOUNDATION_VERIFIED"
             )
             report = {
                 "schema_version": "1.0.0",

@@ -1,0 +1,250 @@
+{
+  "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+  "passed": true,
+  "record_count": 12,
+  "records": [
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/runner/a.log",
+      "completed_at_utc": "2026-07-18T06:07:52.784022Z",
+      "created": "2026-07-18T01:07:50.823846579-05:00",
+      "image_id": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.runner.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "runner",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-runner:p4-8ccfa65-a",
+      "repo_digests": [
+        "echo-certforge-runner@sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65"
+      ],
+      "role": "runner",
+      "started_at_utc": "2026-07-18T06:06:12.577911Z",
+      "variant": "a"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/runner/b.log",
+      "completed_at_utc": "2026-07-18T06:09:32.925430Z",
+      "created": "2026-07-18T01:09:30.637976881-05:00",
+      "image_id": "sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.runner.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "runner",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-runner:p4-8ccfa65-b",
+      "repo_digests": [
+        "echo-certforge-runner@sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c"
+      ],
+      "role": "runner",
+      "started_at_utc": "2026-07-18T06:07:52.784406Z",
+      "variant": "b"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/custody/a.log",
+      "completed_at_utc": "2026-07-18T06:10:11.425412Z",
+      "created": "2026-07-18T01:09:59.643943107-05:00",
+      "image_id": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.custody.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "custody",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-custody:p4-8ccfa65-a",
+      "repo_digests": [
+        "echo-certforge-custody@sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921"
+      ],
+      "role": "custody",
+      "started_at_utc": "2026-07-18T06:09:32.925569Z",
+      "variant": "a"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/custody/b.log",
+      "completed_at_utc": "2026-07-18T06:10:23.920153Z",
+      "created": "2026-07-18T01:10:21.607201638-05:00",
+      "image_id": "sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.custody.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "custody",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-custody:p4-8ccfa65-b",
+      "repo_digests": [
+        "echo-certforge-custody@sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889"
+      ],
+      "role": "custody",
+      "started_at_utc": "2026-07-18T06:10:11.425481Z",
+      "variant": "b"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/anchor/a.log",
+      "completed_at_utc": "2026-07-18T06:10:31.558863Z",
+      "created": "2026-07-18T01:10:29.62876217-05:00",
+      "image_id": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.anchor.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "anchor",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-anchor:p4-8ccfa65-a",
+      "repo_digests": [
+        "echo-certforge-anchor@sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463"
+      ],
+      "role": "anchor",
+      "started_at_utc": "2026-07-18T06:10:23.920601Z",
+      "variant": "a"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/anchor/b.log",
+      "completed_at_utc": "2026-07-18T06:10:45.559842Z",
+      "created": "2026-07-18T01:10:39.515914849-05:00",
+      "image_id": "sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.anchor.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "anchor",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-anchor:p4-8ccfa65-b",
+      "repo_digests": [
+        "echo-certforge-anchor@sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03"
+      ],
+      "role": "anchor",
+      "started_at_utc": "2026-07-18T06:10:31.558931Z",
+      "variant": "b"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/signer/a.log",
+      "completed_at_utc": "2026-07-18T06:10:55.601203Z",
+      "created": "2026-07-18T01:10:53.281946605-05:00",
+      "image_id": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.signer.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "signer",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-signer:p4-8ccfa65-a",
+      "repo_digests": [
+        "echo-certforge-signer@sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b"
+      ],
+      "role": "signer",
+      "started_at_utc": "2026-07-18T06:10:45.559925Z",
+      "variant": "a"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/signer/b.log",
+      "completed_at_utc": "2026-07-18T06:11:07.326652Z",
+      "created": "2026-07-18T01:11:01.669968605-05:00",
+      "image_id": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.signer.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "signer",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-signer:p4-8ccfa65-b",
+      "repo_digests": [
+        "echo-certforge-signer@sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1"
+      ],
+      "role": "signer",
+      "started_at_utc": "2026-07-18T06:10:55.601394Z",
+      "variant": "b"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/worker/a.log",
+      "completed_at_utc": "2026-07-18T06:11:25.888099Z",
+      "created": "2026-07-18T01:11:19.944337535-05:00",
+      "image_id": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.worker.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "worker",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-worker:p4-8ccfa65-a",
+      "repo_digests": [
+        "echo-certforge-worker@sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1"
+      ],
+      "role": "worker",
+      "started_at_utc": "2026-07-18T06:11:07.326738Z",
+      "variant": "a"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/worker/b.log",
+      "completed_at_utc": "2026-07-18T06:12:01.507935Z",
+      "created": "2026-07-18T01:11:45.563839255-05:00",
+      "image_id": "sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.worker.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "worker",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-worker:p4-8ccfa65-b",
+      "repo_digests": [
+        "echo-certforge-worker@sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45"
+      ],
+      "role": "worker",
+      "started_at_utc": "2026-07-18T06:11:25.888164Z",
+      "variant": "b"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/verifier/a.log",
+      "completed_at_utc": "2026-07-18T06:13:02.795891Z",
+      "created": "2026-07-18T01:12:55.07358554-05:00",
+      "image_id": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.verifier.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "verifier",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-verifier:p4-8ccfa65-a",
+      "repo_digests": [
+        "echo-certforge-verifier@sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1"
+      ],
+      "role": "verifier",
+      "started_at_utc": "2026-07-18T06:12:01.508038Z",
+      "variant": "a"
+    },
+    {
+      "build_log": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-logs/verifier/b.log",
+      "completed_at_utc": "2026-07-18T06:15:38.100356Z",
+      "created": "2026-07-18T01:13:21.38825484-05:00",
+      "image_id": "sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd",
+      "labels": {
+        "echo.certforge.admission.policy": "p4.verifier.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "verifier",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+      },
+      "reference": "echo-certforge-verifier:p4-8ccfa65-b",
+      "repo_digests": [
+        "echo-certforge-verifier@sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd"
+      ],
+      "role": "verifier",
+      "started_at_utc": "2026-07-18T06:13:02.796168Z",
+      "variant": "b"
+    }
+  ],
+  "schema_version": "1.0.0",
+  "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+  "tag_prefix": "p4-8ccfa65"
+}

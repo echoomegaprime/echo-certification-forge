@@ -1,0 +1,7 @@
+=== build_p4_images start 2026-07-18T06:06:12Z ===
+{
+  "output": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/build-all.json",
+  "record_count": 12,
+  "passed": true
+}
+=== build_p4_images end 2026-07-18T06:15:38Z exit=0 ===

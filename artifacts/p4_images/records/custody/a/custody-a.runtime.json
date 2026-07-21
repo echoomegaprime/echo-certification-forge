@@ -1,0 +1,36 @@
+{
+  "audit_returncode": 0,
+  "audit_stderr": "",
+  "command": [
+    "uvicorn",
+    "echo_certification_forge.p3_runtime:app",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8080",
+    "--no-access-log"
+  ],
+  "container_returncode": 0,
+  "container_stderr": "",
+  "development_packages": [],
+  "entrypoint": [],
+  "forbidden_environment_names": [],
+  "gid": 65532,
+  "health_command": [
+    "CMD",
+    "python",
+    "-c",
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+  ],
+  "inspection_errors": [],
+  "network_client_packages": [],
+  "network_mode": "none",
+  "passed": true,
+  "privileged_entrypoint": false,
+  "read_only_root_compatible": true,
+  "reference": "echo-certforge-custody:p4-8ccfa65-a",
+  "root_audit_read_only": true,
+  "shell_history": [],
+  "uid": 65532,
+  "unexpected_package_cache": []
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1.0",
+  "policy_id": "p4.runner.production.v1",
+  "required_role": "runner",
+  "expected_image_digest": "sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+  "approved_base_digests": [
+    "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+  ],
+  "approved_source_commits": [
+    "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+  ],
+  "approved_dockerfile_sha256": "e28b1c9bc05ef8f2b8d2f95e769162a06a8feafc2e9e3396af7523daf939de25",
+  "approved_lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+  "trusted_attestation_keys": {
+    "ed25519:d1a2b83569e5a4d3d33025410088a5fe": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4dwMCuPuVi7BX5oorE1YN3Ie05cL2sFMgJFimDPQnhU=\n-----END PUBLIC KEY-----\n"
+  },
+  "revoked_image_digests": [],
+  "compromised_key_ids": []
+}
