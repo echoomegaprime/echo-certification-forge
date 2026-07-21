@@ -103,6 +103,16 @@ class EvidenceStore:
             PRIMARY KEY (tenant_id, idempotency_key)
         );
 
+        CREATE TABLE IF NOT EXISTS evidence_retention (
+            artifact_id TEXT PRIMARY KEY REFERENCES evidence_artifacts(artifact_id),
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            retention_class TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            purged_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS state_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL REFERENCES runs(run_id),
@@ -568,6 +578,58 @@ class EvidenceStore:
                 (run_id, tenant_id),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def set_retention(
+        self, run_id: str, tenant_id: str, artifact_id: str,
+        retention_class: str, expires_at: str,
+    ) -> None:
+        self.get_run(run_id, tenant_id)
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO evidence_retention
+                     (artifact_id, run_id, tenant_id, retention_class, expires_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(artifact_id) DO UPDATE SET
+                     retention_class=excluded.retention_class, expires_at=excluded.expires_at""",
+                (artifact_id, run_id, tenant_id, retention_class, expires_at, now),
+            )
+
+    def purge_expired_evidence(self, now: str) -> list[dict[str, Any]]:
+        """Purge the raw CONTENT of retention-expired artifacts. The append-only metadata rows
+        (and their sha256/chain hashes) and any signed verdict are left intact — so the recorded
+        evidence Merkle root and the signed verdict remain valid historical records; only the raw
+        bytes are removed. Returns the purged artifacts (id + run_id)."""
+        purged: list[dict[str, Any]] = []
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT r.artifact_id, r.run_id, a.relative_path
+                     FROM evidence_retention r
+                     JOIN evidence_artifacts a ON a.artifact_id = r.artifact_id
+                    WHERE r.expires_at <= ? AND r.purged_at IS NULL""",
+                (now,),
+            ).fetchall()
+            for row in rows:
+                target = contained_path(self.evidence_root, row["relative_path"])
+                if target.exists():
+                    target.unlink()
+                connection.execute(
+                    "UPDATE evidence_retention SET purged_at = ? WHERE artifact_id = ?",
+                    (now, row["artifact_id"]),
+                )
+                purged.append({"artifact_id": row["artifact_id"], "run_id": row["run_id"]})
+        return purged
+
+    def artifact_content_exists(self, run_id: str, tenant_id: str, artifact_id: str) -> bool:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT relative_path FROM evidence_artifacts WHERE artifact_id = ? AND run_id = ?",
+                (artifact_id, run_id),
+            ).fetchone()
+        if row is None:
+            return False
+        return contained_path(self.evidence_root, row["relative_path"]).exists()
 
     def verify_evidence(self, run_id: str, tenant_id: str) -> VerificationReport:
         self.get_run(run_id, tenant_id)
