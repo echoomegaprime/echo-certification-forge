@@ -20,9 +20,17 @@
 > `echo.certforge.verdict`=signed (run-signer `ed25519:a07f417e…`) · `echo.certforge.verify`=valid
 > (11 artifacts) · `echo.certforge.deploy_gate` (tier-2 HMAC)=**allowed, `exact_certification_valid`**.
 > The run-signer PUBLIC key is in the API's trust store; the PRIVATE key is worker-only. Commit 8ee64fc.
-> **Remaining:** a gate-triggered self-service run cap (`echo.certforge.run`) for UNTRUSTED targets
-> needs an isolated execution sandbox first (running untrusted journeys on the gate host is unsafe) —
-> deferred by design, not rushed.
+> **SELF-SERVICE RUN CAP SHIPPED (2026-07-21, commit c7b47cc):** `echo.certforge.run` is LIVE + green.
+> The **isolated execution sandbox** (`sandbox.py::DockerSandbox`, SPEC 14.2 Level-2 container) confines
+> the untrusted critical-journey: `--network none`, memory/cpu/pids quotas, `--read-only` + noexec tmpfs,
+> `--user nobody`, `--cap-drop ALL`, `no-new-privileges`, source mounted `:ro`, pinned `@sha256` image.
+> **Real-Docker test on FORGE PASSED** — benign journeys run, network egress is blocked. The cap
+> (additive `certforge_run_router.py`) sovereign-auths, launches the KEY-HOLDING worker detached with
+> `--sandbox` (no shell → no injection); poll via `echo.certforge.status`. Untrusted code runs ONLY in
+> the container; acquire/scan/sign never execute target code. **Live E2E:** `echo.certforge.run` (local
+> target) → worker ran journey in Docker (`journey_isolation: docker`) → COMPLETED PRODUCTION_READY
+> signed → gate `status`/`verdict`/`verify` green + `deploy_gate`=**allowed**. **12 `echo.certforge.*`
+> caps green.** Full suite **228 passed** (+1 docker-gated skip on HAMMER, passes on FORGE).
 >
 > **FABLE ADVERSARIAL REVIEW (2026-07-21, commit f651805) — SHIP-WITH-FIXES, all applied.** No HIGH
 > holes (no tenant bypass, no shell injection, no fail-open authz, bootstrap independence sound). 4 MEDs
