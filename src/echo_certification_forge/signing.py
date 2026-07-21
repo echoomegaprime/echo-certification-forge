@@ -47,10 +47,17 @@ class Ed25519VerdictSigner:
     def sign(self, decision: VerdictDecision) -> SignedVerdictEnvelope:
         if decision.signing_key_id != self.key_id:
             raise ValueError("decision signing_key_id does not match signer")
-        payload = decision.to_dict()
+        return self.sign_payload(decision.to_dict())
+
+    def sign_payload(self, payload: dict) -> SignedVerdictEnvelope:
+        """Sign an arbitrary attestation payload. The payload MUST carry a ``signing_key_id``
+        field bound to this signer's key (so `TrustedPublicKeyRegistry.verify` can enforce the
+        key-id binding). Used by the deterministic verdict path and the bootstrap certifier."""
+        if payload.get("signing_key_id") != self.key_id:
+            raise ValueError("payload signing_key_id does not match signer")
         signature = self._private_key.sign(canonical_json(payload).encode("utf-8"))
         return SignedVerdictEnvelope(
-            payload=payload,
+            payload=dict(payload),
             signature_b64=base64.b64encode(signature).decode("ascii"),
             key_id=self.key_id,
             public_key_pem=self.public_key_pem,

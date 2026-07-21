@@ -1,160 +1,322 @@
 {
-  "schema_version": "1.0.0",
-  "registration_state": "NOT_REGISTERED",
-  "registration_gate": "Register only after mapped endpoint is real, schema-complete, authorized, healthy, and acceptance-tested.",
-  "capabilities": [
-    {
-      "id": "echo.certforge.health",
-      "method": "GET",
-      "path": "/healthz",
-      "input_schema": {"type": "object", "additionalProperties": false},
-      "output_schema": {"type": "object", "required": ["status", "version", "custody", "anchor", "signing"], "additionalProperties": false},
-      "required_scope": "tier:0",
-      "danger_tier": 0,
-      "authentication": "SDK gateway identity",
-      "authorization": "read-only health",
-      "timeout_seconds": 5,
-      "idempotency": "safe read",
-      "error_model": ["dependency_unhealthy", "schema_incomplete", "unknown_identity"],
-      "redaction": "never return secrets, private keys, tenant data, or raw evidence",
-      "audit": "health invocation metadata only",
-      "health_criteria": "custody schema reachable; anchor provider verifiable; signer public-key publication reachable; no private key exposure"
-    },
-    {
-      "id": "echo.certforge.submit",
-      "method": "POST",
-      "path": "/v1/certifications",
-      "input_schema": {"$ref": "schemas/certification-submit.v1.json"},
-      "output_schema": {"$ref": "schemas/certification-run.v1.json"},
-      "required_scope": "certforge.submit",
-      "danger_tier": 1,
-      "authentication": "tenant principal plus signed request",
-      "authorization": "tenant may submit only within entitlement and permitted target class",
-      "timeout_seconds": 30,
-      "idempotency": "required Idempotency-Key bound to exact target/environment/policy digest",
-      "error_model": ["identity_mismatch", "policy_unknown", "tenant_denied", "idempotency_conflict", "runner_unavailable"],
-      "redaction": "target secrets removed before audit and response",
-      "audit": "append immutable submission event with request digest",
-      "health_criteria": "real queue and runner lease creation succeed without local target execution"
-    },
-    {
-      "id": "echo.certforge.status",
-      "method": "GET",
-      "path": "/v1/certifications/{run_id}",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id"], "additionalProperties": false},
-      "output_schema": {"$ref": "schemas/certification-run.v1.json"},
-      "required_scope": "certforge.read",
-      "danger_tier": 0,
-      "authentication": "tenant principal",
-      "authorization": "exact tenant/run ownership",
-      "timeout_seconds": 10,
-      "idempotency": "safe read",
-      "error_model": ["not_found", "cross_tenant_denied", "backend_unavailable"],
-      "redaction": "restricted evidence omitted",
-      "audit": "tenant-scoped read audit",
-      "health_criteria": "authoritative run and lease state agree or response fails closed"
-    },
-    {
-      "id": "echo.certforge.cancel",
-      "method": "POST",
-      "path": "/v1/certifications/{run_id}/cancel",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id", "reason", "idempotency_key"], "additionalProperties": false},
-      "output_schema": {"type": "object", "required": ["run_id", "state", "cancel_requested_at"], "additionalProperties": false},
-      "required_scope": "certforge.cancel",
-      "danger_tier": 1,
-      "authentication": "tenant or authorized operator principal",
-      "authorization": "exact tenant/run ownership and cancellable state",
-      "timeout_seconds": 15,
-      "idempotency": "required and payload-bound",
-      "error_model": ["terminal_run", "lease_expired", "cross_tenant_denied", "idempotency_conflict"],
-      "redaction": "reason length-limited and secret-scanned",
-      "audit": "append cancellation request and resulting transition",
-      "health_criteria": "authenticated runner transport accepts cancellation or operation returns degraded failure"
-    },
-    {
-      "id": "echo.certforge.findings",
-      "method": "GET",
-      "path": "/v1/certifications/{run_id}/findings",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id"], "additionalProperties": false},
-      "output_schema": {"type": "array", "items": {"$ref": "schemas/finding.v1.json"}},
-      "required_scope": "certforge.read",
-      "danger_tier": 0,
-      "authentication": "tenant principal",
-      "authorization": "exact tenant/run ownership",
-      "timeout_seconds": 10,
-      "idempotency": "safe read",
-      "error_model": ["not_found", "cross_tenant_denied", "evidence_unverified"],
-      "redaction": "restricted evidence references represented by opaque ids",
-      "audit": "tenant-scoped read audit",
-      "health_criteria": "findings bind to verified immutable evidence ids"
-    },
-    {
-      "id": "echo.certforge.evidence",
-      "method": "GET",
-      "path": "/v1/certifications/{run_id}/evidence",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id", "visibility"], "additionalProperties": false},
-      "output_schema": {"type": "object", "required": ["artifacts", "merkle_root", "audit_chain_tip"], "additionalProperties": false},
-      "required_scope": "certforge.evidence.read",
-      "danger_tier": 1,
-      "authentication": "tenant or explicitly authorized support principal",
-      "authorization": "visibility and legal-hold policy plus exact tenant ownership",
-      "timeout_seconds": 30,
-      "idempotency": "safe read",
-      "error_model": ["cross_tenant_denied", "restricted_evidence_denied", "integrity_failure", "storage_unavailable"],
-      "redaction": "raw and restricted bytes excluded unless separately authorized",
-      "audit": "every evidence access is append-audited",
-      "health_criteria": "artifact bytes, descriptor digest, leaf hash, Merkle root, and audit chain verify"
-    },
-    {
-      "id": "echo.certforge.verify",
-      "method": "POST",
-      "path": "/v1/certifications/{run_id}/verify",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id"], "additionalProperties": false},
-      "output_schema": {"type": "object", "required": ["evidence_valid", "anchor_valid", "verdict_valid", "reasons"], "additionalProperties": false},
-      "required_scope": "certforge.verify",
-      "danger_tier": 0,
-      "authentication": "tenant or public verification principal for public bundle",
-      "authorization": "public bundle or exact tenant ownership",
-      "timeout_seconds": 30,
-      "idempotency": "deterministic verification",
-      "error_model": ["unknown_key", "anchor_invalid", "evidence_invalid", "verdict_expired", "lifecycle_invalid"],
-      "redaction": "verification material contains public keys only",
-      "audit": "verification outcome and material digests",
-      "health_criteria": "offline and online verification agree on exact bundle"
-    },
-    {
-      "id": "echo.certforge.verdict",
-      "method": "GET",
-      "path": "/v1/certifications/{run_id}/verdict",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id"], "additionalProperties": false},
-      "output_schema": {"$ref": "schemas/signed-verdict.v2.json"},
-      "required_scope": "certforge.read",
-      "danger_tier": 0,
-      "authentication": "tenant principal or public verification principal for public verdict",
-      "authorization": "exact tenant ownership unless public bundle",
-      "timeout_seconds": 10,
-      "idempotency": "safe read",
-      "error_model": ["not_found", "unknown_key", "lifecycle_invalid", "verification_failed"],
-      "redaction": "private keys and restricted evidence excluded",
-      "audit": "verdict read and verification status",
-      "health_criteria": "signed envelope, anchor receipt, public-key lifecycle, and expiration verify"
-    },
-    {
-      "id": "echo.certforge.deploy_gate",
-      "method": "POST",
-      "path": "/v1/release-gates/evaluate",
-      "input_schema": {"type": "object", "required": ["run_id", "tenant_id", "target_identity_digest", "environment_identity_digest", "policy_digest", "evidence_merkle_root"], "additionalProperties": false},
-      "output_schema": {"type": "object", "required": ["allowed", "release_verdict", "reasons"], "additionalProperties": false},
-      "required_scope": "certforge.deploy_gate",
-      "danger_tier": 2,
-      "authentication": "deployment principal with signed request",
-      "authorization": "deployment environment and target digest policy",
-      "timeout_seconds": 20,
-      "idempotency": "deterministic exact-digest evaluation",
-      "error_model": ["digest_mismatch", "anchor_invalid", "signature_invalid", "verdict_expired", "lifecycle_invalid", "not_production_ready"],
-      "redaction": "no private keys or restricted evidence",
-      "audit": "append deployment-gate decision with exact artifact digests",
-      "health_criteria": "real deployment hook consumes the decision and cannot bypass denial"
+ "schema_version": "1.0.0",
+ "registration_state": "REGISTERED",
+ "registration_gate": "Register only after mapped endpoint is real, schema-complete, authorized, healthy, and acceptance-tested.",
+ "capabilities": [
+  {
+   "id": "echo.certforge.health",
+   "method": "GET",
+   "path": "/healthz",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "status",
+     "version",
+     "custody",
+     "anchor",
+     "signing"
+    ],
+    "additionalProperties": false
+   },
+   "required_scope": "tier:0",
+   "danger_tier": 0,
+   "authentication": "SDK gateway identity",
+   "authorization": "read-only health",
+   "timeout_seconds": 5,
+   "idempotency": "safe read",
+   "error_model": [
+    "dependency_unhealthy",
+    "schema_incomplete",
+    "unknown_identity"
+   ],
+   "redaction": "never return secrets, private keys, tenant data, or raw evidence",
+   "audit": "health invocation metadata only",
+   "health_criteria": "custody schema reachable; anchor provider verifiable; signer public-key publication reachable; no private key exposure"
+  },
+  {
+   "id": "echo.certforge.submit",
+   "method": "POST",
+   "path": "/v1/certifications",
+   "input_schema": {
+    "$ref": "schemas/certification-submit.v1.json"
+   },
+   "output_schema": {
+    "$ref": "schemas/certification-run.v1.json"
+   },
+   "required_scope": "certforge.submit",
+   "danger_tier": 1,
+   "authentication": "tenant principal plus signed request",
+   "authorization": "tenant may submit only within entitlement and permitted target class",
+   "timeout_seconds": 30,
+   "idempotency": "required Idempotency-Key bound to exact target/environment/policy digest",
+   "error_model": [
+    "identity_mismatch",
+    "policy_unknown",
+    "tenant_denied",
+    "idempotency_conflict",
+    "runner_unavailable"
+   ],
+   "redaction": "target secrets removed before audit and response",
+   "audit": "append immutable submission event with request digest",
+   "health_criteria": "real queue and runner lease creation succeed without local target execution"
+  },
+  {
+   "id": "echo.certforge.status",
+   "method": "GET",
+   "path": "/v1/certifications/{run_id}",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "$ref": "schemas/certification-run.v1.json"
+   },
+   "required_scope": "certforge.read",
+   "danger_tier": 0,
+   "authentication": "tenant principal",
+   "authorization": "exact tenant/run ownership",
+   "timeout_seconds": 10,
+   "idempotency": "safe read",
+   "error_model": [
+    "not_found",
+    "cross_tenant_denied",
+    "backend_unavailable"
+   ],
+   "redaction": "restricted evidence omitted",
+   "audit": "tenant-scoped read audit",
+   "health_criteria": "authoritative run and lease state agree or response fails closed"
+  },
+  {
+   "id": "echo.certforge.cancel",
+   "method": "POST",
+   "path": "/v1/certifications/{run_id}/cancel",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id",
+     "reason",
+     "idempotency_key"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "state",
+     "cancel_requested_at"
+    ],
+    "additionalProperties": false
+   },
+   "required_scope": "certforge.cancel",
+   "danger_tier": 1,
+   "authentication": "tenant or authorized operator principal",
+   "authorization": "exact tenant/run ownership and cancellable state",
+   "timeout_seconds": 15,
+   "idempotency": "required and payload-bound",
+   "error_model": [
+    "terminal_run",
+    "lease_expired",
+    "cross_tenant_denied",
+    "idempotency_conflict"
+   ],
+   "redaction": "reason length-limited and secret-scanned",
+   "audit": "append cancellation request and resulting transition",
+   "health_criteria": "authenticated runner transport accepts cancellation or operation returns degraded failure"
+  },
+  {
+   "id": "echo.certforge.findings",
+   "method": "GET",
+   "path": "/v1/certifications/{run_id}/findings",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "type": "array",
+    "items": {
+     "$ref": "schemas/finding.v1.json"
     }
-  ]
+   },
+   "required_scope": "certforge.read",
+   "danger_tier": 0,
+   "authentication": "tenant principal",
+   "authorization": "exact tenant/run ownership",
+   "timeout_seconds": 10,
+   "idempotency": "safe read",
+   "error_model": [
+    "not_found",
+    "cross_tenant_denied",
+    "evidence_unverified"
+   ],
+   "redaction": "restricted evidence references represented by opaque ids",
+   "audit": "tenant-scoped read audit",
+   "health_criteria": "findings bind to verified immutable evidence ids"
+  },
+  {
+   "id": "echo.certforge.evidence",
+   "method": "GET",
+   "path": "/v1/certifications/{run_id}/evidence",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id",
+     "visibility"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "artifacts",
+     "merkle_root",
+     "audit_chain_tip"
+    ],
+    "additionalProperties": false
+   },
+   "required_scope": "certforge.evidence.read",
+   "danger_tier": 1,
+   "authentication": "tenant or explicitly authorized support principal",
+   "authorization": "visibility and legal-hold policy plus exact tenant ownership",
+   "timeout_seconds": 30,
+   "idempotency": "safe read",
+   "error_model": [
+    "cross_tenant_denied",
+    "restricted_evidence_denied",
+    "integrity_failure",
+    "storage_unavailable"
+   ],
+   "redaction": "raw and restricted bytes excluded unless separately authorized",
+   "audit": "every evidence access is append-audited",
+   "health_criteria": "artifact bytes, descriptor digest, leaf hash, Merkle root, and audit chain verify"
+  },
+  {
+   "id": "echo.certforge.verify",
+   "method": "POST",
+   "path": "/v1/certifications/{run_id}/verify",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "evidence_valid",
+     "anchor_valid",
+     "verdict_valid",
+     "reasons"
+    ],
+    "additionalProperties": false
+   },
+   "required_scope": "certforge.verify",
+   "danger_tier": 0,
+   "authentication": "tenant or public verification principal for public bundle",
+   "authorization": "public bundle or exact tenant ownership",
+   "timeout_seconds": 30,
+   "idempotency": "deterministic verification",
+   "error_model": [
+    "unknown_key",
+    "anchor_invalid",
+    "evidence_invalid",
+    "verdict_expired",
+    "lifecycle_invalid"
+   ],
+   "redaction": "verification material contains public keys only",
+   "audit": "verification outcome and material digests",
+   "health_criteria": "offline and online verification agree on exact bundle"
+  },
+  {
+   "id": "echo.certforge.verdict",
+   "method": "GET",
+   "path": "/v1/certifications/{run_id}/verdict",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "$ref": "schemas/signed-verdict.v2.json"
+   },
+   "required_scope": "certforge.read",
+   "danger_tier": 0,
+   "authentication": "tenant principal or public verification principal for public verdict",
+   "authorization": "exact tenant ownership unless public bundle",
+   "timeout_seconds": 10,
+   "idempotency": "safe read",
+   "error_model": [
+    "not_found",
+    "unknown_key",
+    "lifecycle_invalid",
+    "verification_failed"
+   ],
+   "redaction": "private keys and restricted evidence excluded",
+   "audit": "verdict read and verification status",
+   "health_criteria": "signed envelope, anchor receipt, public-key lifecycle, and expiration verify"
+  },
+  {
+   "id": "echo.certforge.deploy_gate",
+   "method": "POST",
+   "path": "/v1/release-gates/evaluate",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "run_id",
+     "tenant_id",
+     "target_identity_digest",
+     "environment_identity_digest",
+     "policy_digest",
+     "evidence_merkle_root"
+    ],
+    "additionalProperties": false
+   },
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "allowed",
+     "release_verdict",
+     "reasons"
+    ],
+    "additionalProperties": false
+   },
+   "required_scope": "certforge.deploy_gate",
+   "danger_tier": 2,
+   "authentication": "deployment principal with signed request",
+   "authorization": "deployment environment and target digest policy",
+   "timeout_seconds": 20,
+   "idempotency": "deterministic exact-digest evaluation",
+   "error_model": [
+    "digest_mismatch",
+    "anchor_invalid",
+    "signature_invalid",
+    "verdict_expired",
+    "lifecycle_invalid",
+    "not_production_ready"
+   ],
+   "redaction": "no private keys or restricted evidence",
+   "audit": "append deployment-gate decision with exact artifact digests",
+   "health_criteria": "real deployment hook consumes the decision and cannot bypass denial"
+  }
+ ],
+ "registration_note": "9 caps registered as handler_kind=http proxy to echo-certforge.service :8309, all live-verified through /sdk/invoke and health_status=green 2026-07-20 (build pending). Tenant via static_headers X-Tenant-ID=echo-sovereign."
 }

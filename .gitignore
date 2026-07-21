@@ -26,3 +26,7 @@ artifacts/local/
 .idea/
 .DS_Store
 Thumbs.db
+
+# stray shell-redirect junk
+FAILED*
+expect

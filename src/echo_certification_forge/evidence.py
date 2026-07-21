@@ -14,6 +14,7 @@ from .canonical import (
     canonical_json,
     contained_path,
     require_identifier,
+    require_sha256,
     sha256_bytes,
     sha256_json,
     to_utc_iso,
@@ -87,9 +88,30 @@ class EvidenceStore:
             run_outcome TEXT NOT NULL,
             state TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            policy_version TEXT,
+            target_reference TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            tenant_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, idempotency_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS evidence_retention (
+            artifact_id TEXT PRIMARY KEY REFERENCES evidence_artifacts(artifact_id),
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            retention_class TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            purged_at TEXT,
+            created_at TEXT NOT NULL
+        );
 
         CREATE TABLE IF NOT EXISTS state_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,6 +214,11 @@ class EvidenceStore:
         """
         with self._connection() as connection:
             connection.executescript(schema)
+            existing = {row["name"] for row in connection.execute("PRAGMA table_info(runs)")}
+            if "policy_version" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN policy_version TEXT")
+            if "target_reference" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN target_reference TEXT")
 
     def register_run(
         self,
@@ -228,6 +255,87 @@ class EvidenceStore:
                     now,
                     now,
                 ),
+            )
+
+    def register_declared_run(
+        self,
+        run_id: str,
+        tenant_id: str,
+        target_type: str,
+        target_identity_digest: str,
+        target_reference: str,
+        environment_identity_digest: str,
+        environment_json: dict[str, Any],
+        policy_version: str,
+        manifest_id: str,
+        manifest_digest: str,
+    ) -> None:
+        """Register a run from a client-declared, pre-computed target identity digest.
+
+        Intake (`echo.certforge.submit`) provides the immutable target binding as a digest, not
+        the full canonical field set, so the digest is stored as the authoritative commitment;
+        target acquisition later verifies the acquired artifact hashes to this digest.
+        """
+        require_identifier(run_id, "run_id")
+        require_identifier(tenant_id, "tenant_id")
+        require_identifier(target_type, "target_type")
+        require_sha256(target_identity_digest, "target_identity_digest")
+        require_sha256(environment_identity_digest, "environment_identity_digest")
+        require_identifier(policy_version, "policy_version")
+        require_identifier(manifest_id, "manifest_id")
+        if not target_reference.strip():
+            raise ValueError("target_reference is required")
+        target_json = {
+            "tenant_id": tenant_id,
+            "target_type": target_type,
+            "declared_identity_digest": target_identity_digest,
+            "reference": target_reference,
+        }
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO runs(
+                    run_id, tenant_id, target_identity_json, target_identity_digest,
+                    environment_identity_json, environment_identity_digest,
+                    rule_manifest_id, rule_manifest_digest, run_outcome, state,
+                    created_at, updated_at, policy_version, target_reference
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    tenant_id,
+                    canonical_json(target_json),
+                    target_identity_digest,
+                    canonical_json(environment_json),
+                    environment_identity_digest,
+                    manifest_id,
+                    manifest_digest,
+                    RunOutcome.INCONCLUSIVE.value,
+                    RunState.CREATED.value,
+                    now,
+                    now,
+                    policy_version,
+                    target_reference,
+                ),
+            )
+
+    def find_idempotent(self, tenant_id: str, idempotency_key: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM idempotency_keys WHERE tenant_id = ? AND idempotency_key = ?",
+                (tenant_id, idempotency_key),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def bind_idempotent(
+        self, tenant_id: str, idempotency_key: str, request_digest: str, run_id: str
+    ) -> None:
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO idempotency_keys(tenant_id, idempotency_key, request_digest, run_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                (tenant_id, idempotency_key, request_digest, run_id, now),
             )
 
     def get_run(self, run_id: str, tenant_id: str | None = None) -> dict[str, Any]:
@@ -439,6 +547,90 @@ class EvidenceStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_findings(self, run_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT finding_id, severity, title, blocks_release, evidence_ids_json, created_at "
+                "FROM findings WHERE run_id = ? AND tenant_id = ? ORDER BY created_at, finding_id",
+                (run_id, tenant_id),
+            ).fetchall()
+        return [
+            {
+                "finding_id": row["finding_id"],
+                "severity": row["severity"],
+                "title": row["title"],
+                "blocks_release": bool(row["blocks_release"]),
+                "evidence_ids": json.loads(row["evidence_ids_json"]),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def list_evidence(self, run_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        """Redacted evidence index — metadata only, never raw content or secrets."""
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT artifact_id, sha256, size_bytes, media_type, source_component, "
+                "redaction_status, ordinal, created_at FROM evidence_artifacts "
+                "WHERE run_id = ? AND tenant_id = ? ORDER BY ordinal",
+                (run_id, tenant_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def set_retention(
+        self, run_id: str, tenant_id: str, artifact_id: str,
+        retention_class: str, expires_at: str,
+    ) -> None:
+        self.get_run(run_id, tenant_id)
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO evidence_retention
+                     (artifact_id, run_id, tenant_id, retention_class, expires_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(artifact_id) DO UPDATE SET
+                     retention_class=excluded.retention_class, expires_at=excluded.expires_at""",
+                (artifact_id, run_id, tenant_id, retention_class, expires_at, now),
+            )
+
+    def purge_expired_evidence(self, now: str) -> list[dict[str, Any]]:
+        """Purge the raw CONTENT of retention-expired artifacts. The append-only metadata rows
+        (and their sha256/chain hashes) and any signed verdict are left intact — so the recorded
+        evidence Merkle root and the signed verdict remain valid historical records; only the raw
+        bytes are removed. Returns the purged artifacts (id + run_id)."""
+        purged: list[dict[str, Any]] = []
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT r.artifact_id, r.run_id, a.relative_path
+                     FROM evidence_retention r
+                     JOIN evidence_artifacts a ON a.artifact_id = r.artifact_id
+                    WHERE r.expires_at <= ? AND r.purged_at IS NULL""",
+                (now,),
+            ).fetchall()
+            for row in rows:
+                target = contained_path(self.evidence_root, row["relative_path"])
+                if target.exists():
+                    target.unlink()
+                connection.execute(
+                    "UPDATE evidence_retention SET purged_at = ? WHERE artifact_id = ?",
+                    (now, row["artifact_id"]),
+                )
+                purged.append({"artifact_id": row["artifact_id"], "run_id": row["run_id"]})
+        return purged
+
+    def artifact_content_exists(self, run_id: str, tenant_id: str, artifact_id: str) -> bool:
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT relative_path FROM evidence_artifacts WHERE artifact_id = ? AND run_id = ?",
+                (artifact_id, run_id),
+            ).fetchone()
+        if row is None:
+            return False
+        return contained_path(self.evidence_root, row["relative_path"]).exists()
+
     def verify_evidence(self, run_id: str, tenant_id: str) -> VerificationReport:
         self.get_run(run_id, tenant_id)
         with self._connection() as connection:
@@ -446,6 +638,12 @@ class EvidenceStore:
                 "SELECT * FROM evidence_artifacts WHERE run_id = ? AND tenant_id = ? ORDER BY ordinal",
                 (run_id, tenant_id),
             ).fetchall()
+            purged_ids = {
+                r["artifact_id"] for r in connection.execute(
+                    "SELECT artifact_id FROM evidence_retention WHERE run_id = ? AND purged_at IS NOT NULL",
+                    (run_id,),
+                ).fetchall()
+            }
         invalid: list[dict[str, str]] = []
         valid_ids: set[str] = set()
         record_hashes: list[str] = []
@@ -485,7 +683,10 @@ class EvidenceStore:
             try:
                 artifact_path = contained_path(self.evidence_root, row["relative_path"])
                 if not artifact_path.is_file():
-                    reasons.append("artifact_missing")
+                    # A retention-purged artifact has intact metadata + hash-chain; its raw content
+                    # is gone BY POLICY, which is not tamper. Only an unpurged missing file is.
+                    if row["artifact_id"] not in purged_ids:
+                        reasons.append("artifact_missing")
                 else:
                     content = artifact_path.read_bytes()
                     if len(content) != int(row["size_bytes"]):

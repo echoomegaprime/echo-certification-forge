@@ -30,16 +30,23 @@ class DeterministicVerdictEngine:
 
         target_data: dict[str, Any] = json.loads(run["target_identity_json"])
         environment_data: dict[str, Any] = json.loads(run["environment_identity_json"])
-        target = TargetIdentity(**target_data)
-        environment = EnvironmentIdentity(**environment_data)
-        if target.identity_digest != run["target_identity_digest"]:
-            reasons.append("target_identity_integrity_failed")
-        if environment.identity_digest != run["environment_identity_digest"]:
-            reasons.append("environment_identity_integrity_failed")
-        if sha256_json(target_data) != run["target_identity_digest"]:
-            reasons.append("target_identity_serialization_mismatch")
-        if sha256_json(environment_data) != run["environment_identity_digest"]:
-            reasons.append("environment_identity_serialization_mismatch")
+        # A run created via the intake `submit` path carries only a DECLARED target commitment
+        # ({tenant_id, target_type, declared_identity_digest, reference}), not the full canonical
+        # TargetIdentity. Such a run has not been reconciled to an acquired artifact, so it cannot be
+        # certified: fail-closed with an explicit reason instead of crashing on TargetIdentity(**...).
+        if "declared_identity_digest" in target_data or "artifact_sha256" not in target_data:
+            reasons.append("target_identity_not_reconciled")
+        else:
+            target = TargetIdentity(**target_data)
+            environment = EnvironmentIdentity(**environment_data)
+            if target.identity_digest != run["target_identity_digest"]:
+                reasons.append("target_identity_integrity_failed")
+            if environment.identity_digest != run["environment_identity_digest"]:
+                reasons.append("environment_identity_integrity_failed")
+            if sha256_json(target_data) != run["target_identity_digest"]:
+                reasons.append("target_identity_serialization_mismatch")
+            if sha256_json(environment_data) != run["environment_identity_digest"]:
+                reasons.append("environment_identity_serialization_mismatch")
 
         verification = store.verify_evidence(run_id, tenant_id)
         if not verification.valid:

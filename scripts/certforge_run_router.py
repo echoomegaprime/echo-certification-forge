@@ -1,0 +1,126 @@
+"""/sdk/certification-forge/run — self-service certification of an (untrusted) target.
+
+Gate-triggered full certification. Sovereign-authenticated. Launches the KEY-HOLDING run-worker
+DETACHED on FORGE with the isolated Docker sandbox enabled (``--sandbox``), so the target's critical
+journey executes only inside a locked-down container (no host escape) while the trusted orchestration
+(acquire → scan → sign) runs on the host and never executes target code. Returns a run_id
+immediately; poll with the existing ``echo.certforge.status`` cap (the worker writes the shared store).
+
+Additive router (auto-mounted). Does NOT modify the read API or the R5 routers.
+"""
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import os
+import re
+import time
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
+
+from routers._common import audit, rate_limit
+
+router = APIRouter(prefix="/sdk/certification-forge", tags=["certification-forge-run"])
+
+_SOVEREIGN_KEY_FILE = "/home/forge/.echo_sovereign_key"
+_REPO = "/home/forge/echo-certification-forge"
+_VENV_PY = f"{_REPO}/.venv/bin/python"
+_RUN_OUT_DIR = "/tmp/certforge_runs"
+_TENANT = "echo-sovereign"  # the sovereign gate tenant (matches echo.certforge.* static X-Tenant-ID)
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def _sovereign_key() -> str | None:
+    try:
+        with open(_SOVEREIGN_KEY_FILE, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("SOVEREIGN_KEY="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        return None
+    return None
+
+
+def _require_sovereign(x_echo_api_key: str | None) -> None:
+    expected = _sovereign_key()
+    if not expected or x_echo_api_key != expected:
+        raise HTTPException(status_code=403, detail="sovereign key required")
+
+
+class RunTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: str = Field(pattern=r"^(git|local)$")
+    url: str | None = Field(default=None, max_length=2048)
+    path: str | None = Field(default=None, max_length=2048)
+    ref: str | None = Field(default=None, max_length=256)
+
+
+class RunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: RunTarget
+    journey: list[str] | None = Field(default=None, max_length=32)
+    policy_version: str | None = Field(default=None, max_length=128)
+
+
+@router.post("/run", summary="echo.certforge.run — certify an (untrusted) target in the sandbox",
+             dependencies=[Depends(rate_limit)])
+async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(None)) -> dict[str, Any]:
+    _require_sovereign(x_echo_api_key)
+
+    target = req.target.model_dump(exclude_none=True)
+    if req.target.type == "git" and not req.target.url:
+        raise HTTPException(status_code=400, detail="git target requires url")
+    if req.target.type == "local" and not req.target.path:
+        raise HTTPException(status_code=400, detail="local target requires path")
+    if req.journey is not None and not all(isinstance(x, str) and x for x in req.journey):
+        raise HTTPException(status_code=400, detail="journey must be a non-empty list of strings")
+
+    seed = f"{target}|{req.journey}|{time.time_ns()}".encode("utf-8")
+    run_id = "cert_run_" + hashlib.sha256(seed).hexdigest()[:40]
+    if not _RUN_ID_RE.fullmatch(run_id):  # defensive; the charset is fixed
+        raise HTTPException(status_code=500, detail="run_id generation error")
+
+    argv = [
+        _VENV_PY, "-m", "echo_certification_forge.run_worker",
+        "--run-id", run_id, "--tenant", _TENANT,
+        "--target-json", json.dumps(target), "--sandbox",
+    ]
+    if req.journey:
+        argv += ["--journey-json", json.dumps(req.journey)]
+    if req.policy_version:
+        argv += ["--policy-version", req.policy_version]
+
+    env = {
+        **os.environ,
+        "ECHO_CERTFORGE_DB": f"{_REPO}/var/certforge.sqlite3",
+        "ECHO_CERTFORGE_EVIDENCE_ROOT": f"{_REPO}/var/evidence",
+        "ECHO_CERTFORGE_POLICY": f"{_REPO}/policies/mandatory-rules.v1.json",
+        "ECHO_CERTFORGE_TRUSTED_KEYS": f"{_REPO}/var/trusted-public-keys",
+        "ECHO_CERTFORGE_RUN_SIGNING_KEY": f"{_REPO}/var/run-signing-key.pem",
+        "ECHO_CERTFORGE_ENTITLED_TENANTS": _TENANT,
+        "ECHO_CERTFORGE_SANDBOX_DOCKER": "docker",
+    }
+
+    Path(_RUN_OUT_DIR).mkdir(parents=True, exist_ok=True)
+    out_path = Path(_RUN_OUT_DIR) / f"{run_id}.out"
+    try:
+        out_fd = open(out_path, "wb")  # noqa: SIM115 — handed to the detached child
+        # No shell: argv is passed directly (no injection surface). start_new_session detaches the
+        # worker so it survives gate-worker recycling; its output goes to a file, not our pipes.
+        await asyncio.create_subprocess_exec(
+            *argv, cwd=_REPO, env=env, stdout=out_fd, stderr=out_fd,
+            stdin=asyncio.subprocess.DEVNULL, start_new_session=True,
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=502, detail=f"run-worker launch failed: {type(exc).__name__}") from exc
+
+    await audit("certforge-run", "launched", "certforge-run", run_id,
+                {"run_id": run_id, "target_type": req.target.type, "sandboxed": True})
+    return {
+        "run_id": run_id, "status": "RUNNING", "tenant": _TENANT, "sandboxed": True,
+        "poll_capability": "echo.certforge.status",
+    }

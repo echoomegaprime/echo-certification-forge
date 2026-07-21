@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from datetime import UTC, datetime
 import json
 import subprocess
 from pathlib import Path
@@ -141,4 +142,69 @@ def test_static_attack_matrix_records_traversal_rejection_as_contained(tmp_path:
     assert traversal["exception_type"] == "ValueError"
     assert "may not traverse parents" in traversal["reason"]
     assert all(item["denied"] for item in result["archives"].values())
+
+def test_public_verifier_probe_uses_only_exact_read_only_artifacts(tmp_path: Path, monkeypatch) -> None:
+    module = load_harness()
+    artifacts = {}
+    for name in ("attestation", "policy", "sbom"):
+        path = tmp_path / f"{name}.json"
+        path.write_text("{}", encoding="utf-8")
+        artifacts[name] = path
+    captured = {}
+
+    def fake_execute_container(**kwargs):
+        captured.update(kwargs)
+        return {
+            "exit_code": 0,
+            "timed_out": False,
+            "oom_killed": False,
+            "logs": '{"admission":{"allowed":true},"passed":true,"private_key_loaded":false,"sbom_valid":true}\n',
+            "sanitized_logs": "TARGET|verified",
+            "containment": {
+                "read_only_root": True,
+                "network_none": True,
+                "all_capabilities_dropped": True,
+                "no_new_privileges": True,
+                "apparmor": True,
+                "memory_limited": True,
+                "pids_limited": True,
+                "cpu_limited": True,
+                "docker_socket_absent": True,
+            },
+        }
+
+    monkeypatch.setattr(module, "execute_container", fake_execute_container)
+    result = module.public_verifier_probe(
+        image="verifier@sha256:" + "1" * 64,
+        artifacts=artifacts,
+        image_digest="sha256:" + "2" * 64,
+        now=datetime(2026, 7, 17, tzinfo=UTC),
+        ownership_token="owner.test",
+    )
+
+    assert result["passed"] is True
+    assert result["private_key_mounted"] is False
+    assert captured["timeout_seconds"] == 60
+    assert captured["memory"] == "256m"
+    assert captured["pids"] == 64
+    assert captured["workspace_size"] == "8m"
+    assert captured["nofile"] == 256
+    assert captured["mounts"] == [
+        (artifacts["attestation"].resolve(), "/input/runner.attestation.json", True),
+        (artifacts["policy"].resolve(), "/input/runner.admission-policy.json", True),
+        (artifacts["sbom"].resolve(), "/input/runner.spdx.json", True),
+    ]
+    assert all(item["read_only"] for item in result["artifacts"].values())
+
+
+def test_public_verifier_probe_rejects_artifact_set_drift(tmp_path: Path) -> None:
+    module = load_harness()
+    with pytest.raises(RuntimeError, match="artifact set mismatch"):
+        module.public_verifier_probe(
+            image="verifier@sha256:" + "1" * 64,
+            artifacts={"attestation": tmp_path / "missing.json"},
+            image_digest="sha256:" + "2" * 64,
+            now=datetime(2026, 7, 17, tzinfo=UTC),
+            ownership_token="owner.test",
+        )
 
