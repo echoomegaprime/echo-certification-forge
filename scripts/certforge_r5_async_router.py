@@ -276,7 +276,10 @@ async def status(run_id: str, x_echo_api_key: str | None = Header(None)) -> dict
     result = core.assemble_result(report, forge_verify, mode=mode,
                                   exit_code=exit_code, evidence_run_id=run_id)
     result["stderr_tail"] = err_tail.strip()[-500:]
-    final_status = "COMPLETE" if forge_verify.get("all_ok") or exit_code == 0 else "FAILED"
+    # COMPLETE requires FORGE's independent bundle re-verification to pass — an operator that exits 0
+    # with a bundle FORGE cannot verify is NOT a completed run (it is FAILED). Never call an
+    # unverified run COMPLETE. (Fable review — fail-open lifecycle signal.)
+    final_status = "COMPLETE" if forge_verify.get("all_ok") else "FAILED"
 
     async with pool.acquire() as conn:
         await conn.execute(

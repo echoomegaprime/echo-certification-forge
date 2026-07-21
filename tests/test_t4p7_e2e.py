@@ -45,6 +45,7 @@ def test_e2e_benign_target_certified_and_deploy_gate_allows(store, manifest, tar
         RUN, target.tenant_id, _benign(tmp_path),
         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
         journey=[sys.executable, "hello.py"],
+        control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
     )
 
     # certified through the full path

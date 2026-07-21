@@ -99,6 +99,10 @@ def run(run_id: str, tenant: str, target_spec: dict, *, store: EvidenceStore, ma
         entitlement=StaticEntitlement(entitled),
         retention=RetentionPolicy(),
         journey=journey,
+        # The worker is the trusted control plane: it attests the architectural controls it enforces
+        # by deployment — the narrow runner<->control-plane protocol and the run-signer/control-plane
+        # key separation (the run-signer private key lives only here, never in the read API).
+        control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
     )
     return {
         "run_id": result.run_id, "state": result.final_state,

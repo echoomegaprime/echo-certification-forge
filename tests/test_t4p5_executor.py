@@ -27,6 +27,34 @@ def _executor(store, manifest) -> tuple[RunExecutor, Ed25519VerdictSigner]:
     return RunExecutor(store, manifest, signer), signer
 
 
+def test_declared_run_does_not_crash_verdict_engine(store, manifest):
+    """A run created via the intake `submit` path carries only a DECLARED target commitment (no full
+    TargetIdentity). The verdict engine must NOT crash on it — it fails closed as not-reconciled."""
+    import hashlib
+
+    from echo_certification_forge.models import RunOutcome
+    from echo_certification_forge.signing import Ed25519VerdictSigner
+    from echo_certification_forge.verdict import DeterministicVerdictEngine
+
+    d = hashlib.sha256(b"declared").hexdigest()
+    store.register_declared_run(
+        run_id="cert-decl", tenant_id="tenant-alpha", target_type="git",
+        target_identity_digest=d, target_reference="https://x/y@z",
+        environment_identity_digest=hashlib.sha256(b"env").hexdigest(),
+        environment_json={"identity_digest": hashlib.sha256(b"env").hexdigest()},
+        policy_version=manifest.manifest_id, manifest_id=manifest.manifest_id,
+        manifest_digest=manifest.digest,
+    )
+    store.set_run_outcome("cert-decl", "tenant-alpha", RunOutcome.COMPLETE)
+    signer = Ed25519VerdictSigner.generate()
+
+    decision = DeterministicVerdictEngine().evaluate(
+        store, "cert-decl", "tenant-alpha", manifest, signer.key_id
+    )  # must not raise TypeError
+    assert decision.release_verdict.value == "NOT_READY"
+    assert "target_identity_not_reconciled" in decision.reasons
+
+
 def test_billing_blocked_halts_with_no_target_execution(store, manifest, target, environment, tmp_path):
     store.register_run(RUN, target, environment, manifest.manifest_id, manifest.digest)
     ex, _ = _executor(store, manifest)
@@ -69,6 +97,24 @@ def test_hostile_source_refused_with_blocking_finding(store, manifest, target, e
     assert store.latest_signed_verdict(RUN, target.tenant_id) is not None
 
 
+def test_architectural_controls_are_not_rubber_stamped(store, manifest, target, environment, tmp_path):
+    """Without an explicit trusted attestation, the architectural controls (runner channel, signer
+    separation) stay FALSE, so even a clean journey-passing target does NOT reach PRODUCTION_READY."""
+    store.register_run(RUN, target, environment, manifest.manifest_id, manifest.digest)
+    ex, _ = _executor(store, manifest)
+    result = ex.execute(RUN, target.tenant_id, _benign_source(tmp_path),
+                        entitlement=StaticEntitlement(frozenset({target.tenant_id})),
+                        journey=[sys.executable, "hello.py"])  # no control_attestations
+    assert result.release_verdict == "NOT_READY"
+    results = store.list_rule_results(RUN, target.tenant_id)
+    assert results["runner_control_channel"].passed is False
+    assert results["signing_authority_separation"].passed is False
+    # the genuinely-checked controls DID pass (real checks, not literals)
+    assert results["tenant_isolation"].passed is True
+    assert results["budget_enforcement"].passed is True
+    assert results["critical_journeys"].passed is True
+
+
 def test_supply_chain_dockerfile_refused(store, manifest, target, environment, tmp_path):
     store.register_run(RUN, target, environment, manifest.manifest_id, manifest.digest)
     ex, _ = _executor(store, manifest)
@@ -92,7 +138,9 @@ def test_retention_purge_removes_expired_content_but_keeps_signed_verdict(
 
     result = ex.execute(RUN, target.tenant_id, src,
                         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
-                        journey=[sys.executable, "hello.py"])
+                        journey=[sys.executable, "hello.py"],
+                        control_attestations={"runner_control_channel": True,
+                                              "signing_authority_separation": True})
     assert result.release_verdict == "PRODUCTION_READY", result.blocking_findings
 
     verdict_before = store.latest_signed_verdict(RUN, target.tenant_id)
@@ -113,3 +161,5 @@ def test_retention_purge_removes_expired_content_but_keeps_signed_verdict(
     verdict_after = store.latest_signed_verdict(RUN, target.tenant_id)
     assert verdict_after is not None
     assert json.loads(verdict_after["payload_json"])["evidence_merkle_root"] == root_before
+    # a policy purge must NOT read as tamper — re-verification stays valid (hash chain intact)
+    assert store.verify_evidence(RUN, target.tenant_id).valid is True

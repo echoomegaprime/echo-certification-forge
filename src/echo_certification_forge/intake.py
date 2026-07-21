@@ -7,6 +7,7 @@ until a signed verdict is issued.
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -140,20 +141,25 @@ def submit(
         row = store.get_run(existing["run_id"], request.tenant_id)
         return 200, project_run(store, row)
 
-    run_id = request.run_id()
+    run_id = request.run_id()  # deterministic in (request_digest, key) -> concurrent dupes collide here
     environment_json = request.environment.model_dump(exclude_none=True)
-    store.register_declared_run(
-        run_id=run_id,
-        tenant_id=request.tenant_id,
-        target_type=request.target.target_type,
-        target_identity_digest=request.target.identity_digest,
-        target_reference=request.target.reference,
-        environment_identity_digest=request.environment.identity_digest,
-        environment_json=environment_json,
-        policy_version=request.policy_version,
-        manifest_id=manifest.manifest_id,
-        manifest_digest=manifest.digest,
-    )
+    try:
+        store.register_declared_run(
+            run_id=run_id,
+            tenant_id=request.tenant_id,
+            target_type=request.target.target_type,
+            target_identity_digest=request.target.identity_digest,
+            target_reference=request.target.reference,
+            environment_identity_digest=request.environment.identity_digest,
+            environment_json=environment_json,
+            policy_version=request.policy_version,
+            manifest_id=manifest.manifest_id,
+            manifest_digest=manifest.digest,
+        )
+    except sqlite3.IntegrityError:
+        # A concurrent submit of the same (request, key) already created this run — return it as a
+        # clean idempotent replay rather than a 500.
+        return 200, project_run(store, store.get_run(run_id, request.tenant_id))
     store.transition_state(
         run_id=run_id,
         tenant_id=request.tenant_id,

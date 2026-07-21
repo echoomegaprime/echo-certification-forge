@@ -12,6 +12,19 @@
 
 ## Task 4 — Certification Forge service + `echo.certforge.*` caps (sub-track)
 
+> **LIVE END-TO-END PROVEN (2026-07-21):** a real target was certified through the full pipeline on
+> FORGE. The key-holding **run-worker** (`run_worker.py`, separate from the key-less :8309 API —
+> preserves the T4.P3 signer/control-plane separation) acquired a target (`acquisition.py`, hooks
+> disabled + file:// denied), executed it, and produced a **PRODUCTION_READY signed verdict**. Read
+> back through the live SDK gate caps: `echo.certforge.status`=COMPLETE/PRODUCTION_READY ·
+> `echo.certforge.verdict`=signed (run-signer `ed25519:a07f417e…`) · `echo.certforge.verify`=valid
+> (11 artifacts) · `echo.certforge.deploy_gate` (tier-2 HMAC)=**allowed, `exact_certification_valid`**.
+> The run-signer PUBLIC key is in the API's trust store; the PRIVATE key is worker-only. Commit 8ee64fc.
+> **Remaining:** a gate-triggered self-service run cap (`echo.certforge.run`) for UNTRUSTED targets
+> needs an isolated execution sandbox first (running untrusted journeys on the gate host is unsafe) —
+> deferred by design, not rushed.
+
+
 Service-build sub-track (SPEC: `docs/TASK4_SERVICE_SPEC.md`). A completed T4 phase does **not** upgrade
 the whole-product verdict (still NOT_READY); central `echo.certforge.*` registration remains a blocker
 (lands T4.P6). Marker rule: `[T4.Pn COMPLETE]` only after the phase acceptance test passes AND the full

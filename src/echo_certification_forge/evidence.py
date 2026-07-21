@@ -638,6 +638,12 @@ class EvidenceStore:
                 "SELECT * FROM evidence_artifacts WHERE run_id = ? AND tenant_id = ? ORDER BY ordinal",
                 (run_id, tenant_id),
             ).fetchall()
+            purged_ids = {
+                r["artifact_id"] for r in connection.execute(
+                    "SELECT artifact_id FROM evidence_retention WHERE run_id = ? AND purged_at IS NOT NULL",
+                    (run_id,),
+                ).fetchall()
+            }
         invalid: list[dict[str, str]] = []
         valid_ids: set[str] = set()
         record_hashes: list[str] = []
@@ -677,7 +683,10 @@ class EvidenceStore:
             try:
                 artifact_path = contained_path(self.evidence_root, row["relative_path"])
                 if not artifact_path.is_file():
-                    reasons.append("artifact_missing")
+                    # A retention-purged artifact has intact metadata + hash-chain; its raw content
+                    # is gone BY POLICY, which is not tamper. Only an unpurged missing file is.
+                    if row["artifact_id"] not in purged_ids:
+                        reasons.append("artifact_missing")
                 else:
                     content = artifact_path.read_bytes()
                     if len(content) != int(row["size_bytes"]):
