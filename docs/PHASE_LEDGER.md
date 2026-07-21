@@ -23,6 +23,18 @@
 > **Remaining:** a gate-triggered self-service run cap (`echo.certforge.run`) for UNTRUSTED targets
 > needs an isolated execution sandbox first (running untrusted journeys on the gate host is unsafe) —
 > deferred by design, not rushed.
+>
+> **FABLE ADVERSARIAL REVIEW (2026-07-21, commit f651805) — SHIP-WITH-FIXES, all applied.** No HIGH
+> holes (no tenant bypass, no shell injection, no fail-open authz, bootstrap independence sound). 4 MEDs
+> fixed + regression tests: **(1)** executor no longer rubber-stamps rules — 8 mandatory rules now from
+> REAL checks (live cross-tenant probe, verify_evidence, entitlement, digest binding, subprocess reap);
+> the 2 architectural controls require EXPLICIT trusted attestation (default fail-closed) supplied by the
+> run-worker. **(2)** verdict engine no longer crashes on a declared (intake) run shape → NOT_READY
+> `target_identity_not_reconciled`. **(3)** `verify_evidence` joins `evidence_retention.purged_at` so a
+> policy purge no longer reads as tamper. **(4)** R5 async `status()` finalizes COMPLETE only on
+> `forge_verify.all_ok` (never exit-0 alone). + LOWs: idempotency-race → clean 200 replay; stray files
+> removed. Re-verified live post-fix: worker → PRODUCTION_READY (honest), gate `deploy_gate`=allowed.
+> Full suite **223 passed**.
 
 
 Service-build sub-track (SPEC: `docs/TASK4_SERVICE_SPEC.md`). A completed T4 phase does **not** upgrade
