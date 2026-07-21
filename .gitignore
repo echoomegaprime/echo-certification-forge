@@ -30,3 +30,6 @@ Thumbs.db
 # stray shell-redirect junk
 FAILED*
 expect
+PRODUCTION_READY
+NOT_READY
+COMPLETE*
