@@ -11,10 +11,14 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
 FAILS: list[str] = []
+# Unique per smoke invocation so the smoke is idempotent/re-runnable against a persistent db
+# (staging db persists across deploys; prod smoke re-runs on every redeploy).
+_NONCE = str(time.time_ns())
 
 
 def _digest(label: str) -> str:
@@ -83,8 +87,8 @@ def main() -> int:
     check("list without tenant -> 401", status == 401, str(status))
 
     # 3. submit -> 201 QUEUED bound to declared target
-    key = "smoke-key-" + _digest("k")[:12]
-    tgt = _digest("smoke-target-A")
+    key = "smoke-key-" + _NONCE
+    tgt = _digest("smoke-target-A-" + _NONCE)
     status, run = _req(base, "POST", "/v1/certifications", tenant="smoke-tenant",
                        body=_submit_body(policy, target_digest=tgt, key=key))
     check("submit -> 201", status == 201, f"{status}:{json.dumps(run)[:200]}")
