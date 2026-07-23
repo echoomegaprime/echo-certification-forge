@@ -12,10 +12,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from echo_certification_forge.adapter_execution import (
     AdapterEvidenceSource,
     AdapterExecutionError,
+    adapter_bundle_body,
     build_acceptance_report,
     build_records_from_evidence,
     default_p5_policy,
+    load_json,
     sign_adapter_bundle,
+    write_adapter_execution_artifacts,
 )
 from echo_certification_forge.adapter_transport import parse_verified_adapter_bundle
 from echo_certification_forge.adapters import AdapterMaturity, adapter_set_digest
@@ -51,7 +54,7 @@ def make_r5_evidence(
 ) -> Path:
     private_key = private_key or Ed25519PrivateKey.generate()
     key = key_id(private_key)
-    root.mkdir()
+    root.mkdir(parents=True)
     payload = {
         "schema": "echo.family-routing-receipt/v1",
         "request_id": f"request-{model}",
@@ -228,3 +231,125 @@ def test_non_stable_adapter_signs_but_acceptance_blocks(tmp_path: Path) -> None:
 
     assert report["adapter_gate"] == "BLOCK"
     assert "maturity_not_stable:gs343" in report["reasons"]
+
+
+def test_writes_complete_verifiable_artifact_set(tmp_path: Path) -> None:
+    records = build_records_from_evidence(sources(tmp_path), qualification_report=qualification_report())
+    signed = sign_adapter_bundle(records, run_id="cert-p5-artifacts", tenant_id="echo-sovereign")
+    policy = default_p5_policy(records)
+    report = build_acceptance_report(
+        signed.response,
+        signed.runner_public_key_pem,
+        run_id="cert-p5-artifacts",
+        tenant_id="echo-sovereign",
+        policy=policy,
+        expected_adapter_set_sha256=signed.adapter_set_sha256,
+    )
+    output = tmp_path / "bundle"
+
+    write_adapter_execution_artifacts(
+        output,
+        signed_bundle=signed,
+        acceptance_report=report,
+        policy=policy,
+    )
+
+    assert json.loads((output / "adapter-acceptance-report.json").read_text())["adapter_gate"] == "GO"
+    assert json.loads((output / "adapter-policy.json").read_text())["required_maturity"] == "STABLE"
+    assert json.loads((output / "adapter-bundle-response.json").read_text())["status"] == "COMPLETED"
+    assert (output / "adapter-runner-public-key.pem").read_text() == signed.runner_public_key_pem
+
+
+def test_input_container_validation_fails_closed(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("not-json", encoding="utf-8")
+    array = tmp_path / "array.json"
+    array.write_text("[]", encoding="utf-8")
+
+    for path in (tmp_path / "missing.json", invalid):
+        with pytest.raises(AdapterExecutionError, match="unreadable JSON evidence"):
+            load_json(path)
+    with pytest.raises(AdapterExecutionError, match="must be an object"):
+        load_json(array)
+    with pytest.raises(AdapterExecutionError, match="at least one record"):
+        adapter_bundle_body(())
+    with pytest.raises(AdapterExecutionError, match="without records"):
+        default_p5_policy(())
+    with pytest.raises(AdapterExecutionError, match="at least one adapter"):
+        build_records_from_evidence((), qualification_report={})
+
+    selected = sources(tmp_path / "sources")
+    with pytest.raises(AdapterExecutionError, match="duplicate adapter source"):
+        build_records_from_evidence((selected[0], selected[0]), qualification_report=qualification_report())
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("blocked_r5", "R5 gate is not PASS"),
+        ("target_mismatch", "R5 target model mismatch"),
+        ("missing_public_key", "lacks attested public key"),
+        ("missing_signature", "lacks signature_b64"),
+        ("key_mismatch", "key does not match attestation"),
+        ("invalid_signature", "signature is invalid"),
+    ),
+)
+def test_r5_evidence_tampering_fails_closed(tmp_path: Path, mutation: str, message: str) -> None:
+    root = tmp_path / mutation
+    root.mkdir()
+    selected = sources(root)
+    report_path = selected[0].r5_evidence_directory / "r5-report.json"
+    positive_path = selected[0].r5_evidence_directory / "positive-target.json"
+    report = load_json(report_path)
+    positive = load_json(positive_path)
+
+    if mutation == "blocked_r5":
+        report["r5_gate"] = "BLOCK"
+    elif mutation == "target_mismatch":
+        report["expected_identity"]["target_model"] = "echo-r2d2"
+    elif mutation == "missing_public_key":
+        report["forge_verification_bundle"]["public_key_pem"] = None
+    elif mutation == "missing_signature":
+        positive["body"]["routing_receipt"]["signature_b64"] = None
+    elif mutation == "key_mismatch":
+        positive["body"]["routing_receipt"]["key_id"] = "ed25519:" + "0" * 32
+    elif mutation == "invalid_signature":
+        positive["body"]["routing_receipt"]["signature_b64"] = base64.b64encode(b"bad").decode()
+    write_json(report_path, report)
+    write_json(positive_path, positive)
+
+    with pytest.raises(AdapterExecutionError, match=message):
+        build_records_from_evidence(selected, qualification_report=qualification_report())
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("integration_verdict", "UNKNOWN", "invalid integration verdict"),
+        ("content_gate_passed", None, "must be boolean"),
+    ),
+)
+def test_malformed_qualification_fails_closed(
+    tmp_path: Path,
+    field: str,
+    value: Any,
+    message: str,
+) -> None:
+    report = qualification_report()
+    report["qualification"]["gs_adapter_v2_context"][field] = value
+
+    with pytest.raises(AdapterExecutionError, match=message):
+        build_records_from_evidence(sources(tmp_path), qualification_report=report)
+
+
+def test_empty_probe_evidence_and_unknown_maturity_fail_closed(tmp_path: Path) -> None:
+    report = qualification_report()
+    report["mode_scores"]["gs_adapter_v2_context"]["probe_results"] = []
+    with pytest.raises(AdapterExecutionError, match="must be non-empty"):
+        build_records_from_evidence(sources(tmp_path / "empty-probes"), qualification_report=report)
+
+    records = build_records_from_evidence(
+        sources(tmp_path / "unknown-maturity", gs_maturity="UNRECOGNIZED"),
+        qualification_report=qualification_report(),
+    )
+    assert records[0].identity.maturity is AdapterMaturity.EXPERIMENTAL
