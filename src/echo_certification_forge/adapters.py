@@ -1,13 +1,13 @@
 """Deterministic adapter identity, quality, and maturity acceptance.
 
 P5 requires model/persona adapters to become first-class certification inputs rather
-than an opaque ``adapter_set_sha256`` commitment.  This module defines the immutable
+than an opaque ``adapter_set_sha256`` commitment. This module defines the immutable
 records emitted by adapter execution and the fail-closed policy used to decide whether
 that exact set is eligible for a production verdict.
 
-No model output can override this evaluator.  Missing, duplicate, unexpected,
-non-STABLE, low-quality, critically failing, or identity-mismatched adapters are
-rejected deterministically.
+No model output can override this evaluator. Missing, duplicate, unexpected,
+non-STABLE, low-quality, critically failing, unapproved-node, or identity-mismatched
+adapters are rejected deterministically.
 """
 from __future__ import annotations
 
@@ -99,9 +99,13 @@ class AdapterQualityReport:
         failures = tuple(item.strip() for item in self.critical_failures)
         if any(not item for item in failures):
             raise ValueError("critical_failures may not contain blank values")
+        for item in failures:
+            require_identifier(item, "critical failure code")
         evidence = tuple(item.strip() for item in self.evidence_ids)
         if any(not item for item in evidence):
             raise ValueError("evidence_ids may not contain blank values")
+        for item in evidence:
+            require_identifier(item, "evidence_id")
         if len(set(evidence)) != len(evidence):
             raise ValueError("evidence_ids must be unique")
         object.__setattr__(self, "critical_failures", failures)
@@ -162,6 +166,7 @@ class AdapterAcceptancePolicy:
     minimum_score: float = 0.95
     minimum_cases: int = 20
     required_maturity: AdapterMaturity = AdapterMaturity.STABLE
+    required_execution_nodes: tuple[str, ...] = ("ANVIL",)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.minimum_score <= 1.0:
@@ -181,6 +186,15 @@ class AdapterAcceptancePolicy:
         if not normalized:
             raise ValueError("at least one required adapter is required")
         object.__setattr__(self, "required_adapter_digests", tuple(sorted(normalized)))
+
+        nodes = tuple(node.strip() for node in self.required_execution_nodes)
+        if not nodes or any(not node for node in nodes):
+            raise ValueError("at least one required execution node is required")
+        for node in nodes:
+            require_identifier(node, "required execution node")
+        if len(set(nodes)) != len(nodes):
+            raise ValueError("required_execution_nodes must be unique")
+        object.__setattr__(self, "required_execution_nodes", tuple(sorted(nodes)))
 
     @property
     def required(self) -> dict[str, str]:
@@ -241,6 +255,8 @@ def evaluate_adapter_acceptance(
             local_reasons.append(
                 f"maturity_not_{policy.required_maturity.value.lower()}:{adapter_id}"
             )
+        if record.execution_node not in policy.required_execution_nodes:
+            local_reasons.append(f"unapproved_execution_node:{adapter_id}")
         if record.quality.total_cases < policy.minimum_cases:
             local_reasons.append(f"insufficient_quality_cases:{adapter_id}")
         if record.quality.score < policy.minimum_score:
