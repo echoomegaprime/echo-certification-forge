@@ -72,8 +72,11 @@ def fixtures() -> tuple[AdapterExecutionRecord, AdapterExecutionRecord]:
     return gs343, r2d2
 
 
-def policy_for(*records: AdapterExecutionRecord, minimum_score: float = 0.95,
-               minimum_cases: int = 20) -> AdapterAcceptancePolicy:
+def policy_for(
+    *records: AdapterExecutionRecord,
+    minimum_score: float = 0.95,
+    minimum_cases: int = 20,
+) -> AdapterAcceptancePolicy:
     return AdapterAcceptancePolicy(
         required_adapter_digests=tuple(
             (item.identity.adapter_id, item.identity.identity_digest) for item in records
@@ -83,8 +86,10 @@ def policy_for(*records: AdapterExecutionRecord, minimum_score: float = 0.95,
     )
 
 
-def evaluate(records: tuple[AdapterExecutionRecord, ...],
-             policy: AdapterAcceptancePolicy | None = None):
+def evaluate(
+    records: tuple[AdapterExecutionRecord, ...],
+    policy: AdapterAcceptancePolicy | None = None,
+):
     selected_policy = policy or policy_for(*records)
     return evaluate_adapter_acceptance(
         records,
@@ -136,11 +141,14 @@ def test_duplicate_adapter_fails_closed() -> None:
     assert "duplicate_adapter:gs343" in result.reasons
 
 
-@pytest.mark.parametrize("maturity", [
-    AdapterMaturity.EXPERIMENTAL,
-    AdapterMaturity.DEGRADED,
-    AdapterMaturity.RETIRED,
-])
+@pytest.mark.parametrize(
+    "maturity",
+    [
+        AdapterMaturity.EXPERIMENTAL,
+        AdapterMaturity.DEGRADED,
+        AdapterMaturity.RETIRED,
+    ],
+)
 def test_non_stable_maturity_fails_closed(maturity: AdapterMaturity) -> None:
     adapter_identity = identity(
         "gs343",
@@ -154,6 +162,15 @@ def test_non_stable_maturity_fails_closed(maturity: AdapterMaturity) -> None:
 
     assert result.eligible is False
     assert "maturity_not_stable:gs343" in result.reasons
+
+
+def test_unapproved_execution_node_fails_closed() -> None:
+    gs343, _ = fixtures()
+    altered = replace(gs343, execution_node="FORGE")
+    result = evaluate((altered,), policy_for(gs343))
+
+    assert result.eligible is False
+    assert "unapproved_execution_node:gs343" in result.reasons
 
 
 def test_observed_identity_mismatch_fails_closed() -> None:
