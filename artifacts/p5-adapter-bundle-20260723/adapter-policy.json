@@ -1,0 +1,19 @@
+{
+  "minimum_cases": 3,
+  "minimum_score": 1.0,
+  "required_adapters": [
+    {
+      "adapter_id": "gs343",
+      "identity_digest": "1b33a9f21d56a18a9d65cc40fbec381f530f97e1edfad2790864b628be64ab0e"
+    },
+    {
+      "adapter_id": "r2d2",
+      "identity_digest": "6f528d077eab5ad7c9f9cfff775ddc614f311ef8ecc9ea7225e9562f9e522eea"
+    }
+  ],
+  "required_execution_nodes": [
+    "ANVIL"
+  ],
+  "required_maturity": "STABLE",
+  "schema_version": "1.0.0"
+}

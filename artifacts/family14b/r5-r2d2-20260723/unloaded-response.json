@@ -1,0 +1,47 @@
+{
+  "body": {
+    "error_code": "ADAPTER_NOT_ACTIVE",
+    "message": "adapter echo-r2d2 is not active",
+    "routing_receipt": {
+      "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+      "payload": {
+        "active_adapter_ids": [
+          "echo-prime"
+        ],
+        "adapter_applied": false,
+        "adapter_version": "v2",
+        "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+        "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+        "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+        "challenge_nonce": "certforge-r5-unloaded-2cebc19f-dd8c-47cf-952d-3b3d5494ee75",
+        "completed_at": "2026-07-23T20:55:45.920200Z",
+        "error_code": "ADAPTER_NOT_ACTIVE",
+        "error_reason": "registered adapter is not loaded in the live PEFT model",
+        "fallback_reason": null,
+        "fallback_used": false,
+        "maturity_state": "CONFORMANCE_PENDING",
+        "persona_applied": false,
+        "persona_enabled": true,
+        "registry_adapter_id": "echo-r2d2",
+        "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+        "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+        "request_id": "0a9f3713-22a9-4750-b32f-524f9e6dc430",
+        "request_sha256": "3fbef771670afa73c5386d4034b1804ee1cf4eda2b44803a1271b56fc3b4244f",
+        "requested_model": "echo-r2d2",
+        "requested_persona": "r2d2",
+        "response_sha256": null,
+        "response_size_bytes": null,
+        "routing_mode": "failure",
+        "schema": "echo.family-routing-receipt/v1",
+        "selected_adapter_digest": null,
+        "selected_adapter_id": null,
+        "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+        "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+        "slot_lease_id": null,
+        "started_at": "2026-07-23T20:55:45.920200Z"
+      },
+      "signature_b64": "RU3uaOR7svC8akaxQcsAk7C9IwrBX3w3mliKrc/8nerj+GtCz6yq5gCjlVQ9HOz23h43bSzw0wX0w4C7lzQjAQ=="
+    }
+  },
+  "status_code": 503
+}

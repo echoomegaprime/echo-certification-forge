@@ -93,6 +93,7 @@ MODES: dict[str, dict[str, Any]] = {
     "gs_base": {"suite": "gs343", "model": "echo-prime", "system": None, "context": False, "kind": "base"},
     "gs_prompt_only": {"suite": "gs343", "model": "echo-prime", "system": GS_SYSTEM, "context": False, "kind": "prompt-only"},
     "gs_adapter_v1": {"suite": "gs343", "model": "echo-gs343", "system": "Return strict JSON only.", "context": False, "kind": "adapter"},
+    "gs_adapter_context": {"suite": "gs343", "model": "echo-gs343", "system": GS_SYSTEM, "context": True, "kind": "adapter+evidence-context"},
     "gs_adapter_v2": {"suite": "gs343", "model": "echo-gs343-v2", "system": "Return strict JSON only.", "context": False, "kind": "adapter"},
     "gs_adapter_v2_context": {"suite": "gs343", "model": "echo-gs343-v2", "system": GS_SYSTEM, "context": True, "kind": "adapter+evidence-context"},
     "r2_base": {"suite": "r2d2", "model": "echo-prime", "system": None, "context": False, "kind": "base"},
@@ -100,6 +101,8 @@ MODES: dict[str, dict[str, Any]] = {
     "r2_adapter": {"suite": "r2d2", "model": "echo-r2d2", "system": "Return strict JSON only.", "context": False, "kind": "adapter"},
     "r2_adapter_context": {"suite": "r2d2", "model": "echo-r2d2", "system": R2_SYSTEM, "context": True, "kind": "adapter+evidence-context"},
 }
+
+REQUIRED_P5_MODES = ("gs_adapter_context", "r2_adapter_context")
 
 
 def http_json(method: str, path: str, payload: dict[str, Any] | None = None, timeout: float = 120.0) -> tuple[dict[str, Any], dict[str, str]]:
@@ -169,7 +172,15 @@ def request_completion(mode_name: str, probe_name: str, probe: dict[str, Any]) -
             )
             proof_fields = {
                 key: response.get(key)
-                for key in ("adapter", "adapter_id", "applied_adapter", "lora", "routing", "route_metadata")
+                for key in (
+                    "adapter",
+                    "adapter_id",
+                    "applied_adapter",
+                    "lora",
+                    "routing",
+                    "route_metadata",
+                    "routing_receipt",
+                )
                 if key in response
             }
             return {
@@ -416,20 +427,42 @@ def score_all() -> int:
             "routing_gate_passed": report["routing_proven"] if routing_required else True,
             "integration_verdict": "GO" if content_gate and (report["routing_proven"] or not routing_required) else "NEEDS_RETRAIN_OR_ROUTING_PROOF",
         }
+    required_missing = [name for name in REQUIRED_P5_MODES if name in missing or name not in qualification]
+    required_not_go = [
+        name
+        for name in REQUIRED_P5_MODES
+        if name in qualification and qualification[name]["integration_verdict"] != "GO"
+    ]
+    global_blockers: list[str] = []
+    if required_missing:
+        global_blockers.append(f"required P5 modes missing evidence: {required_missing}")
+    routing_failed = [
+        name
+        for name in REQUIRED_P5_MODES
+        if name in qualification and not qualification[name]["routing_gate_passed"]
+    ]
+    if routing_failed:
+        global_blockers.append(f"required P5 modes lack signed routing proof: {routing_failed}")
+    content_failed = [
+        name
+        for name in REQUIRED_P5_MODES
+        if name in qualification and not qualification[name]["content_gate_passed"]
+    ]
+    if content_failed:
+        global_blockers.append(f"required P5 modes failed semantic quality thresholds: {content_failed}")
     report = {
         "schema_version": "1.0.0",
         "generated_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "missing_modes": missing,
+        "required_p5_modes": list(REQUIRED_P5_MODES),
         "mode_scores": mode_reports,
         "qualification": qualification,
-        "global_blockers": [
-            "ANVIL completion envelopes expose only the requested/echoed model label and no server-side applied-adapter metadata; adapter routing cannot be certified under the governing contract."
-        ] if any(MODES[name]["kind"].startswith("adapter") and not report.get("routing_proven", False) for name, report in mode_reports.items()) else [],
+        "global_blockers": global_blockers,
     }
     path = ARTIFACTS / "qualification_report.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps({"missing_modes": missing, "qualification": qualification, "global_blockers": report["global_blockers"], "output": str(path)}, indent=2))
-    return 1 if missing else 0
+    return 2 if required_missing or required_not_go else 0
 
 
 def main() -> int:

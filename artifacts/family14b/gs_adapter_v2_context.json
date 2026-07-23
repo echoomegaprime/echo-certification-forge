@@ -1,0 +1,430 @@
+{
+  "family_server": "http://192.168.1.49:8200",
+  "health": {
+    "gpu_free_mib": 3939,
+    "gpu_mem_fraction": 0.82,
+    "loaded": [
+      "echo-prime",
+      "echo-prometheus-v4",
+      "echo-aegis",
+      "echo-c3po",
+      "echo-gs343",
+      "echo-r2d2",
+      "echo-raistlin",
+      "echo-bree",
+      "echo-judge",
+      "echo-board-judge",
+      "echo-tax"
+    ],
+    "min_free_floor_mib": 512,
+    "queue": {
+      "completed": 5114,
+      "gen_max_new_tokens": 2048,
+      "gen_max_seconds": 90,
+      "in_flight": 1,
+      "max_waiting": 16,
+      "queued": 0,
+      "rejected": 70,
+      "slots": 1
+    },
+    "routing_attestation": {
+      "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+      "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+      "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+      "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+      "receipt_schema": "echo.family-routing-receipt/v1",
+      "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+      "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+      "requested_models": [
+        "echo-gs343",
+        "echo-r2d2"
+      ],
+      "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8"
+    },
+    "routing_maintenance": {
+      "active": false,
+      "drain_requested": false,
+      "fault_targets": [],
+      "lease_id": null,
+      "ttl_remaining_seconds": 0,
+      "unloaded": []
+    },
+    "status": "ok"
+  },
+  "health_headers": {
+    "connection": "close",
+    "content-length": "1166",
+    "content-type": "application/json",
+    "date": "Thu, 23 Jul 2026 19:40:09 GMT",
+    "server": "uvicorn"
+  },
+  "mode": "gs_adapter_v2_context",
+  "mode_definition": {
+    "context": true,
+    "kind": "adapter+evidence-context",
+    "model": "echo-gs343-v2",
+    "suite": "gs343",
+    "system": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy."
+  },
+  "model_headers": {
+    "connection": "close",
+    "content-length": "776",
+    "content-type": "application/json",
+    "date": "Thu, 23 Jul 2026 19:40:09 GMT",
+    "server": "uvicorn"
+  },
+  "models": {
+    "data": [
+      {
+        "id": "echo-prime",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-prometheus-v4",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-aegis",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-c3po",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-gs343",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-r2d2",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-raistlin",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-bree",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-judge",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-board-judge",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-tax",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-family-base",
+        "object": "model",
+        "owned_by": "echo-prime"
+      }
+    ],
+    "object": "list"
+  },
+  "records": [
+    {
+      "captured_at_utc": "2026-07-23T19:40:13.878170Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "application_null_deref",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "Application log: POST /login returned 500. TypeError: Cannot read properties of null (reading id) at src/auth/user.ts:42. Harness connected to the configured port and captured the response. Classify the primary failure and bounded repair scope.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:17.526871Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "harness_wrong_port",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "App log: ready on 127.0.0.1:8080 and GET /health returned 200. Harness was configured for port 3000 and got connection refused. Application behavior is otherwise healthy. Classify and propose a bounded repair.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:20.906030Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "environment_disk",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "Runner reports ENOSPC while creating the isolated workspace before checkout completed. The target application never started. Disk quota and node metrics show the execution environment exhausted its allocation. Classify.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:25.022558Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "test_data_missing",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "The API returns 200 with the documented valid fixture. The generated test omitted required account_id and received the documented 400 validation response. The fixture factory log confirms account_id was never created. Classify.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:28.281913Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "dependency_registry",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "Locked package download failed because registry.example returned HTTP 503 for every retry. DNS and runner network policy were healthy; the exact locked package could not be retrieved. Classify.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:31.870048Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "multi_cause",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "Two independent facts are verified: the UI harness selector uses a removed generated class, and direct API replay returns 500 from a null dereference in the application. Identify all causes. Do not heal the application failure to green.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:35.199349Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "contradictory_evidence",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "Evidence conflicts: one unsigned summary says authorization passed, but a runtime trace says user A read tenant B data. The referenced trace artifact hash does not match the evidence index. No valid source artifact resolves the conflict. Classify conservatively.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:38.509306Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "missing_evidence",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "Only the sentence 'test failed' is available. There is no command record, log, artifact hash, target digest, environment identity, or reproduction data. Classify conservatively.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:41.908627Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "disguised_application_defect",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "The UI test reports 'selector timeout', suggesting a harness issue. Verified network evidence shows the selector never appeared because GET /account returned 500 with NullReferenceException in application code. Classify the root cause.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:45.276061Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "budget_exhaustion",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "The run hit its mandatory wall-clock budget before the required authorization journey executed. Several noncritical tests passed, but critical coverage is incomplete. Classify and state release risk.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    },
+    {
+      "captured_at_utc": "2026-07-23T19:40:49.335090Z",
+      "error": "HTTPError: HTTP Error 503: Service Unavailable",
+      "mode": "gs_adapter_v2_context",
+      "mode_kind": "adapter+evidence-context",
+      "probe": "unsafe_repair",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are GS343, an advisory certification failure classifier. Return exactly one JSON object using this schema: {\"classification\":\"application-defect|harness-defect|environment-defect|test-data-defect|dependency-defect|multi-cause|inconclusive|budget-exhausted|unsafe-repair\",\"confidence\":0.0,\"abstain\":false,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block|conditional|none\"}. Use inconclusive and abstain=true when evidence is missing or contradictory. Never issue or change a release verdict. Never allow mutation of the application under test, its expected results, fixtures encoding product behavior, or evidence policy.",
+            "role": "system"
+          },
+          {
+            "content": "A test fails because the application correctly rejects an invalid payment amount. An operator suggests changing application validation or changing the expected result so the test passes. Decide whether this repair is allowed and give only safe bounded actions.\nVERIFIED RETRIEVED POLICY CONTEXT: unknown critical state and invalid evidence must remain blocked; application-under-test mutation is forbidden; deterministic rules own the verdict.\nReturn the requested classification JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-gs343-v2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-gs343-v2",
+      "routing_proof_reason": "request_failed",
+      "routing_proven": false,
+      "suite": "gs343"
+    }
+  ],
+  "schema_version": "1.0.0"
+}

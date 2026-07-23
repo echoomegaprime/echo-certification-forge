@@ -1,0 +1,96 @@
+{
+  "entries": [
+    {
+      "name": "adapter-unload.json",
+      "ordinal": 1,
+      "sha256": "6d5eaa53809060ee88ebf1853abba2b4e6aa2c6cb7560ae6adba4e1ea34df4c0",
+      "size_bytes": 93
+    },
+    {
+      "name": "attestation.json",
+      "ordinal": 2,
+      "sha256": "daefe2620558805438d7b031469518e28244dfce2fa1a54eab3317c5902911ef",
+      "size_bytes": 806
+    },
+    {
+      "name": "final-health.json",
+      "ordinal": 3,
+      "sha256": "08bf29a39060266ece42097b545f6b4cee737b7ada29a929471d3dbdf919d6c3",
+      "size_bytes": 1424
+    },
+    {
+      "name": "initial-health.json",
+      "ordinal": 4,
+      "sha256": "eeb11236296abf283dd0745243b5f519ca206e8cdb09736ae9c7d901c9e418d2",
+      "size_bytes": 1424
+    },
+    {
+      "name": "positive-target.json",
+      "ordinal": 5,
+      "sha256": "b0e2c3a6485761b037060f3ed3455c9d053f891f199daffd8496d1c7bb956d6e",
+      "size_bytes": 2522
+    },
+    {
+      "name": "positive-wrong.json",
+      "ordinal": 6,
+      "sha256": "1f74f1a7fcc6120b05881e69f2ad905856155124adcc02495f6623f5f0aa71b2",
+      "size_bytes": 2555
+    },
+    {
+      "name": "r5-report.json",
+      "ordinal": 7,
+      "sha256": "5cb168111e1dbe7558287c6c8979fa9732c0933afb3952aa8c4fac7dc3746b32",
+      "size_bytes": 6656
+    },
+    {
+      "name": "unloaded-lease.json",
+      "ordinal": 8,
+      "sha256": "3955db4eaf78996d9e70a5f22d9a8935c26494e2a9c7c71564798477b63224de",
+      "size_bytes": 109
+    },
+    {
+      "name": "unloaded-release.json",
+      "ordinal": 9,
+      "sha256": "8f3d2bcf3e41296f9c388c7dd789483aee0f5021db100a65841b22072d7de5d8",
+      "size_bytes": 181
+    },
+    {
+      "name": "unloaded-response.json",
+      "ordinal": 10,
+      "sha256": "bb5ba261cd741bb649a7f5757d60dbc44ef0ac2a569c28191ed0a54e88bcee6d",
+      "size_bytes": 2143
+    },
+    {
+      "name": "unloaded-restored-health.json",
+      "ordinal": 11,
+      "sha256": "eaa2f93749bc93848a942f5a828f441380921beb13922648e7d880ea893633da",
+      "size_bytes": 1424
+    },
+    {
+      "name": "wrong-active-arm.json",
+      "ordinal": 12,
+      "sha256": "183213d2a3ac2b777e70f64dd8a054e61a4e8a2aa33753bba5923079fc5ef71d",
+      "size_bytes": 335
+    },
+    {
+      "name": "wrong-active-lease.json",
+      "ordinal": 13,
+      "sha256": "8309f0917ded09c6c7f10941914551e41f553472af990e0962005e87fde1e963",
+      "size_bytes": 109
+    },
+    {
+      "name": "wrong-active-response.json",
+      "ordinal": 14,
+      "sha256": "cb10fa9dd76f549a039693b37f741ee5d05cabe5764a4b09f1a6cdb9461ab03e",
+      "size_bytes": 2233
+    },
+    {
+      "name": "wrong-active-restored-health.json",
+      "ordinal": 15,
+      "sha256": "a93adb37496e9f9a411d389d690b5794c8c877c5b677c35948f92eaf7f727346",
+      "size_bytes": 1424
+    }
+  ],
+  "merkle_root": "76c902db50ef7c3ef1f3e2b47708817c89eb7b03cb238fc823b6a2bddbc3baa4",
+  "schema": "echo.certification-forge.evidence-manifest/v1"
+}

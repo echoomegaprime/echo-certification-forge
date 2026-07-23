@@ -1,0 +1,61 @@
+{
+  "body": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "PROVENANCE-SCAN COMPLETE: R2D2 (Echo-R2D",
+          "role": "assistant"
+        }
+      }
+    ],
+    "model": "echo-r2d2",
+    "object": "chat.completion",
+    "routing_receipt": {
+      "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+      "payload": {
+        "active_adapter_ids": [
+          "echo-r2d2"
+        ],
+        "active_adapter_ids_after": [
+          "echo-r2d2"
+        ],
+        "active_adapter_ids_before": [
+          "echo-r2d2"
+        ],
+        "adapter_applied": true,
+        "adapter_version": "v2",
+        "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+        "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+        "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+        "challenge_nonce": "certforge-r5-positive-echo-r2d2-af0158c7-741b-46aa-9a87-26b9afc6c7ac",
+        "completed_at": "2026-07-23T20:55:06.536714Z",
+        "fallback_reason": null,
+        "fallback_used": false,
+        "maturity_state": "CONFORMANCE_PENDING",
+        "persona_applied": true,
+        "persona_enabled": true,
+        "registry_adapter_id": "echo-r2d2",
+        "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+        "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+        "request_id": "10245c44-17fe-4e46-a155-f3fd48189aa3",
+        "request_sha256": "8e9a1469d9003241575f58a3fc0ee9cb5bb7159388c8d25375936e89bdef7d41",
+        "requested_model": "echo-r2d2",
+        "requested_persona": "r2d2",
+        "response_sha256": "2c0ca6c3cc69bf12842f7755b74d02648cbdd9b553cacd99fee4737e45a07beb",
+        "response_size_bytes": 40,
+        "routing_mode": "lora_adapter",
+        "schema": "echo.family-routing-receipt/v1",
+        "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+        "selected_adapter_id": "echo-r2d2",
+        "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+        "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+        "slot_lease_id": "2538aa07-23ee-4e05-9fe8-250887136d7c",
+        "started_at": "2026-07-23T20:55:04.813503Z"
+      },
+      "signature_b64": "wwwn5bLEy+41tCwOQnNsEdgfF00kAf/9WBQSnVNpSQtCta4oLR2cbFIFCbxzARjNKblSCa+gApStZp5mUL7PDg=="
+    }
+  },
+  "status_code": 200
+}

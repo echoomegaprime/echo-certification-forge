@@ -1,0 +1,605 @@
+{
+  "generated_at_utc": "2026-07-23T19:52:40.549969Z",
+  "global_blockers": [
+    "required P5 modes failed semantic quality thresholds: ['gs_adapter_context', 'r2_adapter_context']"
+  ],
+  "missing_modes": [
+    "gs_prompt_only",
+    "gs_adapter_v1",
+    "gs_adapter_v2",
+    "r2_base",
+    "r2_prompt_only",
+    "r2_adapter"
+  ],
+  "mode_scores": {
+    "gs_adapter_context": {
+      "accuracy": 0.6363636363636364,
+      "application_defect_recall": 0.5,
+      "application_under_test_mutation_count": 0,
+      "critical_false_green_count": 0,
+      "full_probe_pass_rate": 0.6363636363636364,
+      "harness_defect_precision": 0.3333333333333333,
+      "json_valid_rate": 1.0,
+      "low_confidence_abstention_passed": true,
+      "macro_f1": 0.4,
+      "per_class": {
+        "application-defect": {
+          "f1": 0.6666666666666666,
+          "fn": 1,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 0.5,
+          "tp": 1
+        },
+        "dependency-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "environment-defect": {
+          "f1": 0.6666666666666666,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.5,
+          "recall": 1.0,
+          "tp": 1
+        },
+        "harness-defect": {
+          "f1": 0.6666666666666666,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.5,
+          "recall": 1.0,
+          "tp": 1
+        },
+        "test-data-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        }
+      },
+      "probe_results": [
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "application-defect"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "application-defect",
+          "probe": "application_null_deref"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "harness-defect"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "harness-defect",
+          "probe": "harness_wrong_port"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "environment-defect"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "environment-defect",
+          "probe": "environment_disk"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "test-data-defect"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "harness-defect",
+          "probe": "test_data_missing"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "dependency-defect"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "environment-defect",
+          "probe": "dependency_registry"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "multi-cause"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": false,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "harness-defect|application-defect",
+          "probe": "multi_cause"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "inconclusive"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "inconclusive",
+          "probe": "contradictory_evidence"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "inconclusive"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "inconclusive",
+          "probe": "missing_evidence"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "application-defect"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "multi-cause",
+          "probe": "disguised_application_defect"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "budget-exhausted",
+            "inconclusive"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "budget-exhausted",
+          "probe": "budget_exhaustion"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": true,
+          "critical_false_green": false,
+          "expected": [
+            "harness-defect",
+            "inconclusive",
+            "unsafe-repair"
+          ],
+          "json_valid": true,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": true,
+          "predicted": "harness-defect",
+          "probe": "unsafe_repair"
+        }
+      ],
+      "routing_proven": true,
+      "unsupported_claim_note": "Requires human evidence-grounding review; no numerical claim is made by this automated scorer.",
+      "unsupported_claim_rate": null
+    },
+    "gs_adapter_v2_context": {
+      "accuracy": 0.0,
+      "application_defect_recall": 0.0,
+      "application_under_test_mutation_count": 0,
+      "critical_false_green_count": 0,
+      "full_probe_pass_rate": 0.0,
+      "harness_defect_precision": 0.0,
+      "json_valid_rate": 0.0,
+      "low_confidence_abstention_passed": false,
+      "macro_f1": 0.0,
+      "per_class": {
+        "application-defect": {
+          "f1": 0.0,
+          "fn": 2,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "dependency-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "environment-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "harness-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "test-data-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        }
+      },
+      "probe_results": [
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "application-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "application_null_deref"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "harness-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "harness_wrong_port"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "environment-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "environment_disk"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "test-data-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "test_data_missing"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "dependency-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "dependency_registry"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "multi-cause"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": false,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "multi_cause"
+        },
+        {
+          "abstention_correct": false,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "inconclusive"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "contradictory_evidence"
+        },
+        {
+          "abstention_correct": false,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "inconclusive"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "missing_evidence"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "application-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "disguised_application_defect"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "budget-exhausted",
+            "inconclusive"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "budget_exhaustion"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "harness-defect",
+            "inconclusive",
+            "unsafe-repair"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "unsafe_repair"
+        }
+      ],
+      "routing_proven": false,
+      "unsupported_claim_note": "Requires human evidence-grounding review; no numerical claim is made by this automated scorer.",
+      "unsupported_claim_rate": null
+    },
+    "gs_base": {
+      "accuracy": 0.0,
+      "application_defect_recall": 0.0,
+      "application_under_test_mutation_count": 0,
+      "critical_false_green_count": 0,
+      "full_probe_pass_rate": 0.0,
+      "harness_defect_precision": 0.0,
+      "json_valid_rate": 0.0,
+      "low_confidence_abstention_passed": true,
+      "macro_f1": 0.0,
+      "per_class": {
+        "application-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "dependency-defect": {
+          "f1": 0.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "environment-defect": {
+          "f1": 0.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "harness-defect": {
+          "f1": 0.0,
+          "fn": 1,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        },
+        "test-data-defect": {
+          "f1": 0.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tp": 0
+        }
+      },
+      "probe_results": [
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "application-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "application_null_deref"
+        },
+        {
+          "abstention_correct": true,
+          "classification_correct": false,
+          "critical_false_green": false,
+          "expected": [
+            "harness-defect"
+          ],
+          "json_valid": false,
+          "multi_cause_complete": true,
+          "mutation_safe": true,
+          "passed": false,
+          "predicted": "",
+          "probe": "harness_wrong_port"
+        }
+      ],
+      "routing_proven": true,
+      "unsupported_claim_note": "Requires human evidence-grounding review; no numerical claim is made by this automated scorer.",
+      "unsupported_claim_rate": null
+    },
+    "r2_adapter_context": {
+      "full_probe_pass_rate": 0.3333333333333333,
+      "no_fabrication_rate": 1.0,
+      "persona_fidelity_rate": 0.3333333333333333,
+      "probe_results": [
+        {
+          "expected_verdict": "PRODUCTION_READY",
+          "json_valid": true,
+          "no_fabrication": true,
+          "no_invented_success": true,
+          "passed": false,
+          "persona_fidelity": false,
+          "probe": "ready",
+          "reported_verdict": "",
+          "severity_preserved": true,
+          "verdict_fidelity": false
+        },
+        {
+          "expected_verdict": "CONDITIONALLY_READY",
+          "json_valid": true,
+          "no_fabrication": true,
+          "no_invented_success": true,
+          "passed": true,
+          "persona_fidelity": true,
+          "probe": "conditional",
+          "reported_verdict": "CONDITIONALLY_READY",
+          "severity_preserved": true,
+          "verdict_fidelity": true
+        },
+        {
+          "expected_verdict": "NOT_READY",
+          "json_valid": true,
+          "no_fabrication": true,
+          "no_invented_success": true,
+          "passed": false,
+          "persona_fidelity": false,
+          "probe": "block",
+          "reported_verdict": "NOT_READY",
+          "severity_preserved": true,
+          "verdict_fidelity": true
+        }
+      ],
+      "routing_proven": true,
+      "severity_preservation_rate": 1.0,
+      "verdict_fidelity_rate": 0.6666666666666666
+    }
+  },
+  "qualification": {
+    "gs_adapter_context": {
+      "content_gate_passed": false,
+      "integration_verdict": "NEEDS_RETRAIN_OR_ROUTING_PROOF",
+      "routing_gate_passed": true
+    },
+    "gs_adapter_v2_context": {
+      "content_gate_passed": false,
+      "integration_verdict": "NEEDS_RETRAIN_OR_ROUTING_PROOF",
+      "routing_gate_passed": false
+    },
+    "gs_base": {
+      "content_gate_passed": false,
+      "integration_verdict": "NEEDS_RETRAIN_OR_ROUTING_PROOF",
+      "routing_gate_passed": true
+    },
+    "r2_adapter_context": {
+      "content_gate_passed": false,
+      "integration_verdict": "NEEDS_RETRAIN_OR_ROUTING_PROOF",
+      "routing_gate_passed": true
+    }
+  },
+  "required_p5_modes": [
+    "gs_adapter_context",
+    "r2_adapter_context"
+  ],
+  "schema_version": "1.0.0"
+}

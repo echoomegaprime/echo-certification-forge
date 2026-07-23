@@ -1,0 +1,51 @@
+{
+  "gpu_free_mib": 4133,
+  "gpu_mem_fraction": 0.82,
+  "loaded": [
+    "echo-prime",
+    "echo-prometheus-v4",
+    "echo-aegis",
+    "echo-c3po",
+    "echo-raistlin",
+    "echo-bree",
+    "echo-judge",
+    "echo-board-judge",
+    "echo-tax",
+    "echo-gs343",
+    "echo-r2d2"
+  ],
+  "min_free_floor_mib": 512,
+  "queue": {
+    "completed": 5547,
+    "gen_max_new_tokens": 2048,
+    "gen_max_seconds": 90,
+    "in_flight": 1,
+    "max_waiting": 16,
+    "queued": 0,
+    "rejected": 70,
+    "slots": 1
+  },
+  "routing_attestation": {
+    "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+    "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+    "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+    "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+    "receipt_schema": "echo.family-routing-receipt/v1",
+    "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+    "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+    "requested_models": [
+      "echo-gs343",
+      "echo-r2d2"
+    ],
+    "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8"
+  },
+  "routing_maintenance": {
+    "active": false,
+    "drain_requested": false,
+    "fault_targets": [],
+    "lease_id": null,
+    "ttl_remaining_seconds": 0,
+    "unloaded": []
+  },
+  "status": "ok"
+}

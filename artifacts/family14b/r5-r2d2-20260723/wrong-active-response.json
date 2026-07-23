@@ -1,0 +1,47 @@
+{
+  "body": {
+    "error_code": "ADAPTER_IDENTITY_MISMATCH",
+    "message": "live PEFT adapter state contradicts the registry",
+    "routing_receipt": {
+      "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+      "payload": {
+        "active_adapter_ids": [
+          "echo-gs343"
+        ],
+        "adapter_applied": false,
+        "adapter_version": "v2",
+        "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+        "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+        "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+        "challenge_nonce": "certforge-r5-wrong-active-09b14d70-0781-4967-9277-1764d45cbed7",
+        "completed_at": "2026-07-23T20:55:45.822215Z",
+        "error_code": "ADAPTER_IDENTITY_MISMATCH",
+        "error_reason": "actual active adapter state ['echo-gs343'] did not match 'echo-r2d2'",
+        "fallback_reason": null,
+        "fallback_used": false,
+        "maturity_state": "CONFORMANCE_PENDING",
+        "persona_applied": false,
+        "persona_enabled": true,
+        "registry_adapter_id": "echo-r2d2",
+        "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+        "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+        "request_id": "0287c95c-f31f-4acf-8250-2c042a3f7584",
+        "request_sha256": "2d64177a4afeff8c35f9b627bad0d002d8b10a1947eaaf549c4f18719917119b",
+        "requested_model": "echo-r2d2",
+        "requested_persona": "r2d2",
+        "response_sha256": null,
+        "response_size_bytes": null,
+        "routing_mode": "failure",
+        "schema": "echo.family-routing-receipt/v1",
+        "selected_adapter_digest": null,
+        "selected_adapter_id": "echo-gs343",
+        "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+        "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+        "slot_lease_id": "60f19b0e-459e-45ea-b256-35c223cf0a50",
+        "started_at": "2026-07-23T20:55:45.791113Z"
+      },
+      "signature_b64": "4gexXR+arT+Bup3IRhLZ2Vka9uCfRqEXgnEtMJYYlAJfWzKLMemWD6L5v5ZjLKZ6dDSJVWY7y2fLs7t3l4eRBg=="
+    }
+  },
+  "status_code": 409
+}

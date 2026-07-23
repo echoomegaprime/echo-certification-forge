@@ -222,7 +222,7 @@ class Operator:
         request = _chat(model, f"R5 provenance probe for {model}")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
-            headers={CHALLENGE_HEADER: challenge}, timeout=95,
+            headers={CHALLENGE_HEADER: challenge}, timeout=190,
         )
         self._add(name, {"status_code": result.status, "body": result.body})
         _status(result, 200, name)
@@ -265,7 +265,7 @@ class Operator:
         request = _chat(self.expected.target_model, "R5 wrong-active control")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
-            headers={CHALLENGE_HEADER: challenge}, timeout=95,
+            headers={CHALLENGE_HEADER: challenge}, timeout=190,
         )
         self._add("wrong-active-response", {"status_code": result.status, "body": result.body})
         _status(result, 409, "wrong-active inference")

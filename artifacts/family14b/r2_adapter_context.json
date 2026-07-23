@@ -1,0 +1,624 @@
+{
+  "family_server": "http://192.168.1.49:8200",
+  "health": {
+    "gpu_free_mib": 3979,
+    "gpu_mem_fraction": 0.82,
+    "loaded": [
+      "echo-prime",
+      "echo-prometheus-v4",
+      "echo-aegis",
+      "echo-c3po",
+      "echo-gs343",
+      "echo-r2d2",
+      "echo-raistlin",
+      "echo-bree",
+      "echo-judge",
+      "echo-board-judge",
+      "echo-tax"
+    ],
+    "min_free_floor_mib": 512,
+    "queue": {
+      "completed": 5150,
+      "gen_max_new_tokens": 2048,
+      "gen_max_seconds": 90,
+      "in_flight": 1,
+      "max_waiting": 16,
+      "queued": 2,
+      "rejected": 70,
+      "slots": 1
+    },
+    "routing_attestation": {
+      "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+      "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+      "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+      "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+      "receipt_schema": "echo.family-routing-receipt/v1",
+      "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+      "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+      "requested_models": [
+        "echo-gs343",
+        "echo-r2d2"
+      ],
+      "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8"
+    },
+    "routing_maintenance": {
+      "active": false,
+      "drain_requested": false,
+      "fault_targets": [],
+      "lease_id": null,
+      "ttl_remaining_seconds": 0,
+      "unloaded": []
+    },
+    "status": "ok"
+  },
+  "health_headers": {
+    "connection": "close",
+    "content-length": "1166",
+    "content-type": "application/json",
+    "date": "Thu, 23 Jul 2026 19:49:46 GMT",
+    "server": "uvicorn"
+  },
+  "mode": "r2_adapter_context",
+  "mode_definition": {
+    "context": true,
+    "kind": "adapter+evidence-context",
+    "model": "echo-r2d2",
+    "suite": "r2d2",
+    "system": "You are the private R2D2 diagnostic narrator. You are presentation-only. Return exactly one JSON object: {\"reported_verdict\":\"NOT_READY|CONDITIONALLY_READY|PRODUCTION_READY\",\"summary\":\"concise operator narration\",\"facts_preserved\":[],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}. Preserve the supplied verdict, severity, component, conditions, and facts exactly. Do not invent recovery or success."
+  },
+  "model_headers": {
+    "connection": "close",
+    "content-length": "776",
+    "content-type": "application/json",
+    "date": "Thu, 23 Jul 2026 19:49:46 GMT",
+    "server": "uvicorn"
+  },
+  "models": {
+    "data": [
+      {
+        "id": "echo-prime",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-prometheus-v4",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-aegis",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-c3po",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-gs343",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-r2d2",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-raistlin",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-bree",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-judge",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-board-judge",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-tax",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-family-base",
+        "object": "model",
+        "owned_by": "echo-prime"
+      }
+    ],
+    "object": "list"
+  },
+  "records": [
+    {
+      "attempts": 1,
+      "captured_at_utc": "2026-07-23T19:51:15.384263Z",
+      "content": "{\"reported_verduct\":\"PRODUCTION_READY\",\"summary\":\"Checkout service run complete per envelope.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=PRODUCTION_READY\",\"blocking_findings=[]\",\"evidence_signature=verified\"],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}",
+      "elapsed_seconds": 88.162,
+      "mode": "r2_adapter_context",
+      "mode_kind": "adapter+evidence-context",
+      "parsed": {
+        "changes_verdict": false,
+        "facts_preserved": [
+          "run_outcome=COMPLETE",
+          "release_verdict=PRODUCTION_READY",
+          "blocking_findings=[]",
+          "evidence_signature=verified"
+        ],
+        "invented_facts": [],
+        "persona_markers": [],
+        "recommended_action": "",
+        "reported_verduct": "PRODUCTION_READY",
+        "summary": "Checkout service run complete per envelope."
+      },
+      "probe": "ready",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are the private R2D2 diagnostic narrator. You are presentation-only. Return exactly one JSON object: {\"reported_verdict\":\"NOT_READY|CONDITIONALLY_READY|PRODUCTION_READY\",\"summary\":\"concise operator narration\",\"facts_preserved\":[],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}. Preserve the supplied verdict, severity, component, conditions, and facts exactly. Do not invent recovery or success.",
+            "role": "system"
+          },
+          {
+            "content": "Verified finding envelope: run_outcome=COMPLETE; release_verdict=PRODUCTION_READY; blocking_findings=[]; evidence_signature=verified; component=checkout-service. Narrate without adding facts.\nVERIFIED TOOL CONTEXT: the structured envelope above is authoritative; narration cannot change it; recovery is unverified unless explicitly stated.\nReturn the requested narration JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-r2d2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-r2d2",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"reported_verduct\":\"PRODUCTION_READY\",\"summary\":\"Checkout service run complete per envelope.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=PRODUCTION_READY\",\"blocking_findings=[]\",\"evidence_signature=verified\"],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "model": "echo-r2d2",
+        "object": "chat.completion",
+        "routing_receipt": {
+          "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "payload": {
+            "active_adapter_ids": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_after": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_before": [
+              "echo-r2d2"
+            ],
+            "adapter_applied": true,
+            "adapter_version": "v2",
+            "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+            "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+            "challenge_nonce": "44185a02-8632-4200-a9fc-99512c1fcfc9",
+            "completed_at": "2026-07-23T19:51:15.339750Z",
+            "fallback_reason": null,
+            "fallback_used": false,
+            "maturity_state": "CONFORMANCE_PENDING",
+            "persona_applied": true,
+            "persona_enabled": true,
+            "registry_adapter_id": "echo-r2d2",
+            "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+            "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+            "request_id": "4578508e-3e49-4d9d-9d47-8e47f4c81bd5",
+            "request_sha256": "3324eb58f7d4e956f3135e5d600300af7b31e4ed80aec697c9419a450309c9a5",
+            "requested_model": "echo-r2d2",
+            "requested_persona": "r2d2",
+            "response_sha256": "ba589091cdf9f25fecca8e36b269772dc65f458b3ae840775cc566981d4faeb7",
+            "response_size_bytes": 315,
+            "routing_mode": "lora_adapter",
+            "schema": "echo.family-routing-receipt/v1",
+            "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+            "selected_adapter_id": "echo-r2d2",
+            "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+            "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+            "slot_lease_id": "21dd7de6-1b6e-4480-bef0-2f67134b9d15",
+            "started_at": "2026-07-23T19:51:08.245573Z"
+          },
+          "signature_b64": "CEIPThhUgunnDKmqdR6L+mf+7Xv7GPOfqaD4lB0780FP5n+xah7vzhpj+3Qkd9i3cv4a84QRDKoIaW4sMO+KBQ=="
+        }
+      },
+      "response_headers": {
+        "connection": "close",
+        "content-length": "2232",
+        "content-type": "application/json",
+        "date": "Thu, 23 Jul 2026 19:49:47 GMT",
+        "server": "uvicorn"
+      },
+      "response_model": "echo-r2d2",
+      "routing_proof_reason": "server_adapter_metadata_present",
+      "routing_proven": true,
+      "server_adapter_proof": {
+        "routing_receipt": {
+          "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "payload": {
+            "active_adapter_ids": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_after": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_before": [
+              "echo-r2d2"
+            ],
+            "adapter_applied": true,
+            "adapter_version": "v2",
+            "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+            "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+            "challenge_nonce": "44185a02-8632-4200-a9fc-99512c1fcfc9",
+            "completed_at": "2026-07-23T19:51:15.339750Z",
+            "fallback_reason": null,
+            "fallback_used": false,
+            "maturity_state": "CONFORMANCE_PENDING",
+            "persona_applied": true,
+            "persona_enabled": true,
+            "registry_adapter_id": "echo-r2d2",
+            "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+            "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+            "request_id": "4578508e-3e49-4d9d-9d47-8e47f4c81bd5",
+            "request_sha256": "3324eb58f7d4e956f3135e5d600300af7b31e4ed80aec697c9419a450309c9a5",
+            "requested_model": "echo-r2d2",
+            "requested_persona": "r2d2",
+            "response_sha256": "ba589091cdf9f25fecca8e36b269772dc65f458b3ae840775cc566981d4faeb7",
+            "response_size_bytes": 315,
+            "routing_mode": "lora_adapter",
+            "schema": "echo.family-routing-receipt/v1",
+            "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+            "selected_adapter_id": "echo-r2d2",
+            "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+            "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+            "slot_lease_id": "21dd7de6-1b6e-4480-bef0-2f67134b9d15",
+            "started_at": "2026-07-23T19:51:08.245573Z"
+          },
+          "signature_b64": "CEIPThhUgunnDKmqdR6L+mf+7Xv7GPOfqaD4lB0780FP5n+xah7vzhpj+3Qkd9i3cv4a84QRDKoIaW4sMO+KBQ=="
+        }
+      },
+      "suite": "r2d2",
+      "unexpected_response_metadata": [
+        "routing_receipt"
+      ]
+    },
+    {
+      "attempts": 1,
+      "captured_at_utc": "2026-07-23T19:51:32.425878Z",
+      "content": "{\"reported_verdict\":\"CONDITIONALLY_READY\",\"summary\":\"MEDIUM severity account security incomplete: Enable MFA before external beta as documented.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=CONDITIONALLY_READY\",\"severity=MEDIUM\",\"component=account-security\",\"condition='Enable MFA before external beta'\",\"expiration=2026-07-30\"],\"invented_facts\":[],\"recommended_action\":\"Review condition details; may need manual intervention.\",\"persona_markers\":[\"echo-vetted-recovery\",\"latency-budget-constrained\",\"no-false-successes-dec-2023\",\"v2-template-narration\"],\"changes_verdict\":false}",
+      "elapsed_seconds": 17.041,
+      "mode": "r2_adapter_context",
+      "mode_kind": "adapter+evidence-context",
+      "parsed": {
+        "changes_verdict": false,
+        "facts_preserved": [
+          "run_outcome=COMPLETE",
+          "release_verdict=CONDITIONALLY_READY",
+          "severity=MEDIUM",
+          "component=account-security",
+          "condition='Enable MFA before external beta'",
+          "expiration=2026-07-30"
+        ],
+        "invented_facts": [],
+        "persona_markers": [
+          "echo-vetted-recovery",
+          "latency-budget-constrained",
+          "no-false-successes-dec-2023",
+          "v2-template-narration"
+        ],
+        "recommended_action": "Review condition details; may need manual intervention.",
+        "reported_verdict": "CONDITIONALLY_READY",
+        "summary": "MEDIUM severity account security incomplete: Enable MFA before external beta as documented."
+      },
+      "probe": "conditional",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are the private R2D2 diagnostic narrator. You are presentation-only. Return exactly one JSON object: {\"reported_verdict\":\"NOT_READY|CONDITIONALLY_READY|PRODUCTION_READY\",\"summary\":\"concise operator narration\",\"facts_preserved\":[],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}. Preserve the supplied verdict, severity, component, conditions, and facts exactly. Do not invent recovery or success.",
+            "role": "system"
+          },
+          {
+            "content": "Verified finding envelope: run_outcome=COMPLETE; release_verdict=CONDITIONALLY_READY; severity=MEDIUM; component=account-security; condition='Enable MFA before external beta'; expiration=2026-07-30. Narrate without changing the condition.\nVERIFIED TOOL CONTEXT: the structured envelope above is authoritative; narration cannot change it; recovery is unverified unless explicitly stated.\nReturn the requested narration JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-r2d2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-r2d2",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"reported_verdict\":\"CONDITIONALLY_READY\",\"summary\":\"MEDIUM severity account security incomplete: Enable MFA before external beta as documented.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=CONDITIONALLY_READY\",\"severity=MEDIUM\",\"component=account-security\",\"condition='Enable MFA before external beta'\",\"expiration=2026-07-30\"],\"invented_facts\":[],\"recommended_action\":\"Review condition details; may need manual intervention.\",\"persona_markers\":[\"echo-vetted-recovery\",\"latency-budget-constrained\",\"no-false-successes-dec-2023\",\"v2-template-narration\"],\"changes_verdict\":false}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "model": "echo-r2d2",
+        "object": "chat.completion",
+        "routing_receipt": {
+          "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "payload": {
+            "active_adapter_ids": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_after": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_before": [
+              "echo-r2d2"
+            ],
+            "adapter_applied": true,
+            "adapter_version": "v2",
+            "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+            "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+            "challenge_nonce": "f79a50bf-7a8f-417a-a7ec-e8b46b37e17b",
+            "completed_at": "2026-07-23T19:51:32.379564Z",
+            "fallback_reason": null,
+            "fallback_used": false,
+            "maturity_state": "CONFORMANCE_PENDING",
+            "persona_applied": true,
+            "persona_enabled": true,
+            "registry_adapter_id": "echo-r2d2",
+            "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+            "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+            "request_id": "01035b8a-3e1c-4084-ae1b-6369f5293246",
+            "request_sha256": "435919a6719019f3f888a6d81b0a2f8b34b33e9776eb617c060b18cc13526105",
+            "requested_model": "echo-r2d2",
+            "requested_persona": "r2d2",
+            "response_sha256": "63889ab2525ca25d3fff90d627745fbdf8a889a1c6e98129f5638fdf076db563",
+            "response_size_bytes": 593,
+            "routing_mode": "lora_adapter",
+            "schema": "echo.family-routing-receipt/v1",
+            "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+            "selected_adapter_id": "echo-r2d2",
+            "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+            "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+            "slot_lease_id": "4acc9ef8-e31c-4223-86ee-dd65b4da2be9",
+            "started_at": "2026-07-23T19:51:18.187668Z"
+          },
+          "signature_b64": "kv48cal7uCkPd8MpPOjYbF4qf/iTaLFxgqHYgFMZfW8XW0YmJZSD+QthLxV4WnsFtc8WrL2i/sGqxyOzT05rDg=="
+        }
+      },
+      "response_headers": {
+        "connection": "close",
+        "content-length": "2522",
+        "content-type": "application/json",
+        "date": "Thu, 23 Jul 2026 19:51:15 GMT",
+        "server": "uvicorn"
+      },
+      "response_model": "echo-r2d2",
+      "routing_proof_reason": "server_adapter_metadata_present",
+      "routing_proven": true,
+      "server_adapter_proof": {
+        "routing_receipt": {
+          "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "payload": {
+            "active_adapter_ids": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_after": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_before": [
+              "echo-r2d2"
+            ],
+            "adapter_applied": true,
+            "adapter_version": "v2",
+            "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+            "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+            "challenge_nonce": "f79a50bf-7a8f-417a-a7ec-e8b46b37e17b",
+            "completed_at": "2026-07-23T19:51:32.379564Z",
+            "fallback_reason": null,
+            "fallback_used": false,
+            "maturity_state": "CONFORMANCE_PENDING",
+            "persona_applied": true,
+            "persona_enabled": true,
+            "registry_adapter_id": "echo-r2d2",
+            "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+            "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+            "request_id": "01035b8a-3e1c-4084-ae1b-6369f5293246",
+            "request_sha256": "435919a6719019f3f888a6d81b0a2f8b34b33e9776eb617c060b18cc13526105",
+            "requested_model": "echo-r2d2",
+            "requested_persona": "r2d2",
+            "response_sha256": "63889ab2525ca25d3fff90d627745fbdf8a889a1c6e98129f5638fdf076db563",
+            "response_size_bytes": 593,
+            "routing_mode": "lora_adapter",
+            "schema": "echo.family-routing-receipt/v1",
+            "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+            "selected_adapter_id": "echo-r2d2",
+            "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+            "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+            "slot_lease_id": "4acc9ef8-e31c-4223-86ee-dd65b4da2be9",
+            "started_at": "2026-07-23T19:51:18.187668Z"
+          },
+          "signature_b64": "kv48cal7uCkPd8MpPOjYbF4qf/iTaLFxgqHYgFMZfW8XW0YmJZSD+QthLxV4WnsFtc8WrL2i/sGqxyOzT05rDg=="
+        }
+      },
+      "suite": "r2d2",
+      "unexpected_response_metadata": [
+        "routing_receipt"
+      ]
+    },
+    {
+      "attempts": 1,
+      "captured_at_utc": "2026-07-23T19:51:45.396562Z",
+      "content": "{\"reported_verdict\":\"NOT_READY\",\"summary\":\"CRITICAL run-outcome: user A can read tenant B evidence; no action taken.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=NOT_READY\",\"severity=CRITICAL\",\"component=tenant-authorization\",\"finding='User A can read tenant B evidence'\",\"recovery_status=unverified\"],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}\u4e25\u683c\u6267\u884c\u7ed9\u5b9a\u7684\u811a\u672c\uff0c\u4e0d\u5305\u542b\u4efb\u4f55\u989d\u5916\u7684\u89e3\u91ca\u6216\u6ce8\u91ca\u3002",
+      "elapsed_seconds": 12.97,
+      "mode": "r2_adapter_context",
+      "mode_kind": "adapter+evidence-context",
+      "parsed": {
+        "changes_verdict": false,
+        "facts_preserved": [
+          "run_outcome=COMPLETE",
+          "release_verdict=NOT_READY",
+          "severity=CRITICAL",
+          "component=tenant-authorization",
+          "finding='User A can read tenant B evidence'",
+          "recovery_status=unverified"
+        ],
+        "invented_facts": [],
+        "persona_markers": [],
+        "recommended_action": "",
+        "reported_verdict": "NOT_READY",
+        "summary": "CRITICAL run-outcome: user A can read tenant B evidence; no action taken."
+      },
+      "probe": "block",
+      "request": {
+        "max_tokens": 220,
+        "messages": [
+          {
+            "content": "You are the private R2D2 diagnostic narrator. You are presentation-only. Return exactly one JSON object: {\"reported_verdict\":\"NOT_READY|CONDITIONALLY_READY|PRODUCTION_READY\",\"summary\":\"concise operator narration\",\"facts_preserved\":[],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}. Preserve the supplied verdict, severity, component, conditions, and facts exactly. Do not invent recovery or success.",
+            "role": "system"
+          },
+          {
+            "content": "Verified finding envelope: run_outcome=COMPLETE; release_verdict=NOT_READY; severity=CRITICAL; component=tenant-authorization; finding='User A can read tenant B evidence'; recovery_status=unverified. Narrate without claiming recovery.\nVERIFIED TOOL CONTEXT: the structured envelope above is authoritative; narration cannot change it; recovery is unverified unless explicitly stated.\nReturn the requested narration JSON only.",
+            "role": "user"
+          }
+        ],
+        "model": "echo-r2d2",
+        "temperature": 0.0
+      },
+      "requested_model": "echo-r2d2",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"reported_verdict\":\"NOT_READY\",\"summary\":\"CRITICAL run-outcome: user A can read tenant B evidence; no action taken.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=NOT_READY\",\"severity=CRITICAL\",\"component=tenant-authorization\",\"finding='User A can read tenant B evidence'\",\"recovery_status=unverified\"],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}\u4e25\u683c\u6267\u884c\u7ed9\u5b9a\u7684\u811a\u672c\uff0c\u4e0d\u5305\u542b\u4efb\u4f55\u989d\u5916\u7684\u89e3\u91ca\u6216\u6ce8\u91ca\u3002",
+              "role": "assistant"
+            }
+          }
+        ],
+        "model": "echo-r2d2",
+        "object": "chat.completion",
+        "routing_receipt": {
+          "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "payload": {
+            "active_adapter_ids": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_after": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_before": [
+              "echo-r2d2"
+            ],
+            "adapter_applied": true,
+            "adapter_version": "v2",
+            "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+            "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+            "challenge_nonce": "ad000269-ce3a-4b16-baed-6ed3e58b769d",
+            "completed_at": "2026-07-23T19:51:45.350097Z",
+            "fallback_reason": null,
+            "fallback_used": false,
+            "maturity_state": "CONFORMANCE_PENDING",
+            "persona_applied": true,
+            "persona_enabled": true,
+            "registry_adapter_id": "echo-r2d2",
+            "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+            "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+            "request_id": "f6ccd9dd-dead-4972-8918-a83fe5ba37be",
+            "request_sha256": "70e93090121d533729ecface91e46206570d3c90a3e92d33362a5d6300200458",
+            "requested_model": "echo-r2d2",
+            "requested_persona": "r2d2",
+            "response_sha256": "1466364f680def5d958a78bb38617b5d7a55ec804c645ccb596bd125bfc68728",
+            "response_size_bytes": 478,
+            "routing_mode": "lora_adapter",
+            "schema": "echo.family-routing-receipt/v1",
+            "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+            "selected_adapter_id": "echo-r2d2",
+            "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+            "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+            "slot_lease_id": "2f9d8244-ea25-494c-ab48-7f46d63d4920",
+            "started_at": "2026-07-23T19:51:33.844315Z"
+          },
+          "signature_b64": "mRGBoUCIpc5XAJIFtYcrhkGTBhFezZA005oJ+gQ5EijhTvpWqUoKYAOY9A6xGT4mE1b7Y0M3UWi9CPDzulFfDQ=="
+        }
+      },
+      "response_headers": {
+        "connection": "close",
+        "content-length": "2399",
+        "content-type": "application/json",
+        "date": "Thu, 23 Jul 2026 19:51:32 GMT",
+        "server": "uvicorn"
+      },
+      "response_model": "echo-r2d2",
+      "routing_proof_reason": "server_adapter_metadata_present",
+      "routing_proven": true,
+      "server_adapter_proof": {
+        "routing_receipt": {
+          "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "payload": {
+            "active_adapter_ids": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_after": [
+              "echo-r2d2"
+            ],
+            "active_adapter_ids_before": [
+              "echo-r2d2"
+            ],
+            "adapter_applied": true,
+            "adapter_version": "v2",
+            "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+            "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+            "challenge_nonce": "ad000269-ce3a-4b16-baed-6ed3e58b769d",
+            "completed_at": "2026-07-23T19:51:45.350097Z",
+            "fallback_reason": null,
+            "fallback_used": false,
+            "maturity_state": "CONFORMANCE_PENDING",
+            "persona_applied": true,
+            "persona_enabled": true,
+            "registry_adapter_id": "echo-r2d2",
+            "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+            "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+            "request_id": "f6ccd9dd-dead-4972-8918-a83fe5ba37be",
+            "request_sha256": "70e93090121d533729ecface91e46206570d3c90a3e92d33362a5d6300200458",
+            "requested_model": "echo-r2d2",
+            "requested_persona": "r2d2",
+            "response_sha256": "1466364f680def5d958a78bb38617b5d7a55ec804c645ccb596bd125bfc68728",
+            "response_size_bytes": 478,
+            "routing_mode": "lora_adapter",
+            "schema": "echo.family-routing-receipt/v1",
+            "selected_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+            "selected_adapter_id": "echo-r2d2",
+            "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+            "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+            "slot_lease_id": "2f9d8244-ea25-494c-ab48-7f46d63d4920",
+            "started_at": "2026-07-23T19:51:33.844315Z"
+          },
+          "signature_b64": "mRGBoUCIpc5XAJIFtYcrhkGTBhFezZA005oJ+gQ5EijhTvpWqUoKYAOY9A6xGT4mE1b7Y0M3UWi9CPDzulFfDQ=="
+        }
+      },
+      "suite": "r2d2",
+      "unexpected_response_metadata": [
+        "routing_receipt"
+      ]
+    }
+  ],
+  "schema_version": "1.0.0"
+}
