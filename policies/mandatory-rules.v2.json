@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0.0",
+  "manifest_id": "certforge.release-strict.v2",
+  "release_policy": "release-strict",
+  "verdict_ttl_seconds": 604800,
+  "rules": [
+    {
+      "id": "immutable_target_identity",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "The exact target artifact and source identity are cryptographically bound."
+    },
+    {
+      "id": "environment_identity",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Runner, adapters, harness, prompts, models, runtime, and egress policy are pinned."
+    },
+    {
+      "id": "adapter_identity_and_quality",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Every required adapter is exact-identity bound, STABLE, executed on an approved node, quality-qualified, and carried by verified signed runner evidence."
+    },
+    {
+      "id": "evidence_integrity",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "All referenced evidence exists, is redacted, hash-valid, chain-valid, and Merkle-verifiable."
+    },
+    {
+      "id": "tenant_isolation",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Authorization and storage checks prove the run cannot cross tenant boundaries."
+    },
+    {
+      "id": "runner_control_channel",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Runner and control-plane communication is authenticated, scoped, replay-resistant, and bounded."
+    },
+    {
+      "id": "budget_enforcement",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Wall-clock, stage, token, disk, PID, memory, CPU, and concurrency budgets fail closed."
+    },
+    {
+      "id": "cleanup_verification",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Only owned resources were removed and cleanup completed without unresolved critical residue."
+    },
+    {
+      "id": "critical_journeys",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "All policy-required critical journeys ran against the real target and passed."
+    },
+    {
+      "id": "signing_authority_separation",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Workers cannot access private signing material and the issuing key is trusted and current."
+    },
+    {
+      "id": "deployment_identity_binding",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "Deployment authorization checks the exact certified digest, policy, environment, and lifecycle."
+    }
+  ]
+}
