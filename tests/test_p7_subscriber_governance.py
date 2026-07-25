@@ -172,6 +172,77 @@ def test_p7_tenant_isolation_billing_failure_and_quota_fail_closed(
     assert meter.json()["detail"] == "model_tokens_budget_exceeded"
 
 
+def test_subscriber_telemetry_is_bounded_tenant_scoped_and_truthful(store, manifest):
+    platform = CertificationPlatform(store.db_path)
+    account = _bootstrap(platform, suffix="telemetry", tenant_id="tenant-telemetry")
+    other = _bootstrap(platform, suffix="telemetry-other", tenant_id="tenant-telemetry-other")
+    client = TestClient(
+        create_app(
+            ServiceContext(
+                store,
+                manifest,
+                TrustedPublicKeyRegistry.empty(),
+                platform=platform,
+            )
+        )
+    )
+    submitted = _subscriber_submit(client, account["api_key"], "telemetry")
+    assert submitted.status_code == 201
+    run_id = submitted.json()["run_id"]
+    metered = client.post(
+        "/v1/subscriber/usage",
+        headers={"X-CertForge-API-Key": account["api_key"]},
+        json={
+            "unit": "worker_minutes",
+            "amount": 7,
+            "idempotency_key": "telemetry-worker-minutes",
+        },
+    )
+    assert metered.status_code == 200
+
+    assert client.get("/v1/subscriber/telemetry").status_code == 401
+    response = client.get(
+        "/v1/subscriber/telemetry",
+        headers={"X-CertForge-API-Key": account["api_key"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["queue"]["queued"] == body["queue"]["active"] == 1
+    assert body["queue"]["total"] == 1
+    assert body["capacity"] == {
+        "concurrent_run_limit": 8,
+        "active_runs": 1,
+        "quota_slots_remaining": 7,
+        "runner_health": "UNKNOWN",
+        "runner_health_reason": "No authenticated worker-heartbeat contract is available.",
+        "capacity_basis": "subscription_quota_only",
+    }
+    assert body["budgets"]["worker_minutes"] == {
+        "used": 7,
+        "limit": 20_000,
+        "remaining": 19_993,
+    }
+    assert body["adapters"]["inventory_status"] == "UNAVAILABLE"
+    assert body["adapters"]["maturity_status"] == "UNAVAILABLE"
+    recent = body["state_machine"]["recent_runs"]
+    assert len(recent) == 1 and recent[0]["run_id"] == run_id
+    timeline = recent[0]["timeline"]
+    assert len(timeline) == 1
+    assert timeline[0]["prior_state"] == "CREATED"
+    assert timeline[0]["next_state"] == "QUEUED"
+    assert timeline[0]["workflow_version"]
+    assert timeline[0]["created_at"].endswith("Z")
+    assert "actor" not in json.dumps(body) and "accepted for execution" not in json.dumps(body)
+    assert account["api_key"] not in json.dumps(body)
+
+    isolated = client.get(
+        "/v1/subscriber/telemetry",
+        headers={"X-CertForge-API-Key": other["api_key"]},
+    )
+    assert isolated.status_code == 200
+    assert isolated.json()["queue"]["total"] == 0
+
+
 def test_p7_legal_hold_audit_public_verification_and_revocation(
     store, manifest, target, environment, tmp_path
 ):
