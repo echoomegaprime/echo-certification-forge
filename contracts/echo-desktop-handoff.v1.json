@@ -1,0 +1,195 @@
+{
+  "schema_version": "1.0.0",
+  "handoff_id": "echo-certforge.desktop-operator.v1",
+  "effective_at": "2026-07-25T19:00:00Z",
+  "producer": {
+    "repository": "ECHO-OMEGA-PRIME/echo-certification-forge",
+    "deployed_source_commit": "c7b47ccb8d3fecfa3cd5f6a17ff625727ba20e5e",
+    "service_version": "0.3.0",
+    "capability_contract": "contracts/certforge-capabilities.v1.json",
+    "mandatory_rules": "policies/mandatory-rules.v1.json"
+  },
+  "consumer": {
+    "application": "Echo Desktop",
+    "minimum_phase": "P8C",
+    "boundary": "operator_and_public_verifier_only",
+    "executes_target_code": false,
+    "receives_runner_credentials": false,
+    "receives_private_signing_keys": false,
+    "may_issue_ready_verdict": false
+  },
+  "discovery": {
+    "namespace": "echo.certforge.",
+    "primary_transport": "sdk-gate",
+    "raw_service_fallback": false,
+    "required_state_dimensions": [
+      "registered",
+      "visible",
+      "healthy",
+      "schema_available",
+      "authorized",
+      "runnable",
+      "degraded"
+    ]
+  },
+  "stable_aliases": {
+    "certforge_status": "echo.certforge.health",
+    "certforge_list_runs": "echo.certforge.list_runs",
+    "certforge_get_run": "echo.certforge.status",
+    "certforge_start_run": "echo.certforge.submit",
+    "certforge_get_findings": "echo.certforge.findings",
+    "certforge_get_evidence_index": "echo.certforge.evidence",
+    "certforge_verify_evidence": "echo.certforge.verify",
+    "certforge_verify_verdict": "echo.certforge.verify_verdict",
+    "certforge_deploy_gate_status": "echo.certforge.deploy_gate",
+    "certforge_cancel_run": "echo.certforge.cancel"
+  },
+  "operations": {
+    "echo.certforge.health": {
+      "method": "GET",
+      "parameters": {},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 10,
+      "mutation": false
+    },
+    "echo.certforge.list_runs": {
+      "method": "GET",
+      "parameters": {},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 15,
+      "mutation": false
+    },
+    "echo.certforge.status": {
+      "method": "GET",
+      "parameters": {"run_id": "required_string"},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 15,
+      "mutation": false
+    },
+    "echo.certforge.submit": {
+      "method": "POST",
+      "parameters": {
+        "tenant_id": "required_string",
+        "target": "required_object",
+        "environment": "required_object",
+        "policy_version": "required_string",
+        "idempotency_key": "required_string_min_8"
+      },
+      "tier": 1,
+      "scope": "certforge.submit",
+      "timeout_seconds": 30,
+      "mutation": true,
+      "confirmation": "explicit_or_exact_mission_authorization"
+    },
+    "echo.certforge.findings": {
+      "method": "GET",
+      "parameters": {"run_id": "required_string"},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 15,
+      "mutation": false
+    },
+    "echo.certforge.evidence": {
+      "method": "GET",
+      "parameters": {"run_id": "required_string"},
+      "tier": 1,
+      "scope": "certforge.read",
+      "timeout_seconds": 20,
+      "mutation": false,
+      "response": "redacted_metadata_only"
+    },
+    "echo.certforge.verify": {
+      "method": "POST",
+      "parameters": {"run_id": "required_string"},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 30,
+      "mutation": false
+    },
+    "echo.certforge.verdict": {
+      "method": "GET",
+      "parameters": {"run_id": "required_string"},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 15,
+      "mutation": false,
+      "response": "signed_envelope_and_public_key_only"
+    },
+    "echo.certforge.verify_verdict": {
+      "method": "GET",
+      "parameters": {"run_id": "required_string"},
+      "tier": 0,
+      "scope": "certforge.read",
+      "timeout_seconds": 15,
+      "mutation": false
+    },
+    "echo.certforge.deploy_gate": {
+      "method": "POST",
+      "parameters": {
+        "run_id": "required_string",
+        "target_identity_digest": "required_sha256",
+        "environment_identity_digest": "required_sha256",
+        "rule_manifest_digest": "required_sha256"
+      },
+      "tier": 2,
+      "scope": "certforge.deploy_gate",
+      "timeout_seconds": 30,
+      "mutation": false,
+      "confirmation": "meaningful_reason_and_tier2_authorization"
+    },
+    "echo.certforge.cancel": {
+      "method": "POST",
+      "parameters": {"run_id": "required_string"},
+      "tier": 1,
+      "scope": "certforge.cancel",
+      "timeout_seconds": 15,
+      "mutation": true,
+      "confirmation": "explicit_or_exact_mission_authorization"
+    }
+  },
+  "result_contract": {
+    "run_outcomes": ["COMPLETE", "INCONCLUSIVE", "CANCELLED", "INFRA_FAILED"],
+    "release_verdicts": ["NOT_READY", "CONDITIONALLY_READY", "PRODUCTION_READY"],
+    "non_complete_implies": "NOT_READY",
+    "ready_requires": [
+      "valid_signature",
+      "valid_evidence_merkle_root",
+      "valid_lifecycle",
+      "unexpired_verdict",
+      "exact_target_identity",
+      "exact_environment_identity",
+      "exact_rule_manifest"
+    ]
+  },
+  "error_contract": {
+    "unknown_identity": "BLOCK",
+    "missing_schema": "UNVERIFIED",
+    "service_unavailable": "DEGRADED",
+    "missing_public_key": "UNVERIFIED",
+    "invalid_signature": "BLOCK",
+    "invalid_evidence": "BLOCK",
+    "expired_revoked_or_superseded": "BLOCK",
+    "digest_mismatch": "BLOCK",
+    "retry_policy": "bounded_reads_only; mutations require idempotency and operator authorization"
+  },
+  "independent_bootstrap": {
+    "artifact": "artifacts/bootstrap_cert.json",
+    "sha256": "7f27085ac7dec6628cd8e156d725547621fc4849930fb6f429cf410d25d278b8",
+    "verdict": "CERTIFIED",
+    "bootstrap_key_is_distinct_from_run_signer": true
+  },
+  "live_acceptance_reference": {
+    "run_id": "cert_run_c6ca21d81671712ce006d42afcd74b0336659071",
+    "run_outcome": "COMPLETE",
+    "release_verdict": "PRODUCTION_READY",
+    "evidence_artifacts": 11,
+    "evidence_verified": true,
+    "verdict_verified": true,
+    "exact_deploy_gate_allowed": true,
+    "wrong_digest_deploy_gate_allowed": false,
+    "verdict_expires_at": "2026-07-28T06:26:03.939261Z"
+  }
+}
