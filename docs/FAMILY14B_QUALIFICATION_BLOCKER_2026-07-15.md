@@ -31,14 +31,27 @@ A checkpointed base-model batch received HTTP 503 for both selected probes. Thos
 
 ## Implemented qualification harness
 
-`scripts/qualify_family_adapters.py` implements direct-HTTP-only, locally scored comparisons for:
+`scripts/qualify_family_adapters.py` now runs the production P5 candidate-versus-incumbent gate against the unchanged 240-row GS343 and R2D2 held-out eval ledgers. It uses one direct HTTP completion per model and row, checkpoints every cryptographically verified response receipt, re-verifies checkpoints on resume, scores locally, and blocks unless each candidate passes its hard gates and reaches at least `1.05 * incumbent composite`.
 
-1. base Family 14B;
-2. base plus system prompt;
-3. LoRA adapter request;
-4. adapter plus verified evidence/tool context.
+Routing is proven from the Family server's Ed25519 routing receipt bound to the exact request, challenge, response content, adapter digest, and a pinned public attestation. Requested/echoed model names are not accepted as proof. The harness never changes aliases or service configuration and always leaves the whole-product `release_verdict` at `NOT_READY`.
 
-The GS343 corpus covers application, harness, environment, test-data, dependency, multi-cause, contradictory evidence, missing evidence, disguised application defect, budget exhaustion, and unsafe-repair cases. The R2D2 corpus covers READY, CONDITIONAL, and BLOCK narration fidelity. The harness records raw requests/responses, scoring inputs, queue state, and the routing-proof decision.
+Pending corrective-candidate qualification command:
+
+```powershell
+python scripts/qualify_family_adapters.py `
+  --trusted-attestation artifacts/family14b/<current-r5-run>/attestation.json `
+  --gs-candidate-model <corrective-gs-model> `
+  --gs-incumbent-model <current-gs-model> `
+  --r2-candidate-model <corrective-r2-model> `
+  --r2-incumbent-model <current-r2-model> `
+  --output-directory artifacts/p5/qualification/<run-id>
+```
+
+Reuse the same output directory to resume; successfully checkpointed rows are verified and skipped. A changed eval digest, model set, attestation, or inference configuration requires a new output directory.
+
+## Discovery note
+
+Repository-required live discovery was attempted before implementation. The Arcanum search capability was unavailable in the live registry, and `echo.functions.search` returned a gateway timeout/502 after 30 seconds. The implementation therefore reuses the repository's direct-HTTP and local-scoring design from the prior `scripts/qualify_family_adapters.py`, the strict held-out schema/validation helpers in `src/echo_certification_forge/p5_corpus.py`, and the Ed25519 routing-receipt verification contract in `src/echo_certification_forge/family_r5.py`.
 
 ## Current adapter verdicts
 

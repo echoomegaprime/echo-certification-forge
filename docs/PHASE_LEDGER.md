@@ -6,7 +6,7 @@
 | P2 runner and authenticated transport foundation | COMPLETE | `artifacts/p2_forge_acceptance.json`, `artifacts/p2_forge_acceptance.summary.json`, `artifacts/p2_verification_report.json` | NOT_READY |
 | P3 production evidence custody, anchoring, and signing | COMPLETE | `artifacts/p3_forge_acceptance.json`, `artifacts/p3_forge_acceptance.summary.json`, `artifacts/p3_offline_bundle/`, `artifacts/p3_verification_report.json` | NOT_READY |
 | P4 hostile runner, signer image, and supply-chain qualification | COMPLETE | FORGE gate `passed=True, run_outcome=COMPLETE` — `p4-runs/p4-8c6b30d-rerun7c/p4_hostile_result.json` (2026-07-20, commit 8c6b30d) | NOT_READY |
-| P5 adapter breadth and service modes | IN_PROGRESS / BLOCKED | Live ANVIL R5 routing controls PASS for GS343 and R2D2; signed acceptance report `artifacts/p5-adapter-bundle-20260723/adapter-acceptance-report.json` blocks both adapters on quality and `EXPERIMENTAL` maturity | NOT_READY |
+| P5 adapter breadth and service modes | IN_PROGRESS / BLOCKED | Live ANVIL R5 routing controls PASS. Corrective candidate-vs-incumbent harness is available at `scripts/qualify_family_adapters.py`, but the unchanged 240-row held-out qualification has not yet produced a promotion report; no alias/config change is authorized | NOT_READY |
 | P6 deployment enforcement and platform integration | NOT_STARTED | exact-digest evaluator exists; real deployment hook absent | NOT_READY |
 | P7 subscriber productization and governance | NOT_STARTED | none | NOT_READY |
 
@@ -71,7 +71,7 @@ suite stays green on an independent re-run.
 - P3 re-certified 2026-07-18 against corrected `scripts/p3_forge_acceptance.py` (signer-identity fix source identity): passed
 - P4 deterministic closure verifier: passed after P3 re-cert
 - Central `echo.certforge.*`: **REGISTERED + live-verified** (12 caps green, 2026-07-21)
-- P5 ANVIL adapter routing: **PASS** for GS343 and R2D2 (exact target digests, wrong-active `409`, unloaded `503`, clean restoration); adapter gate remains **BLOCK** because both quality suites fail and both registry maturities are `CONFORMANCE_PENDING`/`EXPERIMENTAL`
+- P5 ANVIL adapter routing: **PASS** for GS343 and R2D2 (exact target digests, wrong-active `409`, unloaded `503`, clean restoration); corrective candidates remain **BLOCKED / NOT_READY** pending a complete receipt-verified 240-row candidate-vs-incumbent run with hard-gate success and composite score at least `1.05 * incumbent`
 - `echo.builds.log`: not registered
 - Hosted CI: `CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED`
 - Echo Desktop P8C: not started
