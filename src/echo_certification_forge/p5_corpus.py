@@ -1951,7 +1951,7 @@ def build_corpora(
             "curriculum_source": {
                 "path": str(sources[adapter]),
                 "sha256": source_digests[adapter],
-                "selected_seed_rows": teacher_rows,
+                "selected_seed_rows": curriculum_rows,
                 "provenance": CURRICULUM_SEEDED_PROVENANCE,
                 "teacher_credit": False,
             },
