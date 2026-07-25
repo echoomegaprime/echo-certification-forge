@@ -20,6 +20,7 @@ from .canonical import (
     canonical_json,
     parse_utc_iso,
     require_identifier,
+    require_sha256,
     sha256_bytes,
     sha256_json,
     to_utc_iso,
@@ -122,7 +123,7 @@ class PlanDefinition(BaseModel):
 class SubscriberPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = Field(pattern=r"^1\.0\.0$")
+    schema_version: str = Field(pattern=r"^1\.1\.0$")
     policy_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     api_key_max_ttl_days: int = Field(ge=1, le=3650)
     api_key_secret_bytes: int = Field(ge=24, le=64)
@@ -182,6 +183,24 @@ class RunReservation:
     idempotency_key: str
     request_digest: str
     created: bool
+    project_id: str | None = None
+    policy_version: str | None = None
+    target_type: str | None = None
+    target_reference: str | None = None
+    target_identity_digest: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerRunClaim:
+    organization_id: str
+    run_id: str
+    idempotency_key: str
+    project_id: str
+    policy_version: str
+    target_type: str
+    target_reference: str
+    target_identity_digest: str
+    retention_days: int
 
 
 class SubscriberGovernance:
@@ -347,7 +366,18 @@ class SubscriberGovernance:
             idempotency_key TEXT NOT NULL,
             request_digest TEXT NOT NULL,
             run_id TEXT,
+            project_id TEXT,
+            policy_version TEXT,
+            target_type TEXT,
+            target_reference TEXT,
+            target_identity_digest TEXT,
             state TEXT NOT NULL,
+            worker_id TEXT,
+            worker_attestation_sha256 TEXT,
+            execution_location TEXT,
+            signing_authority TEXT,
+            signing_key_id TEXT,
+            consumed_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (organization_id, idempotency_key),
@@ -577,6 +607,30 @@ class SubscriberGovernance:
                   )
                 """
             )
+            reservation_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(subscriber_run_reservations)"
+                ).fetchall()
+            }
+            for column_name, column_type in (
+                ("project_id", "TEXT"),
+                ("policy_version", "TEXT"),
+                ("target_type", "TEXT"),
+                ("target_reference", "TEXT"),
+                ("target_identity_digest", "TEXT"),
+                ("worker_id", "TEXT"),
+                ("worker_attestation_sha256", "TEXT"),
+                ("execution_location", "TEXT"),
+                ("signing_authority", "TEXT"),
+                ("signing_key_id", "TEXT"),
+                ("consumed_at", "TEXT"),
+            ):
+                if column_name not in reservation_columns:
+                    connection.execute(
+                        f"ALTER TABLE subscriber_run_reservations "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
             for plan in self.policy.plans:
                 definition = plan.model_dump(mode="json")
                 encoded = canonical_json(definition)
@@ -594,6 +648,47 @@ class SubscriberGovernance:
                     ) VALUES (?, ?, ?, ?)
                     """,
                     (plan.code, encoded, digest, now),
+                )
+            governance_rows = connection.execute(
+                """
+                SELECT organization_id, config_json, version
+                FROM subscriber_governance
+                """
+            ).fetchall()
+            for governance_row in governance_rows:
+                config = json.loads(str(governance_row["config_json"]))
+                if "customer_signing_key_id" in config:
+                    continue
+                config["customer_signing_key_id"] = None
+                encoded = canonical_json(config)
+                next_version = int(governance_row["version"]) + 1
+                organization_id = str(governance_row["organization_id"])
+                connection.execute(
+                    """
+                    UPDATE subscriber_governance
+                    SET config_json = ?, config_sha256 = ?, version = ?, updated_at = ?
+                    WHERE organization_id = ?
+                    """,
+                    (
+                        encoded,
+                        sha256_bytes(encoded.encode("utf-8")),
+                        next_version,
+                        now,
+                        organization_id,
+                    ),
+                )
+                self._append_audit(
+                    connection,
+                    organization_id=organization_id,
+                    actor_ref="certforge.migration",
+                    action="governance.schema_migrate",
+                    resource_type="governance",
+                    resource_id=organization_id,
+                    outcome="allowed",
+                    details={
+                        "version": next_version,
+                        "added_field": "customer_signing_key_id",
+                    },
                 )
 
     def _new_id(self, prefix: str) -> str:
@@ -710,6 +805,7 @@ class SubscriberGovernance:
             "report_brand_name": None,
             "report_logo_url": None,
             "customer_managed_signing": False,
+            "customer_signing_key_id": None,
             "local_only_execution": plan.local_only_execution,
         }
         with self._connection(immediate=True) as connection:
@@ -910,6 +1006,9 @@ class SubscriberGovernance:
         if not requested.issubset(principal.scopes):
             raise SubscriberError(403, "api_key_scope_escalation")
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.API_KEY_MANAGE
+            )
             return self._create_api_key(
                 connection,
                 organization_id=principal.organization_id,
@@ -1075,7 +1174,13 @@ class SubscriberGovernance:
         tenant_hint: str | None,
         reason: str | None = None,
     ) -> None:
-        outcome = "allowed" if status_code < 400 else "denied"
+        outcome = (
+            "allowed"
+            if status_code < 400
+            else "error"
+            if status_code >= 500
+            else "denied"
+        )
         with self._connection(immediate=True) as connection:
             self._append_audit(
                 connection,
@@ -1114,17 +1219,26 @@ class SubscriberGovernance:
             """
             SELECT o.status AS organization_status, u.status AS user_status,
                    m.status AS membership_status, m.role, s.plan_code,
-                   s.current_period_end
+                   s.current_period_end, k.status AS key_status,
+                   k.expires_at AS key_expires_at, k.scopes_json AS key_scopes_json
             FROM subscriber_organizations o
             JOIN subscriber_subscriptions s USING (organization_id)
             JOIN subscriber_memberships m USING (organization_id)
             JOIN subscriber_users u USING (user_id)
+            JOIN subscriber_api_keys k
+              ON k.key_id = ?
+             AND k.organization_id = o.organization_id
+             AND k.user_id = u.user_id
             WHERE o.organization_id = ? AND u.user_id = ?
             """,
-            (principal.organization_id, principal.user_id),
+            (principal.key_id, principal.organization_id, principal.user_id),
         ).fetchone()
         if row is None:
             raise SubscriberError(403, "membership_missing")
+        if row["key_status"] != ApiKeyStatus.ACTIVE.value:
+            raise SubscriberError(401, "api_key_inactive")
+        if parse_utc_iso(str(row["key_expires_at"])) <= self._now():
+            raise SubscriberError(401, "api_key_expired")
         if (
             row["membership_status"] != UserStatus.ACTIVE.value
             or row["user_status"] != UserStatus.ACTIVE.value
@@ -1142,7 +1256,10 @@ class SubscriberGovernance:
             if permission not in self.policy.past_due_read_permissions:
                 raise SubscriberError(402, "subscription_period_expired")
         role = MemberRole(str(row["role"]))
-        if permission not in self.policy.role_permissions[role] or permission not in principal.scopes:
+        key_scopes = frozenset(
+            Permission(item) for item in json.loads(str(row["key_scopes_json"]))
+        )
+        if permission not in self.policy.role_permissions[role] or permission not in key_scopes:
             raise SubscriberError(403, "permission_denied")
 
     def _consume_rate_limit(
@@ -1216,6 +1333,9 @@ class SubscriberGovernance:
         now = to_utc_iso(self._now())
         project_id = self._new_id("prj")
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.PROJECT_MANAGE
+            )
             plan, _ = self._plan_for_org(connection, principal.organization_id)
             count = int(
                 connection.execute(
@@ -1308,6 +1428,9 @@ class SubscriberGovernance:
         require_identifier(project_id, "project_id")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.PROJECT_MANAGE
+            )
             row = connection.execute(
                 """
                 SELECT status FROM subscriber_projects
@@ -1360,6 +1483,9 @@ class SubscriberGovernance:
         self.require(principal, Permission.API_KEY_MANAGE)
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.API_KEY_MANAGE
+            )
             row = connection.execute(
                 """
                 SELECT status FROM subscriber_api_keys
@@ -1410,6 +1536,9 @@ class SubscriberGovernance:
         user_id = self._new_id("usr")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.MEMBER_MANAGE
+            )
             existing = connection.execute(
                 "SELECT user_id FROM subscriber_users WHERE email = ?", (normalized_email,)
             ).fetchone()
@@ -1461,16 +1590,22 @@ class SubscriberGovernance:
             )
         return user_id
 
-    def activate_member(self, organization_id: str, user_id: str, *, actor_ref: str) -> None:
-        require_identifier(actor_ref, "actor_ref")
+    def activate_member(
+        self, principal: SubscriberPrincipal, user_id: str
+    ) -> None:
+        self.require(principal, Permission.MEMBER_MANAGE)
+        require_identifier(user_id, "user_id")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.MEMBER_MANAGE
+            )
             membership = connection.execute(
                 """
                 SELECT 1 FROM subscriber_memberships
                 WHERE organization_id = ? AND user_id = ?
                 """,
-                (organization_id, user_id),
+                (principal.organization_id, user_id),
             ).fetchone()
             if membership is None:
                 raise SubscriberError(404, "member_not_found")
@@ -1479,7 +1614,12 @@ class SubscriberGovernance:
                 UPDATE subscriber_memberships SET status = ?, updated_at = ?
                 WHERE organization_id = ? AND user_id = ?
                 """,
-                (UserStatus.ACTIVE.value, now, organization_id, user_id),
+                (
+                    UserStatus.ACTIVE.value,
+                    now,
+                    principal.organization_id,
+                    user_id,
+                ),
             )
             connection.execute(
                 """
@@ -1495,8 +1635,8 @@ class SubscriberGovernance:
             )
             self._append_audit(
                 connection,
-                organization_id=organization_id,
-                actor_ref=actor_ref,
+                organization_id=principal.organization_id,
+                actor_ref=principal.user_id,
                 action="member.activate",
                 resource_type="member",
                 resource_id=user_id,
@@ -1532,6 +1672,9 @@ class SubscriberGovernance:
         require_identifier(user_id, "user_id")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.MEMBER_MANAGE
+            )
             row = connection.execute(
                 """
                 SELECT role FROM subscriber_memberships
@@ -1588,6 +1731,9 @@ class SubscriberGovernance:
         require_identifier(user_id, "user_id")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.MEMBER_MANAGE
+            )
             row = connection.execute(
                 """
                 SELECT role, status FROM subscriber_memberships
@@ -1655,6 +1801,9 @@ class SubscriberGovernance:
         self.require(principal, Permission.BILLING_MANAGE)
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.BILLING_MANAGE
+            )
             connection.execute(
                 """
                 UPDATE subscriber_subscriptions
@@ -1673,6 +1822,74 @@ class SubscriberGovernance:
                 outcome="allowed",
             )
         return self.subscription(principal)
+
+    def _reconcile_governance_for_plan(
+        self,
+        connection: sqlite3.Connection,
+        organization_id: str,
+        plan: PlanPolicy,
+        now: str,
+    ) -> None:
+        row = connection.execute(
+            """
+            SELECT config_json, version FROM subscriber_governance
+            WHERE organization_id = ?
+            """,
+            (organization_id,),
+        ).fetchone()
+        if row is None:
+            raise SubscriberError(503, "governance_config_missing")
+        try:
+            config = json.loads(str(row["config_json"]))
+            prior = dict(config)
+            retention_days = int(config["retention_days"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise SubscriberError(503, "governance_config_invalid") from exc
+        config["retention_days"] = max(
+            1, min(retention_days, plan.maximum_retention_days)
+        )
+        if not plan.private_workers:
+            config["private_worker_only"] = False
+        if not plan.white_label_reports:
+            config["report_brand_name"] = None
+            config["report_logo_url"] = None
+        if not plan.customer_managed_keys:
+            config["customer_managed_signing"] = False
+            config["customer_signing_key_id"] = None
+        if not plan.local_only_execution:
+            config["local_only_execution"] = False
+        if config == prior:
+            return
+        encoded = canonical_json(config)
+        next_version = int(row["version"]) + 1
+        connection.execute(
+            """
+            UPDATE subscriber_governance
+            SET config_json = ?, config_sha256 = ?, version = ?, updated_at = ?
+            WHERE organization_id = ?
+            """,
+            (
+                encoded,
+                sha256_bytes(encoded.encode("utf-8")),
+                next_version,
+                now,
+                organization_id,
+            ),
+        )
+        self._append_audit(
+            connection,
+            organization_id=organization_id,
+            actor_ref="billing-provider",
+            action="governance.plan_reconcile",
+            resource_type="governance",
+            resource_id=organization_id,
+            outcome="allowed",
+            details={
+                "plan_code": plan.code,
+                "version": next_version,
+                "retention_days": config["retention_days"],
+            },
+        )
 
     def apply_billing_event(
         self,
@@ -1698,12 +1915,23 @@ class SubscriberGovernance:
         occurred_at = to_utc_iso(provider_occurred_at)
         event_statuses = {
             "subscription.activated": OrganizationStatus.ACTIVE,
+            "subscription.renewed": OrganizationStatus.ACTIVE,
+            "subscription.plan_changed": OrganizationStatus.ACTIVE,
             "payment.failed": OrganizationStatus.PAST_DUE,
             "subscription.suspended": OrganizationStatus.SUSPENDED,
             "subscription.cancelled": OrganizationStatus.CANCELLED,
         }
         if event_type not in event_statuses:
             raise SubscriberError(422, "billing_event_unknown")
+        period_required = event_type in {
+            "subscription.activated",
+            "subscription.renewed",
+            "subscription.plan_changed",
+        }
+        if event_type == "subscription.plan_changed" and plan_code is None:
+            raise SubscriberError(422, "billing_plan_required")
+        if plan_code is not None and not period_required:
+            raise SubscriberError(422, "billing_plan_not_allowed")
         if plan_code is not None:
             self.policy.plan(plan_code)
         encoded = canonical_json(dict(payload))
@@ -1719,6 +1947,10 @@ class SubscriberGovernance:
         )
         period_start_value = payload.get("current_period_start")
         period_end_value = payload.get("current_period_end")
+        if period_required and (
+            period_start_value is None or period_end_value is None
+        ):
+            raise SubscriberError(422, "billing_period_required")
         if (period_start_value is None) != (period_end_value is None):
             raise SubscriberError(422, "billing_period_incomplete")
         period_start: str | None = None
@@ -1728,8 +1960,11 @@ class SubscriberGovernance:
                 period_end_value, str
             ):
                 raise SubscriberError(422, "billing_period_invalid")
-            parsed_start = parse_utc_iso(period_start_value)
-            parsed_end = parse_utc_iso(period_end_value)
+            try:
+                parsed_start = parse_utc_iso(period_start_value)
+                parsed_end = parse_utc_iso(period_end_value)
+            except ValueError as exc:
+                raise SubscriberError(422, "billing_period_invalid") from exc
             if parsed_end <= parsed_start:
                 raise SubscriberError(422, "billing_period_invalid")
             period_start = to_utc_iso(parsed_start)
@@ -1877,31 +2112,56 @@ class SubscriberGovernance:
                     """,
                     (target.value, now, organization_id),
                 )
-                connection.execute(
-                    """
-                    UPDATE subscriber_subscriptions
-                    SET status = ?,
-                        plan_code = COALESCE(?, plan_code),
-                        current_period_start = COALESCE(?, current_period_start),
-                        current_period_end = COALESCE(?, current_period_end),
-                        last_provider_occurred_at = ?,
-                        last_provider_sequence = ?,
-                        last_provider_event_id = ?,
-                        updated_at = ?
-                    WHERE organization_id = ?
-                    """,
-                    (
-                        target.value,
-                        plan_code,
-                        period_start,
-                        period_end,
-                        occurred_at,
-                        provider_sequence,
-                        provider_event_id,
-                        now,
+                if period_required:
+                    connection.execute(
+                        """
+                        UPDATE subscriber_subscriptions
+                        SET status = ?, plan_code = COALESCE(?, plan_code),
+                            current_period_start = ?, current_period_end = ?,
+                            last_provider_occurred_at = ?,
+                            last_provider_sequence = ?,
+                            last_provider_event_id = ?, updated_at = ?
+                        WHERE organization_id = ?
+                        """,
+                        (
+                            target.value,
+                            plan_code,
+                            period_start,
+                            period_end,
+                            occurred_at,
+                            provider_sequence,
+                            provider_event_id,
+                            now,
+                            organization_id,
+                        ),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE subscriber_subscriptions
+                        SET status = ?, plan_code = COALESCE(?, plan_code),
+                            last_provider_occurred_at = ?,
+                            last_provider_sequence = ?,
+                            last_provider_event_id = ?, updated_at = ?
+                        WHERE organization_id = ?
+                        """,
+                        (
+                            target.value,
+                            plan_code,
+                            occurred_at,
+                            provider_sequence,
+                            provider_event_id,
+                            now,
+                            organization_id,
+                        ),
+                    )
+                if plan_code is not None:
+                    self._reconcile_governance_for_plan(
+                        connection,
                         organization_id,
-                    ),
-                )
+                        self.policy.plan(plan_code),
+                        now,
+                    )
                 self._append_audit(
                     connection,
                     organization_id=organization_id,
@@ -1959,6 +2219,7 @@ class SubscriberGovernance:
             "report_brand_name",
             "report_logo_url",
             "customer_managed_signing",
+            "customer_signing_key_id",
             "local_only_execution",
         }
         if set(config) != allowed_keys:
@@ -1990,9 +2251,24 @@ class SubscriberGovernance:
         ):
             if not isinstance(config[name], bool):
                 raise SubscriberError(422, f"governance_{name}_invalid")
+        customer_signing_key_id = config["customer_signing_key_id"]
+        if customer_signing_key_id is not None:
+            if not isinstance(customer_signing_key_id, str):
+                raise SubscriberError(422, "governance_signing_key_invalid")
+            try:
+                require_identifier(customer_signing_key_id, "customer_signing_key_id")
+            except ValueError as exc:
+                raise SubscriberError(422, "governance_signing_key_invalid") from exc
+        if bool(config["customer_managed_signing"]) != (
+            customer_signing_key_id is not None
+        ):
+            raise SubscriberError(422, "governance_signing_key_required")
         now = to_utc_iso(self._now())
         encoded = canonical_json(dict(config))
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.GOVERNANCE_MANAGE
+            )
             plan, _ = self._plan_for_org(connection, principal.organization_id)
             if not 1 <= retention_days <= plan.maximum_retention_days:
                 raise SubscriberError(422, "retention_exceeds_plan")
@@ -2057,6 +2333,9 @@ class SubscriberGovernance:
         policy_pack_id = self._new_id("ppk")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.POLICY_PACK_MANAGE
+            )
             plan, _ = self._plan_for_org(connection, principal.organization_id)
             if not plan.custom_policy_packs:
                 raise SubscriberError(403, "custom_policy_packs_not_entitled")
@@ -2158,6 +2437,9 @@ class SubscriberGovernance:
         worker_id = self._new_id("wrk")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.PRIVATE_WORKER_MANAGE
+            )
             plan, _ = self._plan_for_org(connection, principal.organization_id)
             if not plan.private_workers:
                 raise SubscriberError(403, "private_workers_not_entitled")
@@ -2230,6 +2512,9 @@ class SubscriberGovernance:
         require_identifier(worker_id, "worker_id")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.PRIVATE_WORKER_MANAGE
+            )
             row = connection.execute(
                 """
                 SELECT status FROM subscriber_private_workers
@@ -2356,7 +2641,7 @@ class SubscriberGovernance:
             f"""
             UPDATE subscriber_run_reservations
             SET state = 'RELEASED', updated_at = ?
-            WHERE organization_id = ? AND state = 'BOUND' AND run_id IN (
+            WHERE organization_id = ? AND state IN ('BOUND', 'EXECUTING') AND run_id IN (
                 SELECT run_id FROM runs WHERE tenant_id = ? AND state IN ({",".join("?" for _ in _TERMINAL_RUN_STATES)})
             )
             """,
@@ -2371,12 +2656,33 @@ class SubscriberGovernance:
         idempotency_key: str,
         request_digest: str,
         policy_version: str,
+        target_type: str | None = None,
+        target_reference: str | None = None,
+        target_identity_digest: str | None = None,
     ) -> RunReservation:
         self.require(principal, Permission.RUN_CREATE)
         self.get_project(principal, project_id, required_status="ACTIVE")
+        if target_type is not None:
+            require_identifier(target_type, "target_type")
+        if target_reference is not None and not target_reference.strip():
+            raise ValueError("target_reference is required")
+        if target_identity_digest is not None:
+            require_sha256(target_identity_digest, "target_identity_digest")
         now = self._now()
         now_text = to_utc_iso(now)
         with self._connection(immediate=True) as connection:
+            self._require_with_connection(connection, principal, Permission.RUN_CREATE)
+            project = connection.execute(
+                """
+                SELECT status FROM subscriber_projects
+                WHERE organization_id = ? AND project_id = ?
+                """,
+                (principal.organization_id, project_id),
+            ).fetchone()
+            if project is None:
+                raise SubscriberError(404, "project_not_found")
+            if project["status"] != "ACTIVE":
+                raise SubscriberError(409, "project_not_active")
             governance = connection.execute(
                 "SELECT config_json FROM subscriber_governance WHERE organization_id = ?",
                 (principal.organization_id,),
@@ -2389,7 +2695,9 @@ class SubscriberGovernance:
                 raise SubscriberError(403, "policy_not_allowed")
             existing = connection.execute(
                 """
-                SELECT request_digest, state FROM subscriber_run_reservations
+                SELECT request_digest, state, project_id, policy_version, target_type,
+                       target_reference, target_identity_digest
+                FROM subscriber_run_reservations
                 WHERE organization_id = ? AND idempotency_key = ?
                 """,
                 (principal.organization_id, idempotency_key),
@@ -2397,8 +2705,32 @@ class SubscriberGovernance:
             if existing is not None:
                 if existing["request_digest"] != request_digest:
                     raise SubscriberError(409, "idempotency_conflict")
+                expected_binding = (
+                    project_id,
+                    policy_version,
+                    target_type,
+                    target_reference,
+                    target_identity_digest,
+                )
+                actual_binding = (
+                    existing["project_id"],
+                    existing["policy_version"],
+                    existing["target_type"],
+                    existing["target_reference"],
+                    existing["target_identity_digest"],
+                )
+                if all(item is not None for item in expected_binding) and actual_binding != expected_binding:
+                    raise SubscriberError(409, "run_reservation_binding_conflict")
                 return RunReservation(
-                    principal.organization_id, idempotency_key, request_digest, False
+                    principal.organization_id,
+                    idempotency_key,
+                    request_digest,
+                    False,
+                    project_id,
+                    policy_version,
+                    target_type,
+                    target_reference,
+                    target_identity_digest,
                 )
             plan, subscription = self._plan_for_org(connection, principal.organization_id)
             if OrganizationStatus(str(subscription["organization_status"])) not in {
@@ -2414,7 +2746,7 @@ class SubscriberGovernance:
                 connection.execute(
                     """
                     SELECT COUNT(*) FROM subscriber_run_reservations
-                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND')
+                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND', 'EXECUTING')
                     """,
                     (principal.organization_id,),
                 ).fetchone()[0]
@@ -2437,13 +2769,19 @@ class SubscriberGovernance:
                 """
                 INSERT INTO subscriber_run_reservations(
                     organization_id, idempotency_key, request_digest,
-                    state, created_at, updated_at
-                ) VALUES (?, ?, ?, 'RESERVED', ?, ?)
+                    project_id, policy_version, target_type, target_reference,
+                    target_identity_digest, state, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)
                 """,
                 (
                     principal.organization_id,
                     idempotency_key,
                     request_digest,
+                    project_id,
+                    policy_version,
+                    target_type,
+                    target_reference,
+                    target_identity_digest,
                     now_text,
                     now_text,
                 ),
@@ -2473,13 +2811,99 @@ class SubscriberGovernance:
                 details={"idempotency_key_sha256": sha256_bytes(idempotency_key.encode())},
             )
             return RunReservation(
-                principal.organization_id, idempotency_key, request_digest, True
+                principal.organization_id,
+                idempotency_key,
+                request_digest,
+                True,
+                project_id,
+                policy_version,
+                target_type,
+                target_reference,
+                target_identity_digest,
             )
 
     def bind_run(self, reservation: RunReservation, run_id: str) -> None:
         require_identifier(run_id, "run_id")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
+            binding = connection.execute(
+                """
+                SELECT r.project_id, r.policy_version, r.target_type, r.target_reference,
+                       r.target_identity_digest, r.run_id, r.state,
+                       p.status AS project_status, x.tenant_id, x.project_id AS run_project_id,
+                       x.policy_version AS run_policy_version,
+                       json_extract(x.target_identity_json, '$.target_type') AS run_target_type,
+                       x.target_reference AS run_target_reference,
+                       x.target_identity_digest AS run_target_identity_digest,
+                       x.state AS run_state
+                FROM subscriber_run_reservations r
+                JOIN subscriber_projects p
+                  ON p.organization_id = r.organization_id
+                 AND p.project_id = r.project_id
+                JOIN runs x ON x.run_id = ?
+                WHERE r.organization_id = ? AND r.idempotency_key = ?
+                  AND r.request_digest = ?
+                """,
+                (
+                    run_id,
+                    reservation.organization_id,
+                    reservation.idempotency_key,
+                    reservation.request_digest,
+                ),
+            ).fetchone()
+            if binding is None:
+                raise SubscriberError(409, "run_reservation_binding_missing")
+            if any(
+                binding[field] is None
+                for field in (
+                    "project_id",
+                    "policy_version",
+                    "target_type",
+                    "target_reference",
+                    "target_identity_digest",
+                )
+            ):
+                raise SubscriberError(409, "run_reservation_binding_incomplete")
+            persisted_binding = (
+                binding["tenant_id"],
+                binding["run_project_id"],
+                binding["run_policy_version"],
+                binding["run_target_type"],
+                binding["run_target_reference"],
+                binding["run_target_identity_digest"],
+            )
+            reservation_binding = (
+                reservation.organization_id,
+                binding["project_id"],
+                binding["policy_version"],
+                binding["target_type"],
+                binding["target_reference"],
+                binding["target_identity_digest"],
+            )
+            if persisted_binding != reservation_binding:
+                raise SubscriberError(409, "run_reservation_binding_conflict")
+            if (
+                binding["run_id"] == run_id
+                and binding["state"] in {"BOUND", "EXECUTING", "RELEASED"}
+            ):
+                return
+            expected = (
+                reservation.organization_id,
+                binding["project_id"],
+                binding["policy_version"],
+                binding["target_type"],
+                binding["target_reference"],
+                binding["target_identity_digest"],
+                "QUEUED",
+                "ACTIVE",
+            )
+            actual = (
+                *persisted_binding,
+                binding["run_state"],
+                binding["project_status"],
+            )
+            if actual != expected:
+                raise SubscriberError(409, "run_reservation_binding_conflict")
             cursor = connection.execute(
                 """
                 UPDATE subscriber_run_reservations
@@ -2508,6 +2932,306 @@ class SubscriberGovernance:
                 resource_id=run_id,
                 outcome="allowed",
             )
+
+    def _resolve_worker_governance(
+        self,
+        connection: sqlite3.Connection,
+        organization_id: str,
+        *,
+        target_type: str,
+        worker_id: str | None,
+        worker_attestation_sha256: str | None,
+        execution_location: str,
+        signing_authority: str,
+        signing_key_id: str,
+    ) -> int:
+        plan, subscription = self._plan_for_org(connection, organization_id)
+        status = OrganizationStatus(str(subscription["organization_status"]))
+        if status not in {OrganizationStatus.TRIALING, OrganizationStatus.ACTIVE}:
+            raise SubscriberError(403, "subscriber_not_entitled")
+        period_start, period_end = self._billing_period(subscription)
+        now = self._now()
+        if not parse_utc_iso(period_start) <= now < parse_utc_iso(period_end):
+            raise SubscriberError(403, "subscription_period_inactive")
+        row = connection.execute(
+            "SELECT config_json FROM subscriber_governance WHERE organization_id = ?",
+            (organization_id,),
+        ).fetchone()
+        if row is None:
+            raise SubscriberError(503, "governance_config_missing")
+        try:
+            config = json.loads(str(row["config_json"]))
+            configured_retention = int(config["retention_days"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise SubscriberError(503, "governance_config_invalid") from exc
+        if configured_retention <= 0:
+            raise SubscriberError(503, "governance_retention_invalid")
+        retention_days = min(configured_retention, plan.maximum_retention_days)
+
+        if bool(config.get("private_worker_only")):
+            if not plan.private_workers:
+                raise SubscriberError(403, "private_workers_not_entitled")
+            if worker_id is None or worker_attestation_sha256 is None:
+                raise SubscriberError(403, "private_worker_identity_required")
+            require_identifier(worker_id, "worker_id")
+            require_sha256(worker_attestation_sha256, "worker_attestation_sha256")
+            worker = connection.execute(
+                """
+                SELECT attestation_sha256, status
+                FROM subscriber_private_workers
+                WHERE organization_id = ? AND worker_id = ?
+                """,
+                (organization_id, worker_id),
+            ).fetchone()
+            if (
+                worker is None
+                or worker["status"] != "ACTIVE"
+                or not hmac.compare_digest(
+                    str(worker["attestation_sha256"]),
+                    worker_attestation_sha256.lower(),
+                )
+            ):
+                raise SubscriberError(403, "private_worker_identity_invalid")
+
+        require_identifier(execution_location, "execution_location")
+        if bool(config.get("local_only_execution")):
+            if not plan.local_only_execution:
+                raise SubscriberError(403, "local_execution_not_entitled")
+            if target_type != "local" or execution_location != "local":
+                raise SubscriberError(403, "local_execution_required")
+
+        require_identifier(signing_authority, "signing_authority")
+        require_identifier(signing_key_id, "signing_key_id")
+        if bool(config.get("customer_managed_signing")):
+            configured_key_id = config.get("customer_signing_key_id")
+            if (
+                not plan.customer_managed_keys
+                or signing_authority != "customer"
+                or not isinstance(configured_key_id, str)
+                or not configured_key_id
+                or not hmac.compare_digest(configured_key_id, signing_key_id)
+            ):
+                raise SubscriberError(403, "customer_signing_authority_required")
+        elif signing_authority != "platform":
+            raise SubscriberError(403, "platform_signing_authority_required")
+        return retention_days
+
+    def claim_worker_run(
+        self,
+        *,
+        run_id: str,
+        organization_id: str,
+        policy_version: str,
+        target_type: str,
+        target_reference: str,
+        worker_id: str | None,
+        worker_attestation_sha256: str | None,
+        execution_location: str,
+        signing_authority: str,
+        signing_key_id: str,
+    ) -> WorkerRunClaim:
+        require_identifier(run_id, "run_id")
+        require_identifier(organization_id, "organization_id")
+        require_identifier(policy_version, "policy_version")
+        require_identifier(target_type, "target_type")
+        if not target_reference.strip():
+            raise ValueError("target_reference is required")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            binding = connection.execute(
+                """
+                SELECT r.idempotency_key, r.request_digest, r.project_id,
+                       r.policy_version, r.target_type, r.target_reference,
+                       r.target_identity_digest, r.state,
+                       x.tenant_id, x.project_id AS run_project_id,
+                       x.policy_version AS run_policy_version,
+                       json_extract(x.target_identity_json, '$.target_type') AS run_target_type,
+                       x.target_reference AS run_target_reference,
+                       x.target_identity_digest AS run_target_identity_digest,
+                       x.state AS run_state, p.status AS project_status
+                FROM subscriber_run_reservations r
+                JOIN runs x ON x.run_id = r.run_id
+                JOIN subscriber_projects p
+                  ON p.organization_id = r.organization_id
+                 AND p.project_id = r.project_id
+                WHERE r.organization_id = ? AND r.run_id = ?
+                """,
+                (organization_id, run_id),
+            ).fetchone()
+            if binding is None:
+                raise SubscriberError(409, "worker_run_reservation_missing")
+            if binding["state"] != "BOUND":
+                raise SubscriberError(409, "worker_run_already_claimed")
+            expected = (
+                "BOUND",
+                organization_id,
+                binding["project_id"],
+                binding["policy_version"],
+                binding["target_type"],
+                binding["target_reference"],
+                binding["target_identity_digest"],
+                "QUEUED",
+                "ACTIVE",
+            )
+            actual = (
+                binding["state"],
+                binding["tenant_id"],
+                binding["run_project_id"],
+                binding["run_policy_version"],
+                binding["run_target_type"],
+                binding["run_target_reference"],
+                binding["run_target_identity_digest"],
+                binding["run_state"],
+                binding["project_status"],
+            )
+            if actual != expected:
+                raise SubscriberError(409, "worker_run_binding_conflict")
+            if binding["policy_version"] != policy_version:
+                raise SubscriberError(409, "worker_policy_binding_conflict")
+            if (
+                binding["target_type"] != target_type
+                or binding["target_reference"] != target_reference
+            ):
+                raise SubscriberError(409, "worker_target_binding_conflict")
+            retention_days = self._resolve_worker_governance(
+                connection,
+                organization_id,
+                target_type=target_type,
+                worker_id=worker_id,
+                worker_attestation_sha256=worker_attestation_sha256,
+                execution_location=execution_location,
+                signing_authority=signing_authority,
+                signing_key_id=signing_key_id,
+            )
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET state = 'EXECUTING', worker_id = ?,
+                    worker_attestation_sha256 = ?, execution_location = ?,
+                    signing_authority = ?, signing_key_id = ?,
+                    consumed_at = ?, updated_at = ?
+                WHERE organization_id = ? AND run_id = ? AND state = 'BOUND'
+                """,
+                (
+                    worker_id,
+                    worker_attestation_sha256.lower()
+                    if worker_attestation_sha256 is not None
+                    else None,
+                    execution_location,
+                    signing_authority,
+                    signing_key_id,
+                    now,
+                    now,
+                    organization_id,
+                    run_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_run_already_claimed")
+            self._append_audit(
+                connection,
+                organization_id=organization_id,
+                actor_ref=worker_id or "certforge.platform-worker",
+                action="certification.worker_claim",
+                resource_type="certification",
+                resource_id=run_id,
+                outcome="allowed",
+                details={
+                    "execution_location": execution_location,
+                    "signing_authority": signing_authority,
+                },
+            )
+            return WorkerRunClaim(
+                organization_id=organization_id,
+                run_id=run_id,
+                idempotency_key=str(binding["idempotency_key"]),
+                project_id=str(binding["project_id"]),
+                policy_version=str(binding["policy_version"]),
+                target_type=str(binding["target_type"]),
+                target_reference=str(binding["target_reference"]),
+                target_identity_digest=str(binding["target_identity_digest"]),
+                retention_days=retention_days,
+            )
+
+    def authorize_worker_execution(self, claim: WorkerRunClaim) -> int:
+        with self._connection(immediate=True) as connection:
+            reservation = connection.execute(
+                """
+                SELECT r.target_type, r.worker_id, r.worker_attestation_sha256,
+                       r.execution_location, r.signing_authority, r.signing_key_id,
+                       r.state, r.project_id, r.policy_version, r.target_reference,
+                       r.target_identity_digest, runs.state AS run_state,
+                       runs.project_id AS run_project_id,
+                       runs.policy_version AS run_policy_version,
+                       json_extract(
+                           runs.target_identity_json, '$.target_type'
+                       ) AS run_target_type,
+                       runs.target_reference AS run_target_reference,
+                       runs.target_identity_digest AS run_target_identity_digest
+                FROM subscriber_run_reservations AS r
+                INNER JOIN runs
+                    ON runs.run_id = r.run_id
+                   AND runs.tenant_id = r.organization_id
+                WHERE r.organization_id = ?
+                  AND r.run_id = ?
+                  AND r.idempotency_key = ?
+                """,
+                (claim.organization_id, claim.run_id, claim.idempotency_key),
+            ).fetchone()
+            if reservation is None or reservation["state"] != "EXECUTING":
+                raise SubscriberError(409, "worker_run_claim_inactive")
+            if reservation["run_state"] != "QUEUED":
+                raise SubscriberError(409, "worker_run_not_queued")
+            if (
+                reservation["project_id"] != reservation["run_project_id"]
+                or reservation["policy_version"] != reservation["run_policy_version"]
+                or reservation["target_type"] != reservation["run_target_type"]
+                or reservation["target_reference"]
+                != reservation["run_target_reference"]
+                or reservation["target_identity_digest"]
+                != reservation["run_target_identity_digest"]
+            ):
+                raise SubscriberError(409, "worker_run_binding_changed")
+            return self._resolve_worker_governance(
+                connection,
+                claim.organization_id,
+                target_type=str(reservation["target_type"]),
+                worker_id=reservation["worker_id"],
+                worker_attestation_sha256=reservation["worker_attestation_sha256"],
+                execution_location=str(reservation["execution_location"]),
+                signing_authority=str(reservation["signing_authority"]),
+                signing_key_id=str(reservation["signing_key_id"]),
+            )
+
+    def finish_worker_claim(self, claim: WorkerRunClaim, *, reason: str) -> None:
+        require_identifier(reason, "reason")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET state = 'RELEASED', updated_at = ?
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                  AND state = 'EXECUTING'
+                """,
+                (
+                    now,
+                    claim.organization_id,
+                    claim.run_id,
+                    claim.idempotency_key,
+                ),
+            )
+            if cursor.rowcount == 1:
+                self._append_audit(
+                    connection,
+                    organization_id=claim.organization_id,
+                    actor_ref="certforge.run-worker",
+                    action="certification.worker_finish",
+                    resource_type="certification",
+                    resource_id=claim.run_id,
+                    outcome="allowed",
+                    details={"reason": reason},
+                )
 
     def release_reservation(
         self, reservation: RunReservation, *, reason: str, compensate_meter: bool
@@ -2585,7 +3309,7 @@ class SubscriberGovernance:
                 connection.execute(
                     """
                     SELECT COUNT(*) FROM subscriber_run_reservations
-                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND')
+                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND', 'EXECUTING')
                     """,
                     (principal.organization_id,),
                 ).fetchone()[0]
@@ -2693,6 +3417,7 @@ class SubscriberGovernance:
     def retention_days(self, tenant_id: str) -> int:
         require_identifier(tenant_id, "tenant_id")
         with self._connection() as connection:
+            plan, _ = self._plan_for_org(connection, tenant_id)
             row = connection.execute(
                 """
                 SELECT config_json FROM subscriber_governance WHERE organization_id = ?
@@ -2704,4 +3429,4 @@ class SubscriberGovernance:
         days = json.loads(row["config_json"]).get("retention_days")
         if isinstance(days, bool) or not isinstance(days, int) or days < 1:
             raise SubscriberError(503, "governance_retention_invalid")
-        return days
+        return min(days, plan.maximum_retention_days)

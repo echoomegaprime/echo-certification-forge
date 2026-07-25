@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,6 +68,9 @@ class GovernanceConfigRequest(BaseModel):
     report_brand_name: str | None
     report_logo_url: str | None
     customer_managed_signing: bool
+    customer_signing_key_id: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    )
     local_only_execution: bool
 
 
@@ -119,7 +123,30 @@ def create_app(context: ServiceContext) -> FastAPI:
                             status_code=503,
                             content={"detail": "subscriber_governance_unavailable"},
                         )
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            if context.subscribers is not None and audit_actor is not None:
+                try:
+                    context.subscribers.audit_request_outcome(
+                        organization_id=audit_actor["organization_id"],
+                        actor_ref=audit_actor["actor_ref"],
+                        key_id=audit_actor["key_id"],
+                        method=request.method,
+                        path=request.url.path,
+                        status_code=500,
+                        tenant_hint=request.headers.get("X-Tenant-ID"),
+                        reason="unhandled_exception",
+                    )
+                except sqlite3.Error:
+                    return JSONResponse(
+                        status_code=503,
+                        content={"detail": "subscriber_governance_unavailable"},
+                    )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "internal_server_error"},
+            )
         audit_reason = response.headers.get("X-Certforge-Audit-Code")
         if audit_reason is not None:
             del response.headers["X-Certforge-Audit-Code"]
@@ -168,6 +195,16 @@ def create_app(context: ServiceContext) -> FastAPI:
                     else "certification_store_unavailable"
                 )
             },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation_error(
+        _request: Request, _exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "request_validation_error"},
+            headers={"X-Certforge-Audit-Code": "request_validation_error"},
         )
 
     def tenant(value: str | None) -> str:
@@ -277,9 +314,13 @@ def create_app(context: ServiceContext) -> FastAPI:
                     idempotency_key=request.idempotency_key,
                     request_digest=request.request_digest(),
                     policy_version=request.policy_version,
+                    target_type=request.target.target_type,
+                    target_reference=request.target.reference,
+                    target_identity_digest=request.target.identity_digest,
                 )
-                context.subscribers.bind_run(reservation, request.run_id())
             status_code, body = submit(context.store, context.manifest, request, tenant_id)
+            if context.subscribers is not None and reservation is not None:
+                context.subscribers.bind_run(reservation, str(body["run_id"]))
         except SubmitError as exc:
             if reservation is not None and reservation.created:
                 context.subscribers.release_reservation(
@@ -656,11 +697,7 @@ def create_app(context: ServiceContext) -> FastAPI:
         principal = subscriber_principal(
             x_tenant_id, authorization, Permission.MEMBER_MANAGE, "members.activate"
         )
-        context.subscribers.activate_member(
-            principal.organization_id,
-            user_id,
-            actor_ref=principal.user_id,
-        )
+        context.subscribers.activate_member(principal, user_id)
         return Response(status_code=204)
 
     @app.patch("/v1/subscriber/members/{user_id}/role", status_code=204)
@@ -841,7 +878,7 @@ def create_app(context: ServiceContext) -> FastAPI:
 
     @app.get("/v1/subscriber/audit")
     def get_audit(
-        limit: int = 100,
+        limit: int = Query(default=100, ge=1, le=1000),
         x_tenant_id: str | None = Header(default=None),
         authorization: str | None = Header(default=None),
     ) -> list[dict[str, Any]]:

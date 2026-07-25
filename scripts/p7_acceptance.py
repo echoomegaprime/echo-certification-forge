@@ -17,8 +17,10 @@ from fastapi.testclient import TestClient
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from echo_certification_forge.acquisition import acquire_target
 from echo_certification_forge.canonical import parse_utc_iso
 from echo_certification_forge.evidence import EvidenceStore
+from echo_certification_forge.models import TargetIdentity
 from echo_certification_forge.run_worker import run
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
@@ -53,6 +55,60 @@ def record(
     **details: Any,
 ) -> None:
     scenarios[name] = {"passed": passed, **details}
+
+
+def submit_local_run(
+    client: TestClient,
+    manifest: RuleManifest,
+    organization_id: str,
+    api_key: str,
+    source: Path,
+    *,
+    key: str,
+) -> tuple[str, TargetIdentity]:
+    project = client.post(
+        "/v1/subscriber/projects",
+        headers=headers(organization_id, api_key),
+        json={
+            "slug": f"local-{key[-6:]}",
+            "name": f"Local {key}",
+            "target_reference": source.resolve(strict=False).as_posix(),
+        },
+    )
+    if project.status_code != 201:
+        raise RuntimeError(f"local project setup failed: {project.text}")
+    acquired = acquire_target(
+        {"type": "local", "path": str(source)},
+        source.parent / ".unused-acquisition-destination",
+    )
+    target = TargetIdentity(
+        tenant_id=organization_id,
+        target_type=acquired.target_type,
+        canonical_ref=acquired.canonical_ref,
+        artifact_sha256=acquired.artifact_sha256,
+    )
+    response = client.post(
+        "/v1/certifications",
+        headers=headers(organization_id, api_key),
+        json={
+            "tenant_id": organization_id,
+            "project_id": project.json()["project_id"],
+            "target": {
+                "target_type": "local",
+                "identity_digest": target.identity_digest,
+                "reference": target.canonical_ref,
+            },
+            "environment": {
+                "identity_digest": digest(f"environment-{key}"),
+                "runner_image_digest": "sha256:" + digest(f"runner-{key}"),
+            },
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": key,
+        },
+    )
+    if response.status_code != 201:
+        raise RuntimeError(f"local run setup failed: {response.text}")
+    return str(response.json()["run_id"]), target
 
 
 def main() -> int:
@@ -235,7 +291,16 @@ def main() -> int:
         organization_id=alpha.organization_id,
         provider_event_id="p7-payment-recovered",
         event_type="subscription.activated",
-        payload={"invoice": "p7-invoice", "paid": True},
+        payload={
+            "invoice": "p7-invoice",
+            "paid": True,
+            "current_period_start": (billing_base - timedelta(minutes=1))
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "current_period_end": (billing_base + timedelta(days=30))
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
         provider_occurred_at=billing_base + timedelta(seconds=1),
         provider_sequence=2,
     )
@@ -587,7 +652,7 @@ def main() -> int:
         owner_email="owner@p7-worker-suspended.example",
         owner_display_name="P7 Worker Suspended Owner",
         plan_code="developer",
-        status=OrganizationStatus.SUSPENDED,
+        status=OrganizationStatus.ACTIVE,
     )
     worker_source = workspace / "worker-source"
     worker_source.mkdir()
@@ -598,8 +663,36 @@ def main() -> int:
         "print('ok')\n",
         encoding="utf-8",
     )
+    active_worker_run_id, _active_target = submit_local_run(
+        client,
+        manifest,
+        worker_active.organization_id,
+        worker_active.bootstrap_api_key,
+        worker_source,
+        key="p7-worker-retention-0001",
+    )
+    suspended_worker_run_id, _suspended_target = submit_local_run(
+        client,
+        manifest,
+        worker_suspended.organization_id,
+        worker_suspended.bootstrap_api_key,
+        worker_source,
+        key="p7-worker-suspended-0001",
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        connection.execute(
+            "UPDATE subscriber_organizations SET status = 'SUSPENDED' "
+            "WHERE organization_id = ?",
+            (worker_suspended.organization_id,),
+        )
+        connection.execute(
+            "UPDATE subscriber_subscriptions SET status = 'SUSPENDED' "
+            "WHERE organization_id = ?",
+            (worker_suspended.organization_id,),
+        )
+        connection.commit()
     suspended_worker_result = run(
-        "p7-worker-suspended",
+        suspended_worker_run_id,
         worker_suspended.organization_id,
         {"type": "local", "path": str(worker_source)},
         store=store,
@@ -610,7 +703,7 @@ def main() -> int:
         journey=[sys.executable, "journey.py"],
     )
     active_worker_result = run(
-        "p7-worker-retention",
+        active_worker_run_id,
         worker_active.organization_id,
         {"type": "local", "path": str(worker_source)},
         store=store,
@@ -627,7 +720,7 @@ def main() -> int:
             FROM evidence_retention
             WHERE run_id = ? AND tenant_id = ?
             """,
-            ("p7-worker-retention", worker_active.organization_id),
+            (active_worker_run_id, worker_active.organization_id),
         ).fetchall()
     retention_is_seven_days = bool(retention_rows) and all(
         row[0] == "subscriber-7d"
@@ -639,14 +732,453 @@ def main() -> int:
     record(
         scenarios,
         "worker_entitlement_and_plan_retention",
-        suspended_worker_result.get("state") == "INFRASTRUCTURE_FAILURE"
-        and suspended_worker_result.get("signed") is False
+        suspended_worker_result.get("error") == "subscriber_worker_claim_denied"
+        and suspended_worker_result.get("detail") == "subscriber_not_entitled"
         and not worker_marker.exists()
         and active_worker_result.get("state") == "COMPLETED"
         and retention_is_seven_days,
         suspended_state=suspended_worker_result.get("state"),
         active_state=active_worker_result.get("state"),
         retention_classes=sorted({row[0] for row in retention_rows}),
+    )
+
+    direct_worker = run(
+        "p7-direct-unreserved",
+        worker_active.organization_id,
+        {"type": "local", "path": str(workspace / "missing-source")},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+    )
+    claim_org = governance.provision_organization(
+        slug="p7-worker-claim",
+        display_name="P7 Worker Claim",
+        owner_email="owner@p7-worker-claim.example",
+        owner_display_name="P7 Worker Claim Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    claim_run_id, claim_target = submit_local_run(
+        client,
+        manifest,
+        claim_org.organization_id,
+        claim_org.bootstrap_api_key,
+        worker_source,
+        key="p7-worker-claim-0001",
+    )
+    claim_signer = Ed25519VerdictSigner.generate()
+    worker_claim = governance.claim_worker_run(
+        run_id=claim_run_id,
+        organization_id=claim_org.organization_id,
+        policy_version=manifest.manifest_id,
+        target_type="local",
+        target_reference=claim_target.canonical_ref,
+        worker_id=None,
+        worker_attestation_sha256=None,
+        execution_location="local",
+        signing_authority="platform",
+        signing_key_id=claim_signer.key_id,
+    )
+    duplicate_claim_code = None
+    try:
+        governance.claim_worker_run(
+            run_id=claim_run_id,
+            organization_id=claim_org.organization_id,
+            policy_version=manifest.manifest_id,
+            target_type="local",
+            target_reference=claim_target.canonical_ref,
+            worker_id=None,
+            worker_attestation_sha256=None,
+            execution_location="local",
+            signing_authority="platform",
+            signing_key_id=claim_signer.key_id,
+        )
+    except SubscriberError as exc:
+        duplicate_claim_code = exc.code
+    governance.finish_worker_claim(worker_claim, reason="acceptance_complete")
+    record(
+        scenarios,
+        "strict_worker_reservation_claim",
+        direct_worker.get("error") == "subscriber_worker_claim_denied"
+        and direct_worker.get("detail") == "worker_run_reservation_missing"
+        and duplicate_claim_code == "worker_run_already_claimed",
+        direct_invocation=direct_worker,
+        duplicate_claim_code=duplicate_claim_code,
+    )
+
+    controlled = governance.provision_organization(
+        slug="p7-worker-controls",
+        display_name="P7 Worker Controls",
+        owner_email="owner@p7-worker-controls.example",
+        owner_display_name="P7 Worker Controls Owner",
+        plan_code="sovereign",
+        status=OrganizationStatus.ACTIVE,
+    )
+    controlled_governance = governance.authenticate(
+        controlled.bootstrap_api_key,
+        tenant_hint=controlled.organization_id,
+        permission=Permission.GOVERNANCE_MANAGE,
+        action="acceptance.worker-controls.governance",
+    )
+    controlled_workers = governance.authenticate(
+        controlled.bootstrap_api_key,
+        tenant_hint=controlled.organization_id,
+        permission=Permission.PRIVATE_WORKER_MANAGE,
+        action="acceptance.worker-controls.worker",
+    )
+    controlled_signer = Ed25519VerdictSigner.generate()
+    controlled_config = governance.governance_config(controlled_governance)
+    next_controlled_config = dict(controlled_config["config"])
+    next_controlled_config.update(
+        {
+            "private_worker_only": True,
+            "customer_managed_signing": True,
+            "customer_signing_key_id": controlled_signer.key_id,
+        }
+    )
+    governance.update_governance(
+        controlled_governance,
+        next_controlled_config,
+        expected_version=controlled_config["version"],
+    )
+    controlled_attestation = digest("p7-controlled-worker")
+    controlled_worker = governance.register_private_worker(
+        controlled_workers,
+        display_name="P7 Controlled Worker",
+        attestation_sha256=controlled_attestation,
+    )
+    controlled_run_id, _controlled_target = submit_local_run(
+        client,
+        manifest,
+        controlled.organization_id,
+        controlled.bootstrap_api_key,
+        worker_source,
+        key="p7-worker-controls-0001",
+    )
+    wrong_identity = run(
+        controlled_run_id,
+        controlled.organization_id,
+        {"type": "local", "path": str(worker_source)},
+        store=store,
+        manifest=manifest,
+        signer=controlled_signer,
+        subscribers=governance,
+        worker_id=controlled_worker["worker_id"],
+        worker_attestation_sha256=digest("p7-wrong-worker"),
+        execution_location="local",
+        signing_authority="customer",
+    )
+    wrong_location = run(
+        controlled_run_id,
+        controlled.organization_id,
+        {"type": "local", "path": str(worker_source)},
+        store=store,
+        manifest=manifest,
+        signer=controlled_signer,
+        subscribers=governance,
+        worker_id=controlled_worker["worker_id"],
+        worker_attestation_sha256=controlled_attestation,
+        execution_location="remote",
+        signing_authority="customer",
+    )
+    wrong_signer = run(
+        controlled_run_id,
+        controlled.organization_id,
+        {"type": "local", "path": str(worker_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        worker_id=controlled_worker["worker_id"],
+        worker_attestation_sha256=controlled_attestation,
+        execution_location="local",
+        signing_authority="platform",
+    )
+    controlled_result = run(
+        controlled_run_id,
+        controlled.organization_id,
+        {"type": "local", "path": str(worker_source)},
+        store=store,
+        manifest=manifest,
+        signer=controlled_signer,
+        subscribers=governance,
+        worker_id=controlled_worker["worker_id"],
+        worker_attestation_sha256=controlled_attestation,
+        execution_location="local",
+        signing_authority="customer",
+        journey=[sys.executable, "-c", "print('controlled')"],
+    )
+    record(
+        scenarios,
+        "persisted_execution_governance_controls",
+        wrong_identity.get("detail") == "private_worker_identity_invalid"
+        and wrong_location.get("detail") == "local_execution_required"
+        and wrong_signer.get("detail") == "customer_signing_authority_required"
+        and controlled_result.get("state") == "COMPLETED"
+        and controlled_result.get("signer_public_key_id") == controlled_signer.key_id,
+        private_worker_denial=wrong_identity.get("detail"),
+        execution_location_denial=wrong_location.get("detail"),
+        signing_denial=wrong_signer.get("detail"),
+        positive_state=controlled_result.get("state"),
+    )
+
+    race_org = governance.provision_organization(
+        slug="p7-authorization-race",
+        display_name="P7 Authorization Race",
+        owner_email="owner@p7-authorization-race.example",
+        owner_display_name="P7 Authorization Race Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    race_principal = governance.authenticate(
+        race_org.bootstrap_api_key,
+        tenant_hint=race_org.organization_id,
+        permission=Permission.PROJECT_MANAGE,
+        action="acceptance.authorization-race",
+    )
+    original_require = governance.require
+
+    def suspend_after_authorization(candidate, permission):
+        original_require(candidate, permission)
+        with closing(sqlite3.connect(db)) as connection:
+            connection.execute(
+                "UPDATE subscriber_organizations SET status = 'SUSPENDED' "
+                "WHERE organization_id = ?",
+                (race_org.organization_id,),
+            )
+            connection.execute(
+                "UPDATE subscriber_subscriptions SET status = 'SUSPENDED' "
+                "WHERE organization_id = ?",
+                (race_org.organization_id,),
+            )
+            connection.commit()
+
+    governance.require = suspend_after_authorization  # type: ignore[method-assign]
+    race_code = None
+    try:
+        governance.create_project(
+            race_principal,
+            slug="raced",
+            name="Raced",
+            target_reference="https://github.com/example/raced",
+        )
+    except SubscriberError as exc:
+        race_code = exc.code
+    finally:
+        governance.require = original_require  # type: ignore[method-assign]
+    with closing(sqlite3.connect(db)) as connection:
+        raced_projects = connection.execute(
+            "SELECT COUNT(*) FROM subscriber_projects WHERE organization_id = ?",
+            (race_org.organization_id,),
+        ).fetchone()[0]
+    record(
+        scenarios,
+        "transactional_mutation_authorization",
+        race_code == "organization_suspended" and raced_projects == 0,
+        detail=race_code,
+        mutated_projects=raced_projects,
+    )
+
+    downgrade = governance.provision_organization(
+        slug="p7-plan-downgrade",
+        display_name="P7 Plan Downgrade",
+        owner_email="owner@p7-plan-downgrade.example",
+        owner_display_name="P7 Plan Downgrade Owner",
+        plan_code="enterprise",
+        status=OrganizationStatus.ACTIVE,
+    )
+    downgrade_principal = governance.authenticate(
+        downgrade.bootstrap_api_key,
+        tenant_hint=downgrade.organization_id,
+        permission=Permission.GOVERNANCE_MANAGE,
+        action="acceptance.plan-downgrade",
+    )
+    downgrade_config = governance.governance_config(downgrade_principal)
+    premium_config = dict(downgrade_config["config"])
+    premium_config.update(
+        {
+            "retention_days": 700,
+            "private_worker_only": True,
+            "customer_managed_signing": True,
+            "customer_signing_key_id": Ed25519VerdictSigner.generate().key_id,
+        }
+    )
+    governance.update_governance(
+        downgrade_principal,
+        premium_config,
+        expected_version=downgrade_config["version"],
+    )
+    before_downgrade = governance.governance_config(downgrade_principal)
+    downgrade_at = datetime.now(UTC)
+    governance.apply_billing_event(
+        organization_id=downgrade.organization_id,
+        provider_event_id="p7-plan-downgrade-event",
+        event_type="subscription.plan_changed",
+        payload={
+            "current_period_start": downgrade_at.isoformat().replace("+00:00", "Z"),
+            "current_period_end": (downgrade_at + timedelta(days=30))
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
+        provider_occurred_at=downgrade_at,
+        provider_sequence=1,
+        plan_code="developer",
+    )
+    after_downgrade = governance.governance_config(downgrade_principal)
+    record(
+        scenarios,
+        "atomic_plan_downgrade_reconciliation",
+        after_downgrade["version"] == before_downgrade["version"] + 1
+        and after_downgrade["config"]["retention_days"] == 14
+        and after_downgrade["config"]["private_worker_only"] is False
+        and after_downgrade["config"]["customer_managed_signing"] is False
+        and after_downgrade["config"]["customer_signing_key_id"] is None
+        and governance.retention_days(downgrade.organization_id) == 14,
+        version=after_downgrade["version"],
+        governance=after_downgrade["config"],
+    )
+
+    required_period = governance.provision_organization(
+        slug="p7-period-required",
+        display_name="P7 Period Required",
+        owner_email="owner@p7-period-required.example",
+        owner_display_name="P7 Period Required Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        period_before = connection.execute(
+            """
+            SELECT plan_code, status, current_period_start, current_period_end
+            FROM subscriber_subscriptions WHERE organization_id = ?
+            """,
+            (required_period.organization_id,),
+        ).fetchone()
+    missing_period_code = None
+    invalid_period_code = None
+    try:
+        governance.apply_billing_event(
+            organization_id=required_period.organization_id,
+            provider_event_id="p7-period-missing",
+            event_type="subscription.renewed",
+            payload={},
+            provider_occurred_at=datetime.now(UTC),
+            provider_sequence=1,
+        )
+    except SubscriberError as exc:
+        missing_period_code = exc.code
+    try:
+        governance.apply_billing_event(
+            organization_id=required_period.organization_id,
+            provider_event_id="p7-period-invalid",
+            event_type="subscription.plan_changed",
+            payload={
+                "current_period_start": "2026-08-02T00:00:00Z",
+                "current_period_end": "2026-08-01T00:00:00Z",
+            },
+            provider_occurred_at=datetime.now(UTC),
+            provider_sequence=2,
+            plan_code="professional",
+        )
+    except SubscriberError as exc:
+        invalid_period_code = exc.code
+    with closing(sqlite3.connect(db)) as connection:
+        period_after = connection.execute(
+            """
+            SELECT plan_code, status, current_period_start, current_period_end
+            FROM subscriber_subscriptions WHERE organization_id = ?
+            """,
+            (required_period.organization_id,),
+        ).fetchone()
+        invalid_period_events = connection.execute(
+            """
+            SELECT COUNT(*) FROM subscriber_billing_events
+            WHERE provider_event_id IN ('p7-period-missing', 'p7-period-invalid')
+            """
+        ).fetchone()[0]
+    record(
+        scenarios,
+        "required_billing_periods",
+        missing_period_code == "billing_period_required"
+        and invalid_period_code == "billing_period_invalid"
+        and period_before == period_after
+        and invalid_period_events == 0,
+        missing_period_code=missing_period_code,
+        invalid_period_code=invalid_period_code,
+        prior_state=list(period_before),
+        resulting_state=list(period_after),
+    )
+
+    audit_errors = governance.provision_organization(
+        slug="p7-audit-errors",
+        display_name="P7 Audit Errors",
+        owner_email="owner@p7-audit-errors.example",
+        owner_display_name="P7 Audit Errors Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    audit_error_headers = headers(
+        audit_errors.organization_id, audit_errors.bootstrap_api_key
+    )
+    validation_error = client.get(
+        "/v1/subscriber/audit",
+        headers=audit_error_headers,
+        params={"limit": 0},
+    )
+    original_list_policy_packs = governance.list_policy_packs
+
+    def explode_policy_list(_principal):
+        raise RuntimeError("acceptance unhandled error")
+
+    governance.list_policy_packs = explode_policy_list  # type: ignore[method-assign]
+    try:
+        unhandled_error = client.get(
+            "/v1/subscriber/policy-packs",
+            headers=audit_error_headers,
+        )
+    finally:
+        governance.list_policy_packs = original_list_policy_packs  # type: ignore[method-assign]
+    with closing(sqlite3.connect(db)) as connection:
+        error_outcomes = connection.execute(
+            """
+            SELECT outcome, details_json FROM subscriber_audit_events
+            WHERE organization_id = ? AND action = 'request.outcome'
+            ORDER BY event_id DESC LIMIT 2
+            """,
+            (audit_errors.organization_id,),
+        ).fetchall()
+    audited_errors = {
+        (
+            json.loads(row[1])["path"],
+            row[0],
+            json.loads(row[1])["status_code"],
+            json.loads(row[1])["reason"],
+        )
+        for row in error_outcomes
+    }
+    record(
+        scenarios,
+        "audited_validation_and_unhandled_errors",
+        validation_error.status_code == 422
+        and unhandled_error.status_code == 500
+        and (
+            "/v1/subscriber/audit",
+            "denied",
+            422,
+            "request_validation_error",
+        )
+        in audited_errors
+        and (
+            "/v1/subscriber/policy-packs",
+            "error",
+            500,
+            "unhandled_exception",
+        )
+        in audited_errors,
+        validation_status=validation_error.status_code,
+        unhandled_status=unhandled_error.status_code,
+        audited_outcomes=sorted([list(item) for item in audited_errors]),
     )
 
     ordered = governance.provision_organization(
@@ -672,7 +1204,15 @@ def main() -> int:
             organization_id=ordered.organization_id,
             provider_event_id="p7-order-delayed-activate",
             event_type="subscription.activated",
-            payload={"reason": "delayed"},
+            payload={
+                "reason": "delayed",
+                "current_period_start": (ordered_at - timedelta(days=1))
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "current_period_end": (ordered_at + timedelta(days=29))
+                .isoformat()
+                .replace("+00:00", "Z"),
+            },
             provider_occurred_at=ordered_at - timedelta(minutes=5),
             provider_sequence=10,
         )
@@ -867,15 +1407,20 @@ def main() -> int:
         scenarios,
         "versioned_policy_contract",
         contract.get("schema_version") == policy.schema_version
+        and contract.get("schema_version") == "1.1.0"
         and contract.get("contract_id") == "certforge.subscriber-governance.v1"
         and contract.get("authentication", {}).get("denied_request_audit_required")
-        is True,
+        is True
+        and contract.get("worker_execution", {}).get("claim_precondition")
+        is not None
+        and contract.get("authorization", {}).get("mutation_consistency")
+        is not None,
         contract_id=contract.get("contract_id"),
         schema_version=contract.get("schema_version"),
     )
 
     report = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "phase": "P7",
         "generated_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "python": sys.version,

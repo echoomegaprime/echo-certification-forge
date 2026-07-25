@@ -90,7 +90,8 @@ class EvidenceStore:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             policy_version TEXT,
-            target_reference TEXT
+            target_reference TEXT,
+            project_id TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id, created_at);
 
@@ -219,6 +220,8 @@ class EvidenceStore:
                 connection.execute("ALTER TABLE runs ADD COLUMN policy_version TEXT")
             if "target_reference" not in existing:
                 connection.execute("ALTER TABLE runs ADD COLUMN target_reference TEXT")
+            if "project_id" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN project_id TEXT")
 
     def register_run(
         self,
@@ -269,6 +272,7 @@ class EvidenceStore:
         policy_version: str,
         manifest_id: str,
         manifest_digest: str,
+        project_id: str | None = None,
     ) -> None:
         """Register a run from a client-declared, pre-computed target identity digest.
 
@@ -282,6 +286,8 @@ class EvidenceStore:
         require_sha256(target_identity_digest, "target_identity_digest")
         require_sha256(environment_identity_digest, "environment_identity_digest")
         require_identifier(policy_version, "policy_version")
+        if project_id is not None:
+            require_identifier(project_id, "project_id")
         require_identifier(manifest_id, "manifest_id")
         if not target_reference.strip():
             raise ValueError("target_reference is required")
@@ -299,8 +305,9 @@ class EvidenceStore:
                     run_id, tenant_id, target_identity_json, target_identity_digest,
                     environment_identity_json, environment_identity_digest,
                     rule_manifest_id, rule_manifest_digest, run_outcome, state,
-                    created_at, updated_at, policy_version, target_reference
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, policy_version, target_reference,
+                    project_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -317,6 +324,7 @@ class EvidenceStore:
                     now,
                     policy_version,
                     target_reference,
+                    project_id,
                 ),
             )
 
@@ -440,7 +448,7 @@ class EvidenceStore:
             }
             record_hash = sha256_json(descriptor)
             chain_hash = sha256_bytes(bytes.fromhex(prev_chain_hash) + bytes.fromhex(record_hash))
-            fd, temporary_name = tempfile.mkstemp(prefix=f".{artifact_id}.", dir=destination.parent)
+            fd, temporary_name = tempfile.mkstemp(prefix=".artifact-", dir=destination.parent)
             try:
                 with os.fdopen(fd, "wb") as handle:
                     handle.write(content)

@@ -24,6 +24,14 @@ An independent external anchor for finalized Merkle roots is mandatory before co
 
 Untrusted targets execute only on dedicated ephemeral runners with non-root identity, read-only root filesystem, dropped capabilities, seccomp or stronger isolation, default-deny egress, resource limits, authenticated short-lived runner identity, replay protection, and verified cleanup. The control plane never executes customer code.
 
+## Subscriber execution governance
+
+A subscriber worker may acquire or execute only an existing `QUEUED` run with a matching `BOUND` reservation. The reservation and run must agree on tenant, project, policy, target type/reference, and target identity digest; claiming atomically transitions the reservation to `EXECUTING`. Direct, duplicate, stale, or mismatched invocation fails closed before acquisition.
+
+Persisted governance is enforced at claim and revalidated immediately before execution. Private-worker mode requires an active registered worker and matching attestation, local-only mode requires both a local target and local execution location, and customer-managed signing requires the configured customer key and customer signing authority. Entitlement and retention lookup failures block execution, and retention is always capped by the current plan.
+
+All principal-authorized subscriber mutations repeat live API-key, membership, role, organization, subscription, and scope authorization inside the same write transaction. Billing activation, renewal, and plan-change events require complete valid billing periods. Plan changes atomically reconcile retention and unsupported controls. Authenticated validation failures, denials, and unhandled errors are recorded in the immutable final-outcome audit chain.
+
 ## Intelligence boundary
 
 GS343 may propose discovery, classification, and bounded harness repairs. Deterministic rules own the final verdict. Repairs may never alter target source, expected outcomes, fixtures that encode product behavior, evidence policy, or mandatory rules. R2D2 is presentation-only and cannot alter state or verdicts.

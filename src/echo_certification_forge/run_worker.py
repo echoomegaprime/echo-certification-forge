@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -92,11 +93,113 @@ def run(
     sandbox: DockerSandbox | None = None,
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
+    worker_id: str | None = None,
+    worker_attestation_sha256: str | None = None,
+    execution_location: str = "local",
+    signing_authority: str = "platform",
 ) -> dict:
-    workdir = Path(tempfile.mkdtemp(prefix="certforge-acq-"))
+    if subscribers is None:
+        try:
+            with sqlite3.connect(store.db_path) as connection:
+                subscriber_tenant = bool(
+                    connection.execute(
+                        """
+                        SELECT 1 FROM sqlite_master
+                        WHERE type = 'table' AND name = 'subscriber_organizations'
+                        """
+                    ).fetchone()
+                    and connection.execute(
+                        """
+                        SELECT 1 FROM subscriber_organizations
+                        WHERE organization_id = ?
+                        """,
+                        (tenant,),
+                    ).fetchone()
+                )
+        except sqlite3.Error:
+            subscriber_tenant = True
+        if subscriber_tenant:
+            return {
+                "run_id": run_id,
+                "error": "subscriber_governance_required",
+            }
+
+    claim = None
+    if subscribers is not None:
+        target_type = str(target_spec.get("type", "")).strip()
+        if target_type == "local":
+            raw_path = target_spec.get("path")
+            target_reference = (
+                Path(str(raw_path)).resolve(strict=False).as_posix()
+                if raw_path
+                else ""
+            )
+        elif target_type == "git":
+            url = str(target_spec.get("url", "")).strip()
+            ref = str(target_spec.get("ref", "")).strip()
+            target_reference = f"{url}@{ref}" if ref else url
+        else:
+            target_reference = ""
+        try:
+            claim = subscribers.claim_worker_run(
+                run_id=run_id,
+                organization_id=tenant,
+                policy_version=manifest.manifest_id,
+                target_type=target_type,
+                target_reference=target_reference,
+                worker_id=worker_id,
+                worker_attestation_sha256=worker_attestation_sha256,
+                execution_location=execution_location,
+                signing_authority=signing_authority,
+                signing_key_id=signer.key_id,
+            )
+        except (OSError, sqlite3.Error, SubscriberError, TypeError, ValueError) as exc:
+            return {
+                "run_id": run_id,
+                "error": "subscriber_worker_claim_denied",
+                "detail": exc.code if isinstance(exc, SubscriberError) else type(exc).__name__,
+            }
+
+    work_root = store.evidence_root / ".worker"
+    try:
+        work_root.mkdir(parents=True, exist_ok=True)
+        workdir = Path(tempfile.mkdtemp(prefix="certforge-acq-", dir=work_root))
+    except OSError as exc:
+        if claim is not None:
+            try:
+                store.transition_state(
+                    run_id,
+                    tenant,
+                    RunState.INFRASTRUCTURE_FAILURE,
+                    "subscriber-worker",
+                    "workspace_creation_failed",
+                    manifest.manifest_id,
+                )
+                store.set_run_outcome(run_id, tenant, RunOutcome.INFRA_FAILED)
+            finally:
+                subscribers.finish_worker_claim(claim, reason="workspace_creation_failed")
+        return {
+            "run_id": run_id,
+            "error": "workspace_creation_failed",
+            "detail": type(exc).__name__,
+        }
     try:
         acquired = acquire_target(target_spec, workdir / "src")
-    except AcquisitionError as exc:
+    except (AcquisitionError, OSError) as exc:
+        if claim is not None:
+            try:
+                store.transition_state(
+                    run_id,
+                    tenant,
+                    RunState.INFRASTRUCTURE_FAILURE,
+                    "subscriber-worker",
+                    "target_acquisition_failed",
+                    manifest.manifest_id,
+                )
+                store.set_run_outcome(run_id, tenant, RunOutcome.INFRA_FAILED)
+            finally:
+                subscribers.finish_worker_claim(claim, reason="target_acquisition_failed")
+        shutil.rmtree(workdir, ignore_errors=True)
         return {"run_id": run_id, "error": "acquisition_failed", "detail": str(exc)}
 
     target = TargetIdentity(
@@ -111,7 +214,35 @@ def run(
         existing = store.get_run(run_id, tenant)
     except KeyError:
         existing = None
-    if existing is None:
+    if subscribers is not None:
+        if existing is None or existing["state"] != RunState.QUEUED.value:
+            if claim is not None:
+                subscribers.finish_worker_claim(claim, reason="run_not_queued")
+            shutil.rmtree(workdir, ignore_errors=True)
+            return {
+                "run_id": run_id,
+                "error": "run_not_queued",
+                "state": existing["state"] if existing is not None else "UNKNOWN",
+            }
+        if claim is None or target.identity_digest != claim.target_identity_digest:
+            try:
+                store.transition_state(
+                    run_id,
+                    tenant,
+                    RunState.INFRASTRUCTURE_FAILURE,
+                    "subscriber-worker",
+                    "target_identity_binding_mismatch",
+                    manifest.manifest_id,
+                )
+                store.set_run_outcome(run_id, tenant, RunOutcome.INFRA_FAILED)
+            finally:
+                if claim is not None:
+                    subscribers.finish_worker_claim(
+                        claim, reason="target_identity_binding_mismatch"
+                    )
+            shutil.rmtree(workdir, ignore_errors=True)
+            return {"run_id": run_id, "error": "target_identity_binding_mismatch"}
+    elif existing is None:
         store.register_run(run_id, target, environment, manifest.manifest_id, manifest.digest)
     elif existing["state"] not in (RunState.CREATED.value, RunState.QUEUED.value):
         return {"run_id": run_id, "error": "run_not_pending", "state": existing["state"]}
@@ -122,14 +253,35 @@ def run(
     retention = RetentionPolicy()
     if subscribers is not None:
         try:
-            allowed, reason = subscribers.entitlement(tenant)
-            retention_days = subscribers.retention_days(tenant)
+            if claim is None:
+                raise SubscriberError(409, "worker_run_claim_missing")
+            retention_days = subscribers.authorize_worker_execution(claim)
             if retention_days <= 0:
                 raise ValueError("subscriber retention must be positive")
-        except (OSError, sqlite3.Error, SubscriberError, TypeError, ValueError):
-            allowed = False
-            reason = "subscriber_governance_lookup_failed"
+        except (OSError, sqlite3.Error, SubscriberError, TypeError, ValueError) as exc:
+            reason = (
+                exc.code if isinstance(exc, SubscriberError)
+                else "subscriber_governance_lookup_failed"
+            )
+            current = store.get_run(run_id, tenant)
+            if current["state"] != RunState.QUEUED.value:
+                if claim is not None:
+                    subscribers.finish_worker_claim(
+                        claim, reason="execution_authorization_denied"
+                    )
+                shutil.rmtree(workdir, ignore_errors=True)
+                return {
+                    "run_id": run_id,
+                    "state": current["state"],
+                    "signed": False,
+                    "error": "subscriber_execution_denied",
+                    "detail": reason,
+                }
             retention_days = 1
+            allowed = False
+        else:
+            allowed = True
+            reason = "subscriber_entitled"
         entitlement = StaticEntitlement(
             frozenset({tenant}) if allowed else frozenset(),
             denied_reason=reason,
@@ -138,47 +290,26 @@ def run(
             retention_class=f"subscriber-{retention_days}d",
             ttl_seconds=retention_days * 24 * 3600,
         )
-    else:
-        try:
-            with sqlite3.connect(store.db_path) as connection:
-                subscriber_table = connection.execute(
-                    """
-                    SELECT 1 FROM sqlite_master
-                    WHERE type = 'table' AND name = 'subscriber_organizations'
-                    """
-                ).fetchone()
-                subscriber_tenant = bool(
-                    subscriber_table
-                    and connection.execute(
-                        """
-                        SELECT 1 FROM subscriber_organizations
-                        WHERE organization_id = ?
-                        """,
-                        (tenant,),
-                    ).fetchone()
-                )
-        except sqlite3.Error:
-            subscriber_tenant = True
-        if subscriber_tenant:
-            entitlement = StaticEntitlement(
-                frozenset(),
-                denied_reason="subscriber_governance_required",
-            )
-    result = executor.execute(
-        run_id,
-        tenant,
-        acquired.source_root,
-        entitlement=entitlement,
-        retention=retention,
-        journey=journey,
-        journey_runner=journey_runner,
-        control_attestations={
-            "runner_control_channel": True,
-            "signing_authority_separation": True,
-        },
-        adapter_records=adapter_records,
-        adapter_policy=adapter_policy,
-    )
+    try:
+        result = executor.execute(
+            run_id,
+            tenant,
+            acquired.source_root,
+            entitlement=entitlement,
+            retention=retention,
+            journey=journey,
+            journey_runner=journey_runner,
+            control_attestations={
+                "runner_control_channel": True,
+                "signing_authority_separation": True,
+            },
+            adapter_records=adapter_records,
+            adapter_policy=adapter_policy,
+        )
+    finally:
+        if claim is not None:
+            subscribers.finish_worker_claim(claim, reason="execution_finished")
+        shutil.rmtree(workdir, ignore_errors=True)
     return {
         "run_id": result.run_id,
         "state": result.final_state,
@@ -282,6 +413,23 @@ def main(argv: list[str] | None = None) -> int:
         "--adapter-runner-id",
         default=os.environ.get("ECHO_CERTFORGE_ADAPTER_RUNNER_ID", "anvil-adapter-runner"),
     )
+    parser.add_argument(
+        "--worker-id",
+        default=os.environ.get("ECHO_CERTFORGE_WORKER_ID"),
+    )
+    parser.add_argument(
+        "--worker-attestation-sha256",
+        default=os.environ.get("ECHO_CERTFORGE_WORKER_ATTESTATION_SHA256"),
+    )
+    parser.add_argument(
+        "--execution-location",
+        default=os.environ.get("ECHO_CERTFORGE_EXECUTION_LOCATION", "local"),
+    )
+    parser.add_argument(
+        "--signing-authority",
+        choices=("platform", "customer"),
+        default=os.environ.get("ECHO_CERTFORGE_SIGNING_AUTHORITY", "platform"),
+    )
     args = parser.parse_args(argv)
 
     manifest = RuleManifest.load(args.policy)
@@ -384,6 +532,10 @@ def main(argv: list[str] | None = None) -> int:
         sandbox=sandbox,
         adapter_records=adapter_records,
         adapter_policy=adapter_policy,
+        worker_id=args.worker_id,
+        worker_attestation_sha256=args.worker_attestation_sha256,
+        execution_location=args.execution_location,
+        signing_authority=args.signing_authority,
     )
     print(json.dumps(result))
     return 0 if result.get("run_outcome") == RunOutcome.COMPLETE.value else 1

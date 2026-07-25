@@ -11,9 +11,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from echo_certification_forge.acquisition import acquire_target
 from echo_certification_forge.canonical import parse_utc_iso
 from echo_certification_forge.evidence import EvidenceStore
-from echo_certification_forge.models import RunState
+from echo_certification_forge.models import RunState, TargetIdentity
 from echo_certification_forge.run_worker import run
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
@@ -124,6 +125,55 @@ def _submit_body(manifest, organization_id: str, project_id: str, key: str) -> d
     }
 
 
+def _submit_local_run(
+    client: TestClient,
+    manifest,
+    organization_id: str,
+    token: str,
+    source: Path,
+    *,
+    key: str,
+) -> tuple[str, TargetIdentity]:
+    project_response = _project(
+        client,
+        organization_id,
+        token,
+        slug=f"local-{key[-6:]}",
+    )
+    assert project_response.status_code == 201
+    acquired = acquire_target(
+        {"type": "local", "path": str(source)},
+        source.parent / ".unused-acquisition-destination",
+    )
+    target = TargetIdentity(
+        tenant_id=organization_id,
+        target_type=acquired.target_type,
+        canonical_ref=acquired.canonical_ref,
+        artifact_sha256=acquired.artifact_sha256,
+    )
+    response = client.post(
+        "/v1/certifications",
+        headers=_headers(organization_id, token),
+        json={
+            "tenant_id": organization_id,
+            "project_id": project_response.json()["project_id"],
+            "target": {
+                "target_type": "local",
+                "identity_digest": target.identity_digest,
+                "reference": acquired.canonical_ref,
+            },
+            "environment": {
+                "identity_digest": _digest(f"environment-{key}"),
+                "runner_image_digest": "sha256:" + _digest(f"runner-{key}"),
+            },
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": key,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()["run_id"], target
+
+
 def test_tenant_authentication_isolation_and_project_quota(tmp_path, manifest):
     _store, governance, client = _stack(tmp_path, manifest)
     alpha = _provision(governance, "alpha")
@@ -172,7 +222,7 @@ def test_role_and_api_key_scopes_prevent_privilege_escalation(tmp_path, manifest
         display_name="Viewer",
         role=MemberRole.VIEWER,
     )
-    governance.activate_member(org.organization_id, viewer_id, actor_ref=owner.user_id)
+    governance.activate_member(owner, viewer_id)
     viewer_token = governance.create_api_key(
         owner,
         name="viewer",
@@ -234,6 +284,9 @@ def test_governed_submission_is_idempotent_metered_and_concurrency_limited(
         "release concurrency reservation",
         "p7",
     )
+    terminal_replay = client.post("/v1/certifications", headers=headers, json=body)
+    assert terminal_replay.status_code == 200
+    assert terminal_replay.json()["run_id"] == first.json()["run_id"]
     second = client.post(
         "/v1/certifications",
         headers=headers,
@@ -839,8 +892,8 @@ def test_stale_reservation_is_released_and_metering_is_compensated(
 def test_run_worker_enforces_live_subscriber_entitlement(
     tmp_path, manifest, status
 ):
-    store, governance, _client = _stack(tmp_path, manifest)
-    org = _provision(governance, f"worker-{status.value.lower()}", status=status)
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, f"worker-{status.value.lower()}")
     marker = tmp_path / f"{status.value.lower()}-executed"
     source = tmp_path / f"{status.value.lower()}-source"
     source.mkdir()
@@ -849,9 +902,26 @@ def test_run_worker_enforces_live_subscriber_entitlement(
         f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
         encoding="utf-8",
     )
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key=f"worker-{status.value.lower()}-0001",
+    )
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            "UPDATE subscriber_organizations SET status = ? WHERE organization_id = ?",
+            (status.value, org.organization_id),
+        )
+        connection.execute(
+            "UPDATE subscriber_subscriptions SET status = ? WHERE organization_id = ?",
+            (status.value, org.organization_id),
+        )
 
     result = run(
-        f"worker-{status.value.lower()}",
+        run_id,
         org.organization_id,
         {"type": "local", "path": str(source)},
         store=store,
@@ -862,22 +932,31 @@ def test_run_worker_enforces_live_subscriber_entitlement(
         journey=[sys.executable, "journey.py"],
     )
 
-    assert result["state"] == RunState.INFRASTRUCTURE_FAILURE.value
-    assert result["signed"] is False
+    assert result["error"] == "subscriber_worker_claim_denied"
+    assert result["detail"] == "subscriber_not_entitled"
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
     assert marker.exists() is False
 
 
 def test_run_worker_uses_plan_retention_immediately_before_execution(
     tmp_path, manifest
 ):
-    store, governance, _client = _stack(tmp_path, manifest)
+    store, governance, client = _stack(tmp_path, manifest)
     org = _provision(governance, "worker-retention", plan_code="developer")
     source = tmp_path / "retention-source"
     source.mkdir()
     (source / "hello.py").write_text("print('ok')\n", encoding="utf-8")
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="worker-retention-0001",
+    )
 
     result = run(
-        "worker-retention",
+        run_id,
         org.organization_id,
         {"type": "local", "path": str(source)},
         store=store,
@@ -896,7 +975,7 @@ def test_run_worker_uses_plan_retention_immediately_before_execution(
             FROM evidence_retention
             WHERE run_id = ? AND tenant_id = ?
             """,
-            ("worker-retention", org.organization_id),
+            (run_id, org.organization_id),
         ).fetchall()
     assert rows
     assert {row[0] for row in rows} == {"subscriber-7d"}
@@ -909,7 +988,8 @@ def test_run_worker_uses_plan_retention_immediately_before_execution(
 
 
 def test_run_worker_fails_closed_when_retention_lookup_fails(tmp_path, manifest):
-    store, _governance, _client = _stack(tmp_path, manifest)
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "lookup-failure")
     source = tmp_path / "lookup-failure-source"
     source.mkdir()
     marker = tmp_path / "lookup-failure-executed"
@@ -918,29 +998,513 @@ def test_run_worker_fails_closed_when_retention_lookup_fails(tmp_path, manifest)
         f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
         encoding="utf-8",
     )
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="worker-lookup-failure-0001",
+    )
 
-    class BrokenRetentionGovernance:
-        def entitlement(self, _tenant_id: str) -> tuple[bool, str]:
-            return True, "entitled"
+    def broken_authorization(_claim):
+        raise sqlite3.OperationalError("simulated governance outage")
 
-        def retention_days(self, _tenant_id: str) -> int:
-            raise sqlite3.OperationalError("simulated governance outage")
+    governance.authorize_worker_execution = broken_authorization  # type: ignore[method-assign]
 
     result = run(
-        "worker-lookup-failure",
-        "org_lookup_failure",
+        run_id,
+        org.organization_id,
         {"type": "local", "path": str(source)},
         store=store,
         manifest=manifest,
         signer=Ed25519VerdictSigner.generate(),
-        entitled=frozenset({"org_lookup_failure"}),
-        subscribers=BrokenRetentionGovernance(),  # type: ignore[arg-type]
+        entitled=frozenset({org.organization_id}),
+        subscribers=governance,
         journey=[sys.executable, "journey.py"],
     )
 
     assert result["state"] == RunState.INFRASTRUCTURE_FAILURE.value
     assert result["signed"] is False
     assert marker.exists() is False
+
+
+def test_subscriber_worker_requires_bound_queued_run_before_acquisition(
+    tmp_path, manifest
+):
+    store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, "worker-direct")
+    missing_source = tmp_path / "must-not-be-acquired"
+
+    result = run(
+        "unreserved-run",
+        org.organization_id,
+        {"type": "local", "path": str(missing_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+    )
+
+    assert result == {
+        "run_id": "unreserved-run",
+        "error": "subscriber_worker_claim_denied",
+        "detail": "worker_run_reservation_missing",
+    }
+    with pytest.raises(KeyError):
+        store.get_run("unreserved-run", org.organization_id)
+
+
+def test_worker_reservation_is_atomically_consumed(tmp_path, manifest):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "worker-claim")
+    source = tmp_path / "claim-source"
+    source.mkdir()
+    (source / "hello.py").write_text("print('claim')\n", encoding="utf-8")
+    run_id, target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="worker-claim-0001",
+    )
+    signer = Ed25519VerdictSigner.generate()
+    claim = governance.claim_worker_run(
+        run_id=run_id,
+        organization_id=org.organization_id,
+        policy_version=manifest.manifest_id,
+        target_type="local",
+        target_reference=target.canonical_ref,
+        worker_id=None,
+        worker_attestation_sha256=None,
+        execution_location="local",
+        signing_authority="platform",
+        signing_key_id=signer.key_id,
+    )
+    with pytest.raises(SubscriberError, match="worker_run_already_claimed"):
+        governance.claim_worker_run(
+            run_id=run_id,
+            organization_id=org.organization_id,
+            policy_version=manifest.manifest_id,
+            target_type="local",
+            target_reference=target.canonical_ref,
+            worker_id=None,
+            worker_attestation_sha256=None,
+            execution_location="local",
+            signing_authority="platform",
+            signing_key_id=signer.key_id,
+        )
+    with sqlite3.connect(governance.db_path) as connection:
+        state = connection.execute(
+            """
+            SELECT state FROM subscriber_run_reservations
+            WHERE organization_id = ? AND run_id = ?
+            """,
+            (org.organization_id, run_id),
+        ).fetchone()[0]
+    assert state == "EXECUTING"
+    governance.finish_worker_claim(claim, reason="test_complete")
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+
+
+def test_worker_revalidates_queued_state_immediately_before_execution(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "worker-cancel-race")
+    source = tmp_path / "cancel-race-source"
+    source.mkdir()
+    marker = tmp_path / "cancel-race-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="worker-cancel-race-0001",
+    )
+    authorize = governance.authorize_worker_execution
+
+    def cancel_before_authorization(claim):
+        store.transition_state(
+            run_id,
+            org.organization_id,
+            RunState.CANCELLED,
+            "acceptance",
+            "cancel immediately before worker authorization",
+            manifest.manifest_id,
+        )
+        return authorize(claim)
+
+    governance.authorize_worker_execution = cancel_before_authorization  # type: ignore[method-assign]
+    result = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+
+    assert result["state"] == RunState.CANCELLED.value
+    assert result["error"] == "subscriber_execution_denied"
+    assert result["detail"] == "worker_run_not_queued"
+    assert result["signed"] is False
+    assert marker.exists() is False
+
+
+def test_worker_enforces_private_local_and_customer_signing_controls(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "worker-controls", plan_code="sovereign")
+    governance_principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.GOVERNANCE_MANAGE,
+    )
+    worker_principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.PRIVATE_WORKER_MANAGE,
+    )
+    customer_signer = Ed25519VerdictSigner.generate()
+    current = governance.governance_config(governance_principal)
+    config = dict(current["config"])
+    config["private_worker_only"] = True
+    config["customer_managed_signing"] = True
+    config["customer_signing_key_id"] = customer_signer.key_id
+    governance.update_governance(
+        governance_principal,
+        config,
+        expected_version=current["version"],
+    )
+    worker_attestation = _digest("sovereign-worker-attestation")
+    worker = governance.register_private_worker(
+        worker_principal,
+        display_name="Sovereign Local Worker",
+        attestation_sha256=worker_attestation,
+    )
+    source = tmp_path / "controlled-source"
+    source.mkdir()
+    (source / "hello.py").write_text("print('controlled')\n", encoding="utf-8")
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="worker-controls-0001",
+    )
+
+    mismatched_target = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(tmp_path / "different-source")},
+        store=store,
+        manifest=manifest,
+        signer=customer_signer,
+        subscribers=governance,
+        worker_id=worker["worker_id"],
+        worker_attestation_sha256=worker_attestation,
+        execution_location="local",
+        signing_authority="customer",
+    )
+    assert mismatched_target["detail"] == "worker_target_binding_conflict"
+
+    wrong_worker = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=customer_signer,
+        subscribers=governance,
+        worker_id=worker["worker_id"],
+        worker_attestation_sha256=_digest("wrong-attestation"),
+        execution_location="local",
+        signing_authority="customer",
+    )
+    assert wrong_worker["detail"] == "private_worker_identity_invalid"
+
+    remote_execution = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=customer_signer,
+        subscribers=governance,
+        worker_id=worker["worker_id"],
+        worker_attestation_sha256=worker_attestation,
+        execution_location="remote",
+        signing_authority="customer",
+    )
+    assert remote_execution["detail"] == "local_execution_required"
+
+    platform_signing = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        worker_id=worker["worker_id"],
+        worker_attestation_sha256=worker_attestation,
+        execution_location="local",
+        signing_authority="platform",
+    )
+    assert platform_signing["detail"] == "customer_signing_authority_required"
+
+    result = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=customer_signer,
+        subscribers=governance,
+        worker_id=worker["worker_id"],
+        worker_attestation_sha256=worker_attestation,
+        execution_location="local",
+        signing_authority="customer",
+        journey=[sys.executable, "hello.py"],
+    )
+    assert result["state"] == RunState.COMPLETED.value
+    assert result["signer_public_key_id"] == customer_signer.key_id
+
+
+def test_mutation_reauthorizes_inside_write_transaction(tmp_path, manifest):
+    _store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, "authorization-race")
+    principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.PROJECT_MANAGE,
+    )
+    original_require = governance.require
+
+    def suspend_after_outer_authorization(
+        candidate, permission: Permission
+    ) -> None:
+        original_require(candidate, permission)
+        with sqlite3.connect(governance.db_path) as connection:
+            connection.execute(
+                "UPDATE subscriber_organizations SET status = 'SUSPENDED' "
+                "WHERE organization_id = ?",
+                (org.organization_id,),
+            )
+            connection.execute(
+                "UPDATE subscriber_subscriptions SET status = 'SUSPENDED' "
+                "WHERE organization_id = ?",
+                (org.organization_id,),
+            )
+
+    governance.require = suspend_after_outer_authorization  # type: ignore[method-assign]
+    with pytest.raises(SubscriberError, match="organization_suspended"):
+        governance.create_project(
+            principal,
+            slug="raced",
+            name="Raced Project",
+            target_reference="https://github.com/example/raced",
+        )
+    with sqlite3.connect(governance.db_path) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM subscriber_projects WHERE organization_id = ?",
+            (org.organization_id,),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_plan_downgrade_reconciles_and_caps_retention_atomically(
+    tmp_path, manifest
+):
+    _store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, "downgrade", plan_code="enterprise")
+    principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.GOVERNANCE_MANAGE,
+    )
+    config_row = governance.governance_config(principal)
+    config = dict(config_row["config"])
+    config.update(
+        {
+            "retention_days": 700,
+            "private_worker_only": True,
+            "customer_managed_signing": True,
+            "customer_signing_key_id": Ed25519VerdictSigner.generate().key_id,
+        }
+    )
+    governance.update_governance(
+        principal,
+        config,
+        expected_version=config_row["version"],
+    )
+    before = governance.governance_config(principal)
+    period_start = datetime.now(UTC)
+    period_end = period_start + timedelta(days=30)
+
+    governance.apply_billing_event(
+        organization_id=org.organization_id,
+        provider_event_id="evt-plan-downgrade",
+        event_type="subscription.plan_changed",
+        payload={
+            "current_period_start": period_start.isoformat().replace("+00:00", "Z"),
+            "current_period_end": period_end.isoformat().replace("+00:00", "Z"),
+        },
+        provider_occurred_at=period_start,
+        provider_sequence=1,
+        plan_code="developer",
+    )
+
+    after = governance.governance_config(principal)
+    assert after["version"] == before["version"] + 1
+    assert after["config"]["retention_days"] == 14
+    assert after["config"]["private_worker_only"] is False
+    assert after["config"]["customer_managed_signing"] is False
+    assert after["config"]["customer_signing_key_id"] is None
+    with sqlite3.connect(governance.db_path) as connection:
+        corrupted = dict(after["config"])
+        corrupted["retention_days"] = 700
+        connection.execute(
+            "UPDATE subscriber_governance SET config_json = ? WHERE organization_id = ?",
+            (json.dumps(corrupted), org.organization_id),
+        )
+    assert governance.retention_days(org.organization_id) == 14
+
+
+def test_required_billing_periods_fail_closed_and_preserve_subscription(
+    tmp_path, manifest
+):
+    _store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, "billing-period-required")
+    with sqlite3.connect(governance.db_path) as connection:
+        before = connection.execute(
+            """
+            SELECT plan_code, status, current_period_start, current_period_end
+            FROM subscriber_subscriptions WHERE organization_id = ?
+            """,
+            (org.organization_id,),
+        ).fetchone()
+
+    with pytest.raises(SubscriberError, match="billing_period_required"):
+        governance.apply_billing_event(
+            organization_id=org.organization_id,
+            provider_event_id="evt-missing-period",
+            event_type="subscription.renewed",
+            payload={},
+            provider_occurred_at=datetime.now(UTC),
+            provider_sequence=1,
+        )
+    with pytest.raises(SubscriberError, match="billing_period_invalid"):
+        governance.apply_billing_event(
+            organization_id=org.organization_id,
+            provider_event_id="evt-invalid-period",
+            event_type="subscription.plan_changed",
+            payload={
+                "current_period_start": "2026-08-02T00:00:00Z",
+                "current_period_end": "2026-08-01T00:00:00Z",
+            },
+            provider_occurred_at=datetime.now(UTC),
+            provider_sequence=2,
+            plan_code="professional",
+        )
+
+    with sqlite3.connect(governance.db_path) as connection:
+        after = connection.execute(
+            """
+            SELECT plan_code, status, current_period_start, current_period_end
+            FROM subscriber_subscriptions WHERE organization_id = ?
+            """,
+            (org.organization_id,),
+        ).fetchone()
+        event_count = connection.execute(
+            """
+            SELECT COUNT(*) FROM subscriber_billing_events
+            WHERE provider_event_id IN ('evt-missing-period', 'evt-invalid-period')
+            """
+        ).fetchone()[0]
+    assert tuple(after) == tuple(before)
+    assert event_count == 0
+
+
+def test_validation_and_unhandled_errors_are_finally_audited(tmp_path, manifest):
+    _store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "audit-errors")
+    headers = _headers(org.organization_id, org.bootstrap_api_key)
+
+    validation = client.get(
+        "/v1/subscriber/audit",
+        headers=headers,
+        params={"limit": 0},
+    )
+    assert validation.status_code == 422
+    assert validation.json()["detail"] == "request_validation_error"
+
+    original = governance.list_policy_packs
+
+    def explode(_principal):
+        raise RuntimeError("simulated unhandled failure")
+
+    governance.list_policy_packs = explode  # type: ignore[method-assign]
+    try:
+        unhandled = client.get(
+            "/v1/subscriber/policy-packs",
+            headers=headers,
+        )
+    finally:
+        governance.list_policy_packs = original  # type: ignore[method-assign]
+    assert unhandled.status_code == 500
+    assert unhandled.json() == {"detail": "internal_server_error"}
+
+    with sqlite3.connect(governance.db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT outcome, details_json FROM subscriber_audit_events
+            WHERE organization_id = ? AND action = 'request.outcome'
+              AND json_extract(details_json, '$.path') IN (
+                  '/v1/subscriber/audit',
+                  '/v1/subscriber/policy-packs'
+              )
+            ORDER BY event_id DESC LIMIT 2
+            """,
+            (org.organization_id,),
+        ).fetchall()
+    outcomes = {
+        (
+            json.loads(row[1])["path"],
+            row[0],
+            json.loads(row[1])["status_code"],
+            json.loads(row[1])["reason"],
+        )
+        for row in rows
+    }
+    assert (
+        "/v1/subscriber/audit",
+        "denied",
+        422,
+        "request_validation_error",
+    ) in outcomes
+    assert (
+        "/v1/subscriber/policy-packs",
+        "error",
+        500,
+        "unhandled_exception",
+    ) in outcomes
 
 
 def test_billing_provider_order_rejects_delayed_reactivation(tmp_path, manifest):
@@ -961,7 +1525,15 @@ def test_billing_provider_order_rejects_delayed_reactivation(tmp_path, manifest)
             organization_id=org.organization_id,
             provider_event_id="evt-order-delayed-activate",
             event_type="subscription.activated",
-            payload={"reason": "delayed"},
+            payload={
+                "reason": "delayed",
+                "current_period_start": (suspended_at - timedelta(days=1))
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "current_period_end": (suspended_at + timedelta(days=29))
+                .isoformat()
+                .replace("+00:00", "Z"),
+            },
             provider_occurred_at=suspended_at - timedelta(minutes=5),
             provider_sequence=10,
         )

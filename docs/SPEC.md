@@ -3768,6 +3768,16 @@ no external source transfer;
 customer-controlled model routing;
 customer-controlled evidence storage;
 customer-controlled signing keys.
+
+P7 subscriber-governance hardening requirements
+- Subscriber workers require an existing QUEUED run and a matching BOUND reservation before target acquisition.
+- Reservation claims atomically validate tenant, project, policy, target reference, and target digest, then transition to EXECUTING.
+- Private-worker identity/attestation, local-only execution, and customer-managed signing controls are enforced from persisted governance and revalidated immediately before execution.
+- Every principal-authorized subscriber mutation repeats live authorization inside the same write transaction.
+- Plan changes atomically reconcile retention and unsupported governance controls; all worker retention is capped by the current plan.
+- Activation, renewal, and plan-change billing events require valid authoritative billing-period boundaries.
+- Authenticated validation failures, denials, and unhandled errors are appended to the immutable final-request audit chain.
+
 39. Forge Self-Certification
 The ECHO Certification Forge must certify itself.
 • 

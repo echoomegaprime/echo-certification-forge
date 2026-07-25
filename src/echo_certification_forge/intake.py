@@ -42,7 +42,9 @@ _PUBLIC_STATE: dict[RunState, str] = {
 
 class SubmitTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    target_type: str = Field(pattern=r"^(git|archive|container|package|deployment|mcp|sdk|cli)$")
+    target_type: str = Field(
+        pattern=r"^(local|git|archive|container|package|deployment|mcp|sdk|cli)$"
+    )
     identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     reference: str = Field(min_length=1, max_length=2048)
 
@@ -154,6 +156,7 @@ def submit(
             target_type=request.target.target_type,
             target_identity_digest=request.target.identity_digest,
             target_reference=request.target.reference,
+            project_id=request.project_id,
             environment_identity_digest=request.environment.identity_digest,
             environment_json=environment_json,
             policy_version=request.policy_version,

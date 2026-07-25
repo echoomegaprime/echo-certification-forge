@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "contract_id": "certforge.subscriber-governance.v1",
   "authentication": {
     "scheme": "Bearer",
@@ -16,7 +16,8 @@
     "enforcement": "role permission intersected with API-key scopes",
     "past_due_mode": "read-only",
     "suspended_mode": "deny-all",
-    "cancelled_mode": "deny-all"
+    "cancelled_mode": "deny-all",
+    "mutation_consistency": "Principal-authorized API-key, member, governance, policy-pack, project, worker, run-reservation creation, and subscription-cancellation mutations repeat live authorization inside the same BEGIN IMMEDIATE transaction as the write"
   },
   "tenant_isolation": {
     "authoritative_tenant": "authenticated API key organization_id",
@@ -54,7 +55,9 @@
     "private_workers": ["ACTIVE", "REVOKED"],
     "subscriptions": ["TRIALING", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"],
     "stale_run_reservations": "released and metering-compensated",
-    "billing_events": "provider timestamp plus monotonic sequence; stale events are persisted as rejected and cannot mutate lifecycle state"
+    "billing_events": "provider timestamp plus monotonic sequence; stale events are persisted as rejected and cannot mutate lifecycle state",
+    "billing_periods": "activation, renewal, and plan-change events require valid current_period_start/current_period_end and replace both boundaries atomically",
+    "plan_changes": "plan changes atomically cap retention and disable governance controls that the destination plan does not entitle"
   },
   "api": {
     "project_archive": "DELETE /v1/subscriber/projects/{project_id}",
@@ -69,14 +72,20 @@
   "audit": {
     "append_only": true,
     "hash_chained_per_tenant": true,
-    "final_request_outcomes": "every request with a valid bearer credential records final path, status, tenant-match, and allowed/denied outcome",
+    "final_request_outcomes": "every request with a valid bearer credential records final path, status, tenant-match, reason, and allowed/denied/error outcome, including validation failures and unhandled exceptions",
     "update_trigger": "deny",
     "delete_trigger": "deny",
     "verification_endpoint": "/v1/subscriber/audit/verify"
   },
   "worker_execution": {
-    "entitlement_source": "SubscriberGovernance resolved immediately before RunExecutor execution",
-    "retention_source": "active subscriber plan/governance retention resolved immediately before RunExecutor execution",
+    "claim_precondition": "subscriber execution requires an existing QUEUED run and matching BOUND subscriber_run_reservation",
+    "claim_binding": "tenant, project, policy, target type, target reference, and target identity digest must match persisted run and reservation state",
+    "claim_transition": "BOUND to EXECUTING is atomic and occurs before target acquisition; duplicate/direct claims fail closed",
+    "entitlement_source": "SubscriberGovernance is resolved at claim and revalidated immediately before RunExecutor execution",
+    "retention_source": "active subscriber plan/governance retention is revalidated immediately before RunExecutor execution and capped at the current plan maximum",
+    "private_worker_only": "requires a matching ACTIVE tenant worker identity and attestation digest",
+    "local_only_execution": "requires a local target and local execution location",
+    "customer_managed_signing": "requires customer signing authority and the configured customer_signing_key_id",
     "lookup_failure_mode": "fail closed without executing the target"
   },
   "safe_defaults": {
