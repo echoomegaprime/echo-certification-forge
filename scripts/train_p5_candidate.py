@@ -111,6 +111,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--base-model", default=BASE_MODEL)
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=RECIPE["max_length"],
+        choices=range(512, RECIPE["max_length"] + 1, 64),
+        help="Token ceiling; lower in 64-token steps when activation memory requires it.",
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
         "--lock-file",
@@ -128,13 +135,14 @@ def _write_evidence(
     train_sha256: str,
     elapsed_seconds: float,
     global_step: int,
+    recipe: dict[str, Any],
 ) -> None:
     evidence = {
         "adapter": args.adapter,
         "base_model": args.base_model,
         "elapsed_seconds": round(elapsed_seconds, 3),
         "global_step": global_step,
-        "recipe": RECIPE,
+        "recipe": recipe,
         "target_modules": list(TARGET_MODULES),
         "train_jsonl": str(args.train_jsonl.resolve()),
         "train_rows": row_count,
@@ -155,6 +163,7 @@ def _write_evidence(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    run_recipe = {**RECIPE, "max_length": args.max_length}
     rows = load_training_rows(args.train_jsonl)
     if args.output_dir.exists():
         raise TrainingInputError(f"final output already exists: {args.output_dir}")
@@ -237,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
         return tokenizer(
             rendered,
             truncation=True,
-            max_length=RECIPE["max_length"],
+            max_length=run_recipe["max_length"],
             padding=False,
         )
 
@@ -289,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         train_sha256=sha256_file(args.train_jsonl),
         elapsed_seconds=elapsed,
         global_step=result.global_step,
+        recipe=run_recipe,
     )
     os.replace(partial, args.output_dir)
     print(
