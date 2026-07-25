@@ -370,7 +370,7 @@ def main() -> int:
     artifacts = REPO_ROOT / "artifacts"
     artifacts.mkdir(exist_ok=True)
     (artifacts / "p6_acceptance.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8"
+        json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     (artifacts / "p6_acceptance.summary.json").write_text(
         json.dumps(
@@ -382,8 +382,10 @@ def main() -> int:
                 "generated_at": report["generated_at"],
             },
             indent=2,
-        ),
+        )
+        + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     print(f"\nP6 acceptance: {'PASSED' if passed else 'FAILED'} "
           f"({sum(1 for item in checks if item['passed'])}/{len(checks)}) "
