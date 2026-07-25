@@ -39,6 +39,7 @@ def test_recipe_matches_p5_v1_training_evidence():
         "optimizer": "paged_adamw_8bit",
         "quantization": "4bit-nf4-double-quant",
         "save_steps": 50,
+        "trainable_dtype": "bfloat16",
     }
 
 

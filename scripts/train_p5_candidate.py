@@ -33,6 +33,7 @@ RECIPE = {
     "optimizer": "paged_adamw_8bit",
     "quantization": "4bit-nf4-double-quant",
     "save_steps": 50,
+    "trainable_dtype": "bfloat16",
 }
 
 
@@ -220,6 +221,14 @@ def main(argv: list[str] | None = None) -> int:
             bias="none",
         ),
     )
+    for parameter in model.parameters():
+        if parameter.requires_grad:
+            parameter.data = parameter.data.to(dtype=torch.bfloat16)
+    trainable_dtypes = {
+        parameter.dtype for parameter in model.parameters() if parameter.requires_grad
+    }
+    if trainable_dtypes != {torch.bfloat16}:
+        raise RuntimeError(f"unexpected trainable parameter dtypes: {trainable_dtypes}")
 
     def tokenize(row: dict[str, Any]) -> dict[str, list[int]]:
         rendered = tokenizer.apply_chat_template(
