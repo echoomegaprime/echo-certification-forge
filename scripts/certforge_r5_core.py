@@ -113,6 +113,7 @@ def build_operator_command(
     *,
     mode: str,
     evidence_run_id: str,
+    evidence_run_nonce: str,
     operator_path: str = OPERATOR_PATH,
     evidence_root: str = EVIDENCE_ROOT,
 ) -> str:
@@ -122,6 +123,8 @@ def build_operator_command(
     if mode not in {"full", "preflight"}:
         raise R5CoreError("mode must be 'full' or 'preflight'")
     run_id = validate_run_id(evidence_run_id)
+    if not isinstance(evidence_run_nonce, str) or len(evidence_run_nonce) < 16:
+        raise R5CoreError("evidence_run_nonce must contain at least 16 characters")
     identity = validate_identity_reverse(identity)  # revalidate the flag-keyed dict
     evidence_dir = f"{evidence_root.rstrip('/')}/{run_id}"
     argv = [
@@ -130,6 +133,8 @@ def build_operator_command(
         "--target-model", TARGET_MODEL,
         "--wrong-model", WRONG_MODEL,
         "--evidence-directory", evidence_dir,
+        "--evidence-run-id", run_id,
+        "--evidence-run-nonce", evidence_run_nonce,
     ]
     for _req, cli_field, _kind in _IDENTITY_FIELDS:
         argv.extend([f"--{cli_field.replace('_', '-')}", identity[cli_field]])

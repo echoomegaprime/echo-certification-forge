@@ -60,11 +60,16 @@ class AdapterEvidenceSource:
     r5_evidence_directory: Path
     quality_mode: str
     trusted_routing_key: TrustedRoutingKey
+    r5_run_id: str
+    r5_run_nonce: str
 
     def __post_init__(self) -> None:
         require_identifier(self.adapter_id, "adapter_id")
         require_identifier(self.target_model, "target_model")
         require_identifier(self.quality_mode, "quality_mode")
+        require_identifier(self.r5_run_id, "r5_run_id")
+        if len(self.r5_run_nonce) < 16:
+            raise ValueError("r5_run_nonce must contain at least 16 characters")
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,16 +230,26 @@ def default_p5_policy(records: tuple[AdapterExecutionRecord, ...]) -> AdapterAcc
 
 def r5_trust_pins_digest(
     sources: tuple[AdapterEvidenceSource, ...],
+    deployment_identity: Mapping[str, Any],
 ) -> str:
     by_adapter = {
-        source.adapter_id: source.trusted_routing_key.to_dict()
+        source.adapter_id: {
+            "routing_key": source.trusted_routing_key.to_dict(),
+            "run_id": source.r5_run_id,
+            "run_nonce_sha256": sha256_json(source.r5_run_nonce),
+        }
         for source in sources
     }
     if set(by_adapter) != {"gs343", "r2d2"}:
         raise AdapterExecutionError(
             "external R5 trust pins must cover exactly gs343 and r2d2"
         )
-    return sha256_json(dict(sorted(by_adapter.items())))
+    return sha256_json(
+        {
+            "routing_sources": dict(sorted(by_adapter.items())),
+            "deployment_identity": dict(deployment_identity),
+        }
+    )
 
 
 def external_trust_pins_digest(
@@ -244,7 +259,10 @@ def external_trust_pins_digest(
     return sha256_json(
         {
             "qualification_trust_pins_sha256": qualification_trust_pins.digest,
-            "r5_trust_pins_sha256": r5_trust_pins_digest(sources),
+            "r5_trust_pins_sha256": r5_trust_pins_digest(
+                sources,
+                qualification_trust_pins.deployment_identity.to_dict(),
+            ),
         }
     )
 
@@ -375,6 +393,9 @@ def _record_from_source(
             target_adapter_digest=target_digest,
             wrong_model=wrong_model,
             wrong_adapter_digest=wrong_digest,
+            deployment_identity=qualification_trust_pins.deployment_identity.to_dict(),
+            evidence_run_id=source.r5_run_id,
+            evidence_run_nonce=source.r5_run_nonce,
         )
     except (R5Error, ValueError) as exc:
         raise AdapterExecutionError(

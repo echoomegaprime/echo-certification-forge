@@ -28,6 +28,7 @@ from echo_certification_forge.p5_qualification import (
     QualificationEvidenceTrustPins,
     QualificationError,
     QualificationModels,
+    RoutingDeploymentIdentity,
     TrustedRoutingKey,
     run_qualification,
 )
@@ -76,6 +77,7 @@ class FakeQualificationTransport:
     fail_on_post: int | None = None
     proof_fault: str | None = None
     request_prefix: str = "fake"
+    extra_requested_model: str | None = None
     private_key: Ed25519PrivateKey = field(default_factory=Ed25519PrivateKey.generate)
     post_count: int = 0
     targets: dict[tuple[str, str], dict[str, Any]] = field(default_factory=_target_map)
@@ -97,21 +99,24 @@ class FakeQualificationTransport:
 
     @property
     def attestation(self) -> dict[str, Any]:
+        requested_models = [
+            GS_CANDIDATE,
+            GS_INCUMBENT,
+            R2_CANDIDATE,
+            R2_INCUMBENT,
+        ]
+        if self.extra_requested_model:
+            requested_models.append(self.extra_requested_model)
         return {
             "receipt_schema": "echo.family-routing-receipt/v1",
             "key_id": self.key_id,
             "public_key_pem": self.public_key_pem,
             "registry_snapshot_digest": REGISTRY_DIGEST,
-            "registry_revision": "registry-test-v1",
-            "requested_models": [
-                GS_CANDIDATE,
-                GS_INCUMBENT,
-                R2_CANDIDATE,
-                R2_INCUMBENT,
-            ],
+            "registry_revision": "registry-r5",
+            "requested_models": requested_models,
             "server_build_digest": SERVER_DIGEST,
-            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
-            "base_model_revision": "base-test-v1",
+            "base_model_id": "base",
+            "base_model_revision": "base-r5",
             "base_model_digest": BASE_DIGEST,
         }
 
@@ -204,9 +209,9 @@ class FakeQualificationTransport:
             "active_adapter_ids_after": [model],
             "server_build_digest": SERVER_DIGEST,
             "registry_snapshot_digest": REGISTRY_DIGEST,
-            "registry_revision": "registry-test-v1",
-            "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
-            "base_model_revision": "base-test-v1",
+            "registry_revision": "registry-r5",
+            "base_model_id": "base",
+            "base_model_revision": "base-r5",
             "base_model_digest": BASE_DIGEST,
             "slot_lease_id": f"{self.request_prefix}-slot-{self.post_count}",
             "started_at": "2026-07-25T00:00:00Z",
@@ -310,6 +315,18 @@ def _qualification_trust(
             transport.key_id,
         ),
         artifact_digests=config.artifact_digests,
+        deployment_identity=RoutingDeploymentIdentity(
+            models=config.models,
+            receipt_schema=transport.attestation["receipt_schema"],
+            server_build_digest=transport.attestation["server_build_digest"],
+            registry_snapshot_digest=transport.attestation[
+                "registry_snapshot_digest"
+            ],
+            registry_revision=transport.attestation["registry_revision"],
+            base_model_id=transport.attestation["base_model_id"],
+            base_model_revision=transport.attestation["base_model_revision"],
+            base_model_digest=transport.attestation["base_model_digest"],
+        ),
     )
 
 
@@ -336,6 +353,8 @@ def _candidate_sources_from_report(
         ),
     ):
         evidence = tmp_path / f"{adapter}-r5"
+        run_id = f"test-{adapter}-r5-run"
+        run_nonce = f"test-{adapter}-r5-run-nonce-01"
         r5_transport = FakeR5Transport(
             private_key=transport.private_key,
             target=model,
@@ -343,9 +362,17 @@ def _candidate_sources_from_report(
             target_digest=digest,
             wrong_digest=wrong_digest,
             maturity="STABLE",
+            requested_models=[
+                GS_CANDIDATE,
+                GS_INCUMBENT,
+                R2_CANDIDATE,
+                R2_INCUMBENT,
+            ],
         )
         r5_report = execute_r5(
             expected_r5(r5_transport),
+            evidence_run_id=run_id,
+            evidence_run_nonce=run_nonce,
             transport=r5_transport,
             evidence_directory=evidence,
         )
@@ -357,6 +384,8 @@ def _candidate_sources_from_report(
                 evidence,
                 "unused-for-complete-qualification-report",
                 TrustedRoutingKey(transport.public_key_pem, transport.key_id),
+                run_id,
+                run_nonce,
             )
         )
     return sources[0], sources[1]
@@ -458,6 +487,20 @@ def test_cross_family_alias_and_digest_reuse_are_rejected() -> None:
             r2_candidate=_artifact_digest(GS_CANDIDATE),
             r2_incumbent=_artifact_digest(R2_INCUMBENT),
         )
+
+
+def test_fifth_requested_model_alias_is_rejected(tmp_path: Path) -> None:
+    transport = FakeQualificationTransport(
+        request_prefix="fifth-alias",
+        extra_requested_model="echo-unapproved-fifth",
+    )
+    report = run_qualification(_config(tmp_path, transport), transport=transport)
+    assert report["promotion_decision"] == "BLOCK"
+    assert transport.post_count == 0
+    assert any(
+        "requested_models must equal the four pinned aliases" in blocker
+        for blocker in report["blockers"]
+    )
 
 
 def test_r2_empty_invented_facts_cannot_hide_unauthorized_claims(
@@ -614,13 +657,7 @@ def test_self_keyed_perfect_package_rejected_by_external_trust_root(
     sources = _candidate_sources_from_report(tmp_path / "r5", report, attacker)
 
     operator_trust = FakeQualificationTransport(request_prefix="operator-trust")
-    external_pins = QualificationEvidenceTrustPins(
-        routing_key=TrustedRoutingKey(
-            operator_trust.public_key_pem,
-            operator_trust.key_id,
-        ),
-        artifact_digests=config.artifact_digests,
-    )
+    external_pins = _qualification_trust(config, operator_trust)
     with pytest.raises(
         AdapterExecutionError,
         match="qualification routing attestation differs from independent operator key",
@@ -629,6 +666,32 @@ def test_self_keyed_perfect_package_rejected_by_external_trust_root(
             sources,
             qualification_report=report,
             qualification_trust_pins=external_pins,
+        )
+
+
+def test_trusted_key_on_unapproved_routing_deployment_is_rejected(
+    tmp_path: Path,
+) -> None:
+    transport = FakeQualificationTransport(request_prefix="deployment-mismatch")
+    config = _config(tmp_path, transport)
+    report = run_qualification(config, transport=transport)
+    sources = _candidate_sources_from_report(tmp_path / "r5", report, transport)
+    pins = _qualification_trust(config, transport)
+    unapproved = replace(
+        pins,
+        deployment_identity=replace(
+            pins.deployment_identity,
+            server_build_digest="9" * 64,
+        ),
+    )
+    with pytest.raises(
+        AdapterExecutionError,
+        match="routing deployment server_build_digest differs from external pin",
+    ):
+        build_records_from_evidence(
+            sources,
+            qualification_report=report,
+            qualification_trust_pins=unapproved,
         )
 
 
@@ -714,10 +777,38 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
             str(trusted_key_path),
             "--gs343-r5-key-id",
             transport.key_id,
+            "--gs343-r5-run-id",
+            sources[0].r5_run_id,
+            "--gs343-r5-run-nonce",
+            sources[0].r5_run_nonce,
             "--r2d2-r5-public-key",
             str(trusted_key_path),
             "--r2d2-r5-key-id",
             transport.key_id,
+            "--r2d2-r5-run-id",
+            sources[1].r5_run_id,
+            "--r2d2-r5-run-nonce",
+            sources[1].r5_run_nonce,
+            "--gs343-model",
+            GS_CANDIDATE,
+            "--gs343-incumbent-model",
+            GS_INCUMBENT,
+            "--r2d2-model",
+            R2_CANDIDATE,
+            "--r2d2-incumbent-model",
+            R2_INCUMBENT,
+            "--server-build-sha256",
+            transport.attestation["server_build_digest"],
+            "--registry-snapshot-sha256",
+            transport.attestation["registry_snapshot_digest"],
+            "--registry-revision",
+            transport.attestation["registry_revision"],
+            "--base-model-id",
+            transport.attestation["base_model_id"],
+            "--base-model-revision",
+            transport.attestation["base_model_revision"],
+            "--base-model-sha256",
+            transport.attestation["base_model_digest"],
             "--gs-candidate-sha256",
             _artifact_digest(GS_CANDIDATE),
             "--gs-incumbent-sha256",

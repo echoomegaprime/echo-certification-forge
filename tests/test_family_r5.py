@@ -26,12 +26,18 @@ BASE_REVISION = "base-r5"
 class FakeFamilyTransport:
     tamper_error_signature: bool = False
     attestation_server_digest: str = SERVER_DIGEST
+    registry_snapshot_digest: str = REGISTRY_DIGEST
+    registry_revision: str = REGISTRY_REVISION
+    base_model_id: str = "base"
+    base_model_revision: str = BASE_REVISION
+    base_model_digest: str = BASE_DIGEST
     private_key: Ed25519PrivateKey = field(default_factory=Ed25519PrivateKey.generate)
     target: str = TARGET
     wrong: str = WRONG
     target_digest: str = TARGET_DIGEST
     wrong_digest: str = WRONG_DIGEST
     maturity: str = "CONFORMANCE_PENDING"
+    requested_models: list[str] = field(default_factory=list)
     loaded: list[str] = field(default_factory=list)
     lease_token: str | None = None
     fault_target: str | None = None
@@ -86,13 +92,13 @@ class FakeFamilyTransport:
                 "receipt_schema": "echo.family-routing-receipt/v1",
                 "key_id": self.key_id,
                 "public_key_pem": self.public_key_pem,
-                "registry_snapshot_digest": REGISTRY_DIGEST,
-                "registry_revision": REGISTRY_REVISION,
-                "requested_models": [self.target, self.wrong],
+                "registry_snapshot_digest": self.registry_snapshot_digest,
+                "registry_revision": self.registry_revision,
+                "requested_models": self.requested_models or [self.target, self.wrong],
                 "server_build_digest": self.attestation_server_digest,
-                "base_model_id": "base",
-                "base_model_revision": BASE_REVISION,
-                "base_model_digest": BASE_DIGEST,
+                "base_model_id": self.base_model_id,
+                "base_model_revision": self.base_model_revision,
+                "base_model_digest": self.base_model_digest,
             })
         if method == "POST" and path == "/admin/adapter-routing/lease":
             assert self.lease_token is None
@@ -195,14 +201,14 @@ class FakeFamilyTransport:
             "request_sha256": sha256_bytes(canonical_json(dict(body)).encode()),
             "requested_model": model,
             "server_build_digest": SERVER_DIGEST,
-            "registry_snapshot_digest": REGISTRY_DIGEST,
-            "base_model_id": "base",
-            "base_model_revision": BASE_REVISION,
-            "base_model_digest": BASE_DIGEST,
+            "registry_snapshot_digest": self.registry_snapshot_digest,
+            "base_model_id": self.base_model_id,
+            "base_model_revision": self.base_model_revision,
+            "base_model_digest": self.base_model_digest,
             "slot_lease_id": "slot-1",
             "started_at": "2026-07-19T00:00:00Z",
             "completed_at": "2026-07-19T00:00:01Z",
-            "registry_revision": REGISTRY_REVISION,
+            "registry_revision": self.registry_revision,
             "fallback_used": False,
             "fallback_reason": None,
             "signature_key_id": self.key_id,
@@ -277,11 +283,11 @@ class FakeFamilyTransport:
 def expected(transport: FakeFamilyTransport) -> ExpectedIdentity:
     return ExpectedIdentity(
         server_build_digest=SERVER_DIGEST,
-        registry_snapshot_digest=REGISTRY_DIGEST,
-        registry_revision=REGISTRY_REVISION,
+        registry_snapshot_digest=transport.registry_snapshot_digest,
+        registry_revision=transport.registry_revision,
         signature_key_id=transport.key_id,
-        base_model_digest=BASE_DIGEST,
-        base_model_revision=BASE_REVISION,
+        base_model_digest=transport.base_model_digest,
+        base_model_revision=transport.base_model_revision,
         target_adapter_digest=transport.target_digest,
         wrong_adapter_digest=transport.wrong_digest,
         target_model=transport.target,
@@ -291,7 +297,12 @@ def expected(transport: FakeFamilyTransport) -> ExpectedIdentity:
 
 def test_r5_controls_pass_and_restore() -> None:
     transport = FakeFamilyTransport()
-    report = execute(expected(transport), transport=transport)
+    report = execute(
+        expected(transport),
+        evidence_run_id="test-r5-controls",
+        evidence_run_nonce="test-r5-controls-nonce-0001",
+        transport=transport,
+    )
     assert report["r5_gate"] == "PASS"
     assert report["run_outcome"] == "COMPLETE"
     assert report["release_verdict"] == "NOT_READY"
@@ -304,7 +315,12 @@ def test_r5_controls_pass_and_restore() -> None:
 
 def test_wrong_server_identity_blocks_before_mutation() -> None:
     transport = FakeFamilyTransport(attestation_server_digest="9" * 64)
-    report = execute(expected(transport), transport=transport)
+    report = execute(
+        expected(transport),
+        evidence_run_id="test-r5-wrong-server",
+        evidence_run_nonce="test-r5-wrong-server-nonce",
+        transport=transport,
+    )
     assert report["r5_gate"] == "BLOCK"
     assert report["run_outcome"] == "INCONCLUSIVE"
     assert "server_build_digest mismatch" in report["blocker"]
@@ -314,7 +330,12 @@ def test_wrong_server_identity_blocks_before_mutation() -> None:
 
 def test_tampered_negative_receipt_blocks_and_leaves_clean_state() -> None:
     transport = FakeFamilyTransport(tamper_error_signature=True)
-    report = execute(expected(transport), transport=transport)
+    report = execute(
+        expected(transport),
+        evidence_run_id="test-r5-tampered",
+        evidence_run_nonce="test-r5-tampered-nonce-01",
+        transport=transport,
+    )
     assert report["r5_gate"] == "BLOCK"
     assert "signature is invalid" in report["blocker"]
     assert transport.lease_token is None
@@ -325,7 +346,13 @@ def test_tampered_negative_receipt_blocks_and_leaves_clean_state() -> None:
 def test_evidence_manifest_redacts_lease_token(tmp_path: Path) -> None:
     transport = FakeFamilyTransport()
     output = tmp_path / "r5"
-    report = execute(expected(transport), transport=transport, evidence_directory=output)
+    report = execute(
+        expected(transport),
+        evidence_run_id="test-r5-manifest",
+        evidence_run_nonce="test-r5-manifest-nonce-01",
+        transport=transport,
+        evidence_directory=output,
+    )
     assert report["r5_gate"] == "PASS"
     manifest = report["evidence_manifest"]
     assert len(manifest["merkle_root"]) == 64

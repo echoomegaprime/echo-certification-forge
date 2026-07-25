@@ -10,6 +10,7 @@ cd "$REPO_DIR"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"
+ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$REPO_DIR/var/p5}"
 BRANCH="${CERTFORGE_BRANCH:-feat/certforge-r5-negative-controls}"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 
@@ -28,20 +29,27 @@ echo "== [2/7] venv + install =="
 echo "   installed"
 
 echo "== [3/7] runtime dirs =="
-mkdir -p var/evidence var/trusted-public-keys
-test -f policies/mandatory-rules.v1.json || { echo "!! policy manifest missing"; exit 1; }
+mkdir -p var/evidence var/trusted-public-keys var/run-output
+test -f policies/mandatory-rules.v2.json || { echo "!! v2 policy manifest missing"; exit 1; }
+test -f "$ADAPTER_DIR/adapter-bundle-response.json" || { echo "!! adapter bundle missing"; exit 1; }
+test -f "$ADAPTER_DIR/adapter-policy.json" || { echo "!! adapter policy missing"; exit 1; }
+test -f "$ADAPTER_DIR/trusted-adapter-registry.json" || { echo "!! trusted adapter registry missing"; exit 1; }
 
 echo "== [4/7] staging boot on 127.0.0.1:$STAGING_PORT =="
 export ECHO_CERTFORGE_DB="$REPO_DIR/var/staging.sqlite3"
 export ECHO_CERTFORGE_EVIDENCE_ROOT="$REPO_DIR/var/staging-evidence"
-export ECHO_CERTFORGE_POLICY="$REPO_DIR/policies/mandatory-rules.v1.json"
+export ECHO_CERTFORGE_POLICY="$REPO_DIR/policies/mandatory-rules.v2.json"
 export ECHO_CERTFORGE_TRUSTED_KEYS="$REPO_DIR/var/trusted-public-keys"
-./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >/tmp/certforge_staging.log 2>&1 &
+export ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
+export ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
+export ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
+STAGING_LOG="$REPO_DIR/var/certforge_staging.log"
+./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >"$STAGING_LOG" 2>&1 &
 STAGING_PID=$!
 trap 'kill $STAGING_PID 2>/dev/null || true' EXIT
 ready=0
 for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$STAGING_PORT/healthz" >/dev/null 2>&1 && { ready=1; break; }; sleep 0.5; done
-[ "$ready" = 1 ] || { echo "!! staging never became healthy"; tail -20 /tmp/certforge_staging.log; exit 1; }
+[ "$ready" = 1 ] || { echo "!! staging never became healthy"; tail -20 "$STAGING_LOG"; exit 1; }
 
 echo "== [5/7] staging live-smoke =="
 if ! ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$STAGING_PORT"; then
@@ -62,8 +70,11 @@ WorkingDirectory=$REPO_DIR
 Environment=PYTHONUNBUFFERED=1
 Environment=ECHO_CERTFORGE_DB=$REPO_DIR/var/certforge.sqlite3
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$REPO_DIR/var/evidence
-Environment=ECHO_CERTFORGE_POLICY=$REPO_DIR/policies/mandatory-rules.v1.json
+Environment=ECHO_CERTFORGE_POLICY=$REPO_DIR/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$REPO_DIR/var/trusted-public-keys
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
+Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
 ExecStart=$REPO_DIR/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5

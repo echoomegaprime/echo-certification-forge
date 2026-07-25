@@ -131,6 +131,8 @@ _ARGV = [
     "--target-adapter-digest", "4" * 64,
     "--wrong-adapter-digest", "5" * 64,
     "--evidence-directory", "evidence-out",
+    "--evidence-run-id", "parity-argv-run",
+    "--evidence-run-nonce", "parity-argv-run-nonce-01",
 ]
 
 
@@ -221,11 +223,17 @@ def test_preflight_reports_and_bundle_shape_are_byte_identical() -> None:
     key = Ed25519PrivateKey.generate()
     transports = [_PreflightTransport(private_key=key) for _ in range(2)]
     pkg_report = pkg.execute(
-        _identity(pkg, transports[0].key_id), mode="preflight",
+        _identity(pkg, transports[0].key_id),
+        evidence_run_id="parity-preflight",
+        evidence_run_nonce="parity-preflight-nonce-01",
+        mode="preflight",
         transport=transports[0],
     )
     op_report = op.execute(
-        _identity(op, transports[1].key_id), mode="preflight",
+        _identity(op, transports[1].key_id),
+        evidence_run_id="parity-preflight",
+        evidence_run_nonce="parity-preflight-nonce-01",
+        mode="preflight",
         transport=transports[1],
     )
     assert pkg_report == op_report
@@ -250,4 +258,6 @@ def test_execute_rejects_an_unknown_mode_on_both_copies() -> None:
     for module in (pkg, op):
         with pytest.raises(ValueError, match="mode"):
             module.execute(_identity(module, transport.key_id),
+                           evidence_run_id="parity-unknown",
+                           evidence_run_nonce="parity-unknown-nonce-01",
                            mode="sideways", transport=transport)

@@ -37,12 +37,14 @@ from echo_certification_forge.p5_qualification import (
 from echo_certification_forge.family_r5 import execute as execute_r5
 from echo_certification_forge.evidence import merkle_root
 from echo_certification_forge.runner import RunnerEphemeralIdentity
-from echo_certification_forge.run_worker import _load_adapter_inputs
+from echo_certification_forge.run_worker import _load_adapter_inputs, main as run_worker_main
 from test_family_r5 import FakeFamilyTransport, expected as expected_r5
 from test_p5_qualification import (
     FakeQualificationTransport,
     GS_CANDIDATE,
+    GS_INCUMBENT,
     R2_CANDIDATE,
+    R2_INCUMBENT,
     _artifact_digest,
     _config,
     _qualification_trust,
@@ -80,6 +82,8 @@ def make_r5_evidence(
     wrong_digest: str,
     maturity: str = "STABLE",
     private_key: Ed25519PrivateKey | None = None,
+    evidence_run_id: str,
+    evidence_run_nonce: str,
 ) -> Path:
     private_key = private_key or Ed25519PrivateKey.generate()
     transport = FakeFamilyTransport(
@@ -89,9 +93,17 @@ def make_r5_evidence(
         target_digest=adapter_digest,
         wrong_digest=wrong_digest,
         maturity=maturity,
+        requested_models=[
+            GS_CANDIDATE,
+            GS_INCUMBENT,
+            R2_CANDIDATE,
+            R2_INCUMBENT,
+        ],
     )
     report = execute_r5(
         expected_r5(transport),
+        evidence_run_id=evidence_run_id,
+        evidence_run_nonce=evidence_run_nonce,
         transport=transport,
         evidence_directory=root,
     )
@@ -137,6 +149,8 @@ def sources(tmp_path: Path, *, gs_maturity: str = "STABLE", r2_maturity: str = "
         wrong_digest=R2_ARTIFACT_DIGEST,
         maturity=gs_maturity,
         private_key=gs_key,
+        evidence_run_id="test-gs343-r5-run",
+        evidence_run_nonce="test-gs343-r5-run-nonce-01",
     )
     r2 = make_r5_evidence(
         tmp_path / "r2-r5",
@@ -146,6 +160,8 @@ def sources(tmp_path: Path, *, gs_maturity: str = "STABLE", r2_maturity: str = "
         wrong_digest=GS_ARTIFACT_DIGEST,
         maturity=r2_maturity,
         private_key=r2_key,
+        evidence_run_id="test-r2d2-r5-run",
+        evidence_run_nonce="test-r2d2-r5-run-nonce-01",
     )
     return (
         AdapterEvidenceSource(
@@ -154,6 +170,8 @@ def sources(tmp_path: Path, *, gs_maturity: str = "STABLE", r2_maturity: str = "
             gs,
             "gs_adapter_v2_context",
             TrustedRoutingKey(public_key_pem(gs_key), key_id(gs_key)),
+            "test-gs343-r5-run",
+            "test-gs343-r5-run-nonce-01",
         ),
         AdapterEvidenceSource(
             "r2d2",
@@ -161,6 +179,8 @@ def sources(tmp_path: Path, *, gs_maturity: str = "STABLE", r2_maturity: str = "
             r2,
             "r2_adapter_context",
             TrustedRoutingKey(public_key_pem(r2_key), key_id(r2_key)),
+            "test-r2d2-r5-run",
+            "test-r2d2-r5-run-nonce-01",
         ),
     )
 
@@ -199,7 +219,10 @@ def trust_binding(
         policy_id="test-adapter-policy",
         policy_sha256=sha256_json(policy_to_json(policy)),
         qualification_trust_pins_sha256=trust.digest,
-        r5_trust_pins_sha256=r5_trust_pins_digest(selected),
+        r5_trust_pins_sha256=r5_trust_pins_digest(
+            selected,
+            trust.deployment_identity.to_dict(),
+        ),
         external_trust_pins_sha256=external_trust_pins_digest(trust, selected),
     )
 
@@ -494,6 +517,27 @@ def test_worker_uses_independent_registry_and_rejects_self_keyed_bundle(
         )
 
 
+def test_production_worker_rejects_v1_manifest_without_adapters(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "hello.txt").write_text("hello", encoding="utf-8")
+    result = run_worker_main(
+        [
+            "--run-id",
+            "production-v1-bypass",
+            "--tenant",
+            "echo-sovereign",
+            "--target-json",
+            json.dumps({"type": "local", "path": str(target)}),
+            "--policy",
+            str(Path(__file__).parents[1] / "policies" / "mandatory-rules.v1.json"),
+        ]
+    )
+    assert result == 2
+
+
 def test_input_container_validation_fails_closed(
     tmp_path: Path, complete_qualification
 ) -> None:
@@ -598,6 +642,61 @@ def test_empty_and_replayed_r5_packages_fail_closed(
     reseal_r5_manifest(replayed[0].r5_evidence_directory)
     with pytest.raises(AdapterExecutionError, match="R5 full evidence rejected"):
         build_records(replayed, qualification, trust)
+
+    fifth = sources(tmp_path / "fifth-alias")
+    attestation_path = fifth[0].r5_evidence_directory / "attestation.json"
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    attestation["requested_models"].append("echo-unapproved-fifth")
+    write_json(attestation_path, attestation)
+    reseal_r5_manifest(fifth[0].r5_evidence_directory)
+    with pytest.raises(AdapterExecutionError, match="R5 full evidence rejected"):
+        build_records(fifth, qualification, trust)
+
+
+def test_mixed_r5_run_receipt_splice_fails_closed(
+    tmp_path: Path, complete_qualification
+) -> None:
+    qualification, trust = complete_qualification
+    key = Ed25519PrivateKey.generate()
+    first = make_r5_evidence(
+        tmp_path / "first-run",
+        model=GS_CANDIDATE,
+        adapter_digest=GS_ARTIFACT_DIGEST,
+        wrong_model=R2_CANDIDATE,
+        wrong_digest=R2_ARTIFACT_DIGEST,
+        private_key=key,
+        evidence_run_id="external-r5-run-one",
+        evidence_run_nonce="external-r5-run-one-nonce",
+    )
+    second = make_r5_evidence(
+        tmp_path / "second-run",
+        model=GS_CANDIDATE,
+        adapter_digest=GS_ARTIFACT_DIGEST,
+        wrong_model=R2_CANDIDATE,
+        wrong_digest=R2_ARTIFACT_DIGEST,
+        private_key=key,
+        evidence_run_id="external-r5-run-two",
+        evidence_run_nonce="external-r5-run-two-nonce",
+    )
+    (first / "wrong-active-response.json").write_bytes(
+        (second / "wrong-active-response.json").read_bytes()
+    )
+    reseal_r5_manifest(first)
+    r2_source = sources(tmp_path / "r2-source")[1]
+    selected = (
+        AdapterEvidenceSource(
+            "gs343",
+            GS_CANDIDATE,
+            first,
+            "gs_adapter_context",
+            TrustedRoutingKey(public_key_pem(key), key_id(key)),
+            "external-r5-run-one",
+            "external-r5-run-one-nonce",
+        ),
+        r2_source,
+    )
+    with pytest.raises(AdapterExecutionError, match="R5 full evidence rejected"):
+        build_records(selected, qualification, trust)
 
 
 def test_unknown_maturity_fails_closed(

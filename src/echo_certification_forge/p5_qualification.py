@@ -44,6 +44,7 @@ ATTESTATION_FIELDS = (
     "registry_revision",
     "server_build_digest",
     "base_model_digest",
+    "base_model_id",
     "base_model_revision",
 )
 GS_WEIGHTS = {
@@ -209,16 +210,65 @@ class QualificationArtifactDigests:
 
 
 @dataclass(frozen=True, slots=True)
+class RoutingDeploymentIdentity:
+    models: QualificationModels
+    receipt_schema: str
+    server_build_digest: str
+    registry_snapshot_digest: str
+    registry_revision: str
+    base_model_id: str
+    base_model_revision: str
+    base_model_digest: str
+
+    def __post_init__(self) -> None:
+        if self.receipt_schema != RECEIPT_SCHEMA:
+            raise ValueError("unsupported routing receipt schema")
+        for field in (
+            "server_build_digest",
+            "registry_snapshot_digest",
+            "base_model_digest",
+        ):
+            object.__setattr__(
+                self,
+                field,
+                require_sha256(str(getattr(self, field)), field),
+            )
+        for field in (
+            "registry_revision",
+            "base_model_id",
+            "base_model_revision",
+        ):
+            if not isinstance(getattr(self, field), str) or not getattr(
+                self, field
+            ):
+                raise ValueError(f"{field} is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "models": self.models.to_dict(),
+            "receipt_schema": self.receipt_schema,
+            "server_build_digest": self.server_build_digest,
+            "registry_snapshot_digest": self.registry_snapshot_digest,
+            "registry_revision": self.registry_revision,
+            "base_model_id": self.base_model_id,
+            "base_model_revision": self.base_model_revision,
+            "base_model_digest": self.base_model_digest,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class QualificationEvidenceTrustPins:
     """External trust roots required to verify a qualification package."""
 
     routing_key: TrustedRoutingKey
     artifact_digests: QualificationArtifactDigests
+    deployment_identity: RoutingDeploymentIdentity
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "routing_key": self.routing_key.to_dict(),
             "artifact_digests": self.artifact_digests.to_dict(),
+            "deployment_identity": self.deployment_identity.to_dict(),
         }
 
     @property
@@ -561,17 +611,14 @@ def _validate_attestation(
     requested_models = live.get("requested_models")
     if not isinstance(requested_models, list):
         raise QualificationError("routing attestation lacks requested_models")
-    missing = sorted(
-        {
-            model
-            for pair in models.to_dict().values()
-            for model in pair.values()
-            if model not in requested_models
-        }
-    )
-    if missing:
+    expected_models = {
+        model
+        for pair in models.to_dict().values()
+        for model in pair.values()
+    }
+    if len(requested_models) != 4 or set(requested_models) != expected_models:
         raise QualificationError(
-            f"routing attestation does not authorize requested models: {missing}"
+            "routing attestation requested_models must equal the four pinned aliases"
         )
     return _public_key(live)
 
@@ -1334,6 +1381,10 @@ def verify_qualification_evidence(
         raise QualificationError(
             "qualification artifact digests differ from independent operator pins"
         )
+    if models != trust_pins.deployment_identity.models:
+        raise QualificationError(
+            "qualification model aliases differ from independent deployment pins"
+        )
 
     eval_state = state.get("eval")
     if not isinstance(eval_state, dict):
@@ -1376,6 +1427,21 @@ def verify_qualification_evidence(
         raise QualificationError(
             "qualification routing attestation differs from independent operator key"
         )
+    deployment = trust_pins.deployment_identity
+    deployment_fields = {
+        "receipt_schema": deployment.receipt_schema,
+        "server_build_digest": deployment.server_build_digest,
+        "registry_snapshot_digest": deployment.registry_snapshot_digest,
+        "registry_revision": deployment.registry_revision,
+        "base_model_id": deployment.base_model_id,
+        "base_model_revision": deployment.base_model_revision,
+        "base_model_digest": deployment.base_model_digest,
+    }
+    for field, expected_value in deployment_fields.items():
+        if attestation.get(field) != expected_value:
+            raise QualificationError(
+                f"qualification routing deployment {field} differs from external pin"
+            )
     public_key = trust_pins.routing_key.public_key
     attestation_report = qualification_report.get("routing_attestation")
     if not isinstance(attestation_report, dict):

@@ -27,8 +27,11 @@ from echo_certification_forge.canonical import sha256_json
 from echo_certification_forge.p5_qualification import (
     QualificationArtifactDigests,
     QualificationEvidenceTrustPins,
+    QualificationModels,
+    RoutingDeploymentIdentity,
     TrustedRoutingKey,
 )
+from echo_certification_forge.family_r5 import RECEIPT_SCHEMA
 from echo_certification_forge.runner import RunnerEphemeralIdentity
 
 
@@ -47,14 +50,26 @@ def main() -> int:
     parser.add_argument("--trusted-qualification-key-id", required=True)
     parser.add_argument("--gs343-r5-public-key", required=True, type=Path)
     parser.add_argument("--gs343-r5-key-id", required=True)
+    parser.add_argument("--gs343-r5-run-id", required=True)
+    parser.add_argument("--gs343-r5-run-nonce", required=True)
     parser.add_argument("--r2d2-r5-public-key", required=True, type=Path)
     parser.add_argument("--r2d2-r5-key-id", required=True)
+    parser.add_argument("--r2d2-r5-run-id", required=True)
+    parser.add_argument("--r2d2-r5-run-nonce", required=True)
     parser.add_argument("--gs-candidate-sha256", required=True)
     parser.add_argument("--gs-incumbent-sha256", required=True)
     parser.add_argument("--r2-candidate-sha256", required=True)
     parser.add_argument("--r2-incumbent-sha256", required=True)
-    parser.add_argument("--gs343-model")
-    parser.add_argument("--r2d2-model")
+    parser.add_argument("--gs343-model", required=True)
+    parser.add_argument("--gs343-incumbent-model", required=True)
+    parser.add_argument("--r2d2-model", required=True)
+    parser.add_argument("--r2d2-incumbent-model", required=True)
+    parser.add_argument("--server-build-sha256", required=True)
+    parser.add_argument("--registry-snapshot-sha256", required=True)
+    parser.add_argument("--registry-revision", required=True)
+    parser.add_argument("--base-model-id", required=True)
+    parser.add_argument("--base-model-revision", required=True)
+    parser.add_argument("--base-model-sha256", required=True)
     parser.add_argument("--gs343-quality-mode", default="gs_adapter_context")
     parser.add_argument("--r2d2-quality-mode", default="r2_adapter_context")
     parser.add_argument("--output-directory", required=True, type=Path)
@@ -67,13 +82,16 @@ def main() -> int:
             r2d2_model = qualification_report["models"]["r2d2"]["candidate"]
         except (KeyError, TypeError) as exc:
             raise SystemExit("new P5 qualification report lacks candidate model bindings") from exc
-        if args.gs343_model and args.gs343_model != gs343_model:
+        if args.gs343_model != gs343_model:
             raise SystemExit("--gs343-model differs from qualification report candidate")
-        if args.r2d2_model and args.r2d2_model != r2d2_model:
+        if args.r2d2_model != r2d2_model:
             raise SystemExit("--r2d2-model differs from qualification report candidate")
+        if args.gs343_incumbent_model != qualification_report["models"]["gs343"]["incumbent"]:
+            raise SystemExit("--gs343-incumbent-model differs from qualification report")
+        if args.r2d2_incumbent_model != qualification_report["models"]["r2d2"]["incumbent"]:
+            raise SystemExit("--r2d2-incumbent-model differs from qualification report")
     else:
-        gs343_model = args.gs343_model or "echo-gs343"
-        r2d2_model = args.r2d2_model or "echo-r2d2"
+        raise SystemExit("legacy qualification reports are not eligible")
 
     artifact_digests = QualificationArtifactDigests(
         gs_candidate=args.gs_candidate_sha256,
@@ -87,6 +105,21 @@ def main() -> int:
             args.trusted_qualification_key_id,
         ),
         artifact_digests=artifact_digests,
+        deployment_identity=RoutingDeploymentIdentity(
+            models=QualificationModels(
+                gs_candidate=args.gs343_model,
+                gs_incumbent=args.gs343_incumbent_model,
+                r2_candidate=args.r2d2_model,
+                r2_incumbent=args.r2d2_incumbent_model,
+            ),
+            receipt_schema=RECEIPT_SCHEMA,
+            server_build_digest=args.server_build_sha256,
+            registry_snapshot_digest=args.registry_snapshot_sha256,
+            registry_revision=args.registry_revision,
+            base_model_id=args.base_model_id,
+            base_model_revision=args.base_model_revision,
+            base_model_digest=args.base_model_sha256,
+        ),
     )
     sources = (
         AdapterEvidenceSource(
@@ -98,6 +131,8 @@ def main() -> int:
                 args.gs343_r5_public_key.read_text(encoding="ascii"),
                 args.gs343_r5_key_id,
             ),
+            args.gs343_r5_run_id,
+            args.gs343_r5_run_nonce,
         ),
         AdapterEvidenceSource(
             "r2d2",
@@ -108,6 +143,8 @@ def main() -> int:
                 args.r2d2_r5_public_key.read_text(encoding="ascii"),
                 args.r2d2_r5_key_id,
             ),
+            args.r2d2_r5_run_id,
+            args.r2d2_r5_run_nonce,
         ),
     )
     records = build_records_from_evidence(
@@ -123,7 +160,10 @@ def main() -> int:
         policy_id=args.adapter_policy_id,
         policy_sha256=sha256_json(policy_to_json(policy)),
         qualification_trust_pins_sha256=qualification_trust_pins.digest,
-        r5_trust_pins_sha256=r5_trust_pins_digest(sources),
+        r5_trust_pins_sha256=r5_trust_pins_digest(
+            sources,
+            qualification_trust_pins.deployment_identity.to_dict(),
+        ),
         external_trust_pins_sha256=external_trust_pins_digest(
             qualification_trust_pins,
             sources,

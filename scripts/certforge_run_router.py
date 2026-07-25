@@ -29,9 +29,11 @@ router = APIRouter(prefix="/sdk/certification-forge", tags=["certification-forge
 _SOVEREIGN_KEY_FILE = "/home/forge/.echo_sovereign_key"
 _REPO = "/home/forge/echo-certification-forge"
 _VENV_PY = f"{_REPO}/.venv/bin/python"
-_RUN_OUT_DIR = "/tmp/certforge_runs"
+_RUN_OUT_DIR = f"{_REPO}/var/run-output"
 _TENANT = "echo-sovereign"  # the sovereign gate tenant (matches echo.certforge.* static X-Tenant-ID)
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_POLICY_ID = "certforge.release-strict.v2"
+_POLICY_PATH = f"{_REPO}/policies/mandatory-rules.v2.json"
 
 
 def _sovereign_key() -> str | None:
@@ -78,6 +80,33 @@ async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(Non
         raise HTTPException(status_code=400, detail="local target requires path")
     if req.journey is not None and not all(isinstance(x, str) and x for x in req.journey):
         raise HTTPException(status_code=400, detail="journey must be a non-empty list of strings")
+    if req.policy_version not in (None, _POLICY_ID):
+        raise HTTPException(
+            status_code=400,
+            detail=f"production certification requires policy {_POLICY_ID}",
+        )
+    adapter_response = os.environ.get(
+        "ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE",
+        f"{_REPO}/var/p5/adapter-bundle-response.json",
+    )
+    adapter_policy = os.environ.get(
+        "ECHO_CERTFORGE_PROD_ADAPTER_POLICY",
+        f"{_REPO}/var/p5/adapter-policy.json",
+    )
+    adapter_registry = os.environ.get(
+        "ECHO_CERTFORGE_ADAPTER_REGISTRY",
+        f"{_REPO}/var/p5/trusted-adapter-registry.json",
+    )
+    missing = [
+        path
+        for path in (adapter_response, adapter_policy, adapter_registry, _POLICY_PATH)
+        if not Path(path).is_file()
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "production_adapter_inputs_unavailable", "missing": missing},
+        )
 
     seed = f"{target}|{req.journey}|{time.time_ns()}".encode("utf-8")
     run_id = "cert_run_" + hashlib.sha256(seed).hexdigest()[:40]
@@ -88,21 +117,23 @@ async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(Non
         _VENV_PY, "-m", "echo_certification_forge.run_worker",
         "--run-id", run_id, "--tenant", _TENANT,
         "--target-json", json.dumps(target), "--sandbox",
+        "--policy-version", _POLICY_ID,
+        "--adapter-response", adapter_response,
+        "--adapter-policy", adapter_policy,
+        "--adapter-registry", adapter_registry,
     ]
     if req.journey:
         argv += ["--journey-json", json.dumps(req.journey)]
-    if req.policy_version:
-        argv += ["--policy-version", req.policy_version]
-
     env = {
         **os.environ,
         "ECHO_CERTFORGE_DB": f"{_REPO}/var/certforge.sqlite3",
         "ECHO_CERTFORGE_EVIDENCE_ROOT": f"{_REPO}/var/evidence",
-        "ECHO_CERTFORGE_POLICY": f"{_REPO}/policies/mandatory-rules.v1.json",
+        "ECHO_CERTFORGE_POLICY": _POLICY_PATH,
         "ECHO_CERTFORGE_TRUSTED_KEYS": f"{_REPO}/var/trusted-public-keys",
         "ECHO_CERTFORGE_RUN_SIGNING_KEY": f"{_REPO}/var/run-signing-key.pem",
         "ECHO_CERTFORGE_ENTITLED_TENANTS": _TENANT,
         "ECHO_CERTFORGE_SANDBOX_DOCKER": "docker",
+        "ECHO_CERTFORGE_ADAPTER_REGISTRY": adapter_registry,
     }
 
     Path(_RUN_OUT_DIR).mkdir(parents=True, exist_ok=True)

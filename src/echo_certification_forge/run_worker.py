@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(
             os.environ.get(
                 "ECHO_CERTFORGE_POLICY",
-                _REPO / "policies" / "mandatory-rules.v1.json",
+                _REPO / "policies" / "mandatory-rules.v2.json",
             )
         ),
     )
@@ -219,6 +219,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--sandbox", action="store_true")
+    parser.add_argument(
+        "--non-production-compat",
+        action="store_true",
+        help="explicitly allow legacy manifests or missing adapter inputs for tests/dev only",
+    )
     parser.add_argument(
         "--sandbox-image",
         default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
@@ -252,6 +257,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 2
+    adapter_rule_required = any(rule.id == _ADAPTER_RULE for rule in manifest.rules)
+    if not args.non_production_compat and not adapter_rule_required:
+        print(
+            json.dumps(
+                {
+                    "error": "production_manifest_lacks_adapter_enforcement",
+                    "manifest_id": manifest.manifest_id,
+                }
+            )
+        )
+        return 2
 
     adapter_paths = (
         args.adapter_response,
@@ -259,7 +275,8 @@ def main(argv: list[str] | None = None) -> int:
         args.adapter_registry,
     )
     supplied_count = sum(path is not None for path in adapter_paths)
-    if supplied_count not in (0, 3):
+    allowed_counts = (0, 3) if args.non_production_compat else (3,)
+    if supplied_count not in allowed_counts:
         print(
             json.dumps(
                 {
@@ -291,7 +308,6 @@ def main(argv: list[str] | None = None) -> int:
 
     # A v2 adapter rule without a bundle is allowed to execute only so it can issue an auditable,
     # signed NOT_READY verdict. It can never become PRODUCTION_READY because the executor rule fails.
-    adapter_rule_required = any(rule.id == _ADAPTER_RULE for rule in manifest.rules)
     if adapter_rule_required and adapter_records is None:
         print(
             json.dumps(

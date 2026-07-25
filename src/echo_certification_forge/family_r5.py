@@ -139,8 +139,22 @@ class ExpectedIdentity:
 class Operator:
     transport: Transport
     expected: ExpectedIdentity
+    evidence_run_id: str
+    evidence_run_nonce: str
     evidence: dict[str, Any] = field(default_factory=dict)
     trusted_public_key_pem: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.evidence_run_id or len(self.evidence_run_id) > 128:
+            raise ValueError("evidence_run_id is required")
+        if len(self.evidence_run_nonce) < 16:
+            raise ValueError("evidence_run_nonce must contain at least 16 characters")
+
+    def _challenge(self, label: str) -> str:
+        return (
+            f"certforge-r5:{self.evidence_run_id}:{self.evidence_run_nonce}:"
+            f"{label}:{uuid.uuid4()}"
+        )
 
     def run(self) -> dict[str, Any]:
         controls: list[dict[str, Any]] = []
@@ -172,6 +186,10 @@ class Operator:
                 name: getattr(self.expected, name)
                 for name in self.expected.__dataclass_fields__
             },
+            "evidence_run_id": self.evidence_run_id,
+            "evidence_run_nonce_sha256": sha256_bytes(
+                self.evidence_run_nonce.encode("utf-8")
+            ),
         }
 
     def run_preflight(self) -> dict[str, Any]:
@@ -201,6 +219,10 @@ class Operator:
                 name: getattr(self.expected, name)
                 for name in self.expected.__dataclass_fields__
             },
+            "evidence_run_id": self.evidence_run_id,
+            "evidence_run_nonce_sha256": sha256_bytes(
+                self.evidence_run_nonce.encode("utf-8")
+            ),
         }
 
     def _add(self, name: str, value: Any) -> None:
@@ -237,7 +259,7 @@ class Operator:
         return attestation
 
     def _positive(self, model: str, digest: str, name: str) -> None:
-        challenge = f"certforge-r5-positive-{model}-{uuid.uuid4()}"
+        challenge = self._challenge(f"positive:{model}")
         request = _chat(model, f"R5 provenance probe for {model}")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
@@ -280,7 +302,7 @@ class Operator:
         finally:
             if not released:
                 self._release(token)
-        challenge = f"certforge-r5-wrong-active-{uuid.uuid4()}"
+        challenge = self._challenge("wrong-active")
         request = _chat(self.expected.target_model, "R5 wrong-active control")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
@@ -327,7 +349,7 @@ class Operator:
         finally:
             if not released:
                 self._release(token)
-        challenge = f"certforge-r5-unloaded-{uuid.uuid4()}"
+        challenge = self._challenge("unloaded")
         request = _chat(self.expected.target_model, "R5 unloaded-adapter control")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
@@ -583,6 +605,8 @@ def _verify_completion_receipt(
     model: str,
     adapter_digest: str,
     identity: Mapping[str, Any],
+    base_model_id: str,
+    challenge_prefix: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if evidence.get("status_code") != 200:
         raise R5Error(f"R5 positive evidence for {model} is not HTTP 200")
@@ -610,14 +634,13 @@ def _verify_completion_receipt(
         "registry_revision": identity["registry_revision"],
         "base_model_digest": identity["base_model_digest"],
         "base_model_revision": identity["base_model_revision"],
+        "base_model_id": base_model_id,
         "response_sha256": sha256_bytes(content.encode("utf-8")),
         "response_size_bytes": len(content.encode("utf-8")),
     }
     _fields(payload, required, f"positive receipt {model}")
     challenge = payload.get("challenge_nonce")
-    if not isinstance(challenge, str) or not challenge.startswith(
-        f"certforge-r5-positive-{model}-"
-    ):
+    if not isinstance(challenge, str) or not challenge.startswith(challenge_prefix):
         raise R5Error(f"R5 positive receipt challenge is invalid for {model}")
     return payload, body["routing_receipt"]
 
@@ -631,13 +654,13 @@ def _verify_negative_receipt(
     wrong_model: str,
     identity: Mapping[str, Any],
     control: str,
+    base_model_id: str,
+    challenge_prefix: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if control == "wrong_active_adapter":
         status, code, selected = 409, "ADAPTER_IDENTITY_MISMATCH", wrong_model
-        challenge_prefix = "certforge-r5-wrong-active-"
     else:
         status, code, selected = 503, "ADAPTER_NOT_ACTIVE", None
-        challenge_prefix = "certforge-r5-unloaded-"
     if evidence.get("status_code") != status:
         raise R5Error(f"R5 {control} evidence has the wrong HTTP status")
     body = evidence.get("body")
@@ -659,6 +682,7 @@ def _verify_negative_receipt(
         "registry_revision": identity["registry_revision"],
         "base_model_digest": identity["base_model_digest"],
         "base_model_revision": identity["base_model_revision"],
+        "base_model_id": base_model_id,
     }
     _fields(payload, required, f"negative receipt {control}")
     challenge = payload.get("challenge_nonce")
@@ -676,6 +700,9 @@ def verify_full_r5_evidence(
     target_adapter_digest: str,
     wrong_model: str,
     wrong_adapter_digest: str,
+    deployment_identity: Mapping[str, Any],
+    evidence_run_id: str,
+    evidence_run_nonce: str,
 ) -> dict[str, Any]:
     """Verify the complete canonical R5 full-run evidence package."""
     require_sha256(target_adapter_digest, "target_adapter_digest")
@@ -686,6 +713,12 @@ def verify_full_r5_evidence(
     if _key_id(key) != trusted_key_id:
         raise R5Error("R5 trusted key id does not match its public key")
     manifest = _verify_evidence_manifest(directory)
+    nonce_sha256 = sha256_bytes(evidence_run_nonce.encode("utf-8"))
+    if (
+        manifest.get("evidence_run_id") != evidence_run_id
+        or manifest.get("evidence_run_nonce_sha256") != nonce_sha256
+    ):
+        raise R5Error("R5 evidence manifest run binding is invalid")
     report = _load_evidence_json(directory, "r5-report.json")
     if (
         report.get("schema") != SCHEMA
@@ -696,6 +729,11 @@ def verify_full_r5_evidence(
         or report.get("deployment_authorized") is not False
     ):
         raise R5Error("R5 report is not a completed full-run PASS")
+    if (
+        report.get("evidence_run_id") != evidence_run_id
+        or report.get("evidence_run_nonce_sha256") != nonce_sha256
+    ):
+        raise R5Error("R5 report run binding is invalid")
     expected = report.get("expected_identity")
     if not isinstance(expected, dict):
         raise R5Error("R5 report lacks expected identity")
@@ -705,6 +743,13 @@ def verify_full_r5_evidence(
         "target_adapter_digest": target_adapter_digest,
         "wrong_adapter_digest": wrong_adapter_digest,
         "signature_key_id": trusted_key_id,
+        "server_build_digest": deployment_identity.get("server_build_digest"),
+        "registry_snapshot_digest": deployment_identity.get(
+            "registry_snapshot_digest"
+        ),
+        "registry_revision": deployment_identity.get("registry_revision"),
+        "base_model_digest": deployment_identity.get("base_model_digest"),
+        "base_model_revision": deployment_identity.get("base_model_revision"),
     }
     _fields(expected, required_identity, "R5 expected identity")
     for field in (
@@ -746,15 +791,27 @@ def verify_full_r5_evidence(
             "registry_revision": expected["registry_revision"],
             "base_model_digest": expected["base_model_digest"],
             "base_model_revision": expected["base_model_revision"],
+            "base_model_id": deployment_identity.get("base_model_id"),
         },
         "R5 attestation",
     )
     requested_models = attestation.get("requested_models")
-    if not isinstance(requested_models, list) or not {
-        target_model,
-        wrong_model,
-    }.issubset(set(requested_models)):
-        raise R5Error("R5 attestation does not cover both models")
+    pinned_models = deployment_identity.get("models")
+    if not isinstance(pinned_models, dict):
+        raise R5Error("R5 external deployment identity lacks models")
+    expected_models = {
+        model
+        for pair in pinned_models.values()
+        if isinstance(pair, dict)
+        for model in pair.values()
+    }
+    if (
+        not isinstance(requested_models, list)
+        or len(requested_models) != 4
+        or len(set(requested_models)) != 4
+        or set(requested_models) != expected_models
+    ):
+        raise R5Error("R5 requested_models must equal the four external aliases")
 
     for name in (
         "initial-health.json",
@@ -809,6 +866,11 @@ def verify_full_r5_evidence(
         model=target_model,
         adapter_digest=target_adapter_digest,
         identity=expected,
+        base_model_id=str(deployment_identity.get("base_model_id")),
+        challenge_prefix=(
+            f"certforge-r5:{evidence_run_id}:{evidence_run_nonce}:"
+            f"positive:{target_model}:"
+        ),
     )
     wrong_payload, _ = _verify_completion_receipt(
         _load_evidence_json(directory, "positive-wrong.json"),
@@ -817,6 +879,11 @@ def verify_full_r5_evidence(
         model=wrong_model,
         adapter_digest=wrong_adapter_digest,
         identity=expected,
+        base_model_id=str(deployment_identity.get("base_model_id")),
+        challenge_prefix=(
+            f"certforge-r5:{evidence_run_id}:{evidence_run_nonce}:"
+            f"positive:{wrong_model}:"
+        ),
     )
     wrong_active_payload, wrong_active_receipt = _verify_negative_receipt(
         _load_evidence_json(directory, "wrong-active-response.json"),
@@ -826,6 +893,10 @@ def verify_full_r5_evidence(
         wrong_model=wrong_model,
         identity=expected,
         control="wrong_active_adapter",
+        base_model_id=str(deployment_identity.get("base_model_id")),
+        challenge_prefix=(
+            f"certforge-r5:{evidence_run_id}:{evidence_run_nonce}:wrong-active:"
+        ),
     )
     unloaded_payload, unloaded_receipt = _verify_negative_receipt(
         _load_evidence_json(directory, "unloaded-response.json"),
@@ -835,6 +906,10 @@ def verify_full_r5_evidence(
         wrong_model=wrong_model,
         identity=expected,
         control="unloaded_adapter",
+        base_model_id=str(deployment_identity.get("base_model_id")),
+        challenge_prefix=(
+            f"certforge-r5:{evidence_run_id}:{evidence_run_nonce}:unloaded:"
+        ),
     )
     request_ids = [
         target_payload.get("request_id"),
@@ -927,7 +1002,14 @@ def _clean(body: Mapping[str, Any], target: str, wrong: str) -> None:
         raise R5Error("maintenance state is not clean")
 
 
-def write_evidence(directory: Path, evidence: Mapping[str, Any], report: Mapping[str, Any]) -> dict[str, Any]:
+def write_evidence(
+    directory: Path,
+    evidence: Mapping[str, Any],
+    report: Mapping[str, Any],
+    *,
+    evidence_run_id: str,
+    evidence_run_nonce: str,
+) -> dict[str, Any]:
     directory.mkdir(parents=True, exist_ok=False)
     entries: list[dict[str, Any]] = []
     values = {**dict(evidence), "r5-report": dict(report)}
@@ -938,6 +1020,8 @@ def write_evidence(directory: Path, evidence: Mapping[str, Any], report: Mapping
         entries.append({"name": path.name, "ordinal": ordinal,
                         "sha256": sha256_bytes(content), "size_bytes": len(content)})
     manifest = {"schema": "echo.certification-forge.evidence-manifest/v1",
+                "evidence_run_id": evidence_run_id,
+                "evidence_run_nonce_sha256": sha256_bytes(evidence_run_nonce.encode("utf-8")),
                 "entries": entries,
                 "merkle_root": merkle_root(x["sha256"] for x in entries)}
     (directory / "evidence-manifest.json").write_text(
@@ -978,17 +1062,21 @@ def _build_bundle(operator: "Operator", mode: str) -> dict[str, Any]:
     }
 
 
-def execute(expected: ExpectedIdentity, *, mode: str = "full",
+def execute(expected: ExpectedIdentity, *, evidence_run_id: str,
+            evidence_run_nonce: str, mode: str = "full",
             transport: Transport | None = None,
             evidence_directory: Path | None = None) -> dict[str, Any]:
     if mode not in {"full", "preflight"}:
         raise ValueError("mode must be 'full' or 'preflight'")
-    operator = Operator(transport or LoopbackTransport(), expected)
+    operator = Operator(transport or LoopbackTransport(), expected,
+                        evidence_run_id, evidence_run_nonce)
     report = operator.run_preflight() if mode == "preflight" else operator.run()
     report["forge_verification_bundle"] = _build_bundle(operator, mode)
     if evidence_directory is not None:
         report["evidence_manifest"] = write_evidence(
-            evidence_directory, operator.evidence, report)
+            evidence_directory, operator.evidence, report,
+            evidence_run_id=evidence_run_id,
+            evidence_run_nonce=evidence_run_nonce)
     return report
 
 
@@ -1003,6 +1091,8 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wrong-model", default="echo-r2d2")
     parser.add_argument("--mode", choices=("full", "preflight"), default="full")
     parser.add_argument("--evidence-directory", required=True, type=Path)
+    parser.add_argument("--evidence-run-id", required=True)
+    parser.add_argument("--evidence-run-nonce", required=True)
     return parser.parse_args(argv)
 
 
@@ -1020,7 +1110,8 @@ def main(argv: list[str] | None = None) -> int:
         target_model=args.target_model,
         wrong_model=args.wrong_model,
     )
-    report = execute(expected, mode=args.mode,
+    report = execute(expected, evidence_run_id=args.evidence_run_id,
+                     evidence_run_nonce=args.evidence_run_nonce, mode=args.mode,
                      evidence_directory=args.evidence_directory)
     print(json.dumps(report, indent=2, sort_keys=True))
     if args.mode == "preflight":
