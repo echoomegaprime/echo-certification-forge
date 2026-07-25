@@ -79,6 +79,7 @@ class R5Request(BaseModel):
     expected_gs343_digest: str = Field(..., min_length=64, max_length=64)
     expected_r2d2_digest: str = Field(..., min_length=64, max_length=64)
     evidence_run_id: str = Field(..., min_length=1, max_length=64)
+    evidence_run_nonce: str = Field(..., min_length=16, max_length=128)
     dry_run: bool = True
 
 
@@ -150,7 +151,12 @@ async def run_negative_controls(
         raise HTTPException(status_code=503, detail="anvil not reachable from forge")
 
     # 4) FIXED operator command over validated identity values
-    command = core.build_operator_command(identity, mode=mode, evidence_run_id=run_id)
+    command = core.build_operator_command(
+        identity,
+        mode=mode,
+        evidence_run_id=run_id,
+        evidence_run_nonce=req.evidence_run_nonce,
+    )
     timeout = 120.0 if mode == "preflight" else 900.0
 
     # 5) direct-SSH hop → operator runs the loopback controls on ANVIL

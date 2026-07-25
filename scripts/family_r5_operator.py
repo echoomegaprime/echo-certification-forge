@@ -145,8 +145,22 @@ class ExpectedIdentity:
 class Operator:
     transport: Transport
     expected: ExpectedIdentity
+    evidence_run_id: str
+    evidence_run_nonce: str
     evidence: dict[str, Any] = field(default_factory=dict)
     trusted_public_key_pem: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.evidence_run_id or len(self.evidence_run_id) > 128:
+            raise ValueError("evidence_run_id is required")
+        if len(self.evidence_run_nonce) < 16:
+            raise ValueError("evidence_run_nonce must contain at least 16 characters")
+
+    def _challenge(self, label: str) -> str:
+        return (
+            f"certforge-r5:{self.evidence_run_id}:{self.evidence_run_nonce}:"
+            f"{label}:{uuid.uuid4()}"
+        )
 
     def run(self) -> dict[str, Any]:
         controls: list[dict[str, Any]] = []
@@ -178,6 +192,10 @@ class Operator:
                 name: getattr(self.expected, name)
                 for name in self.expected.__dataclass_fields__
             },
+            "evidence_run_id": self.evidence_run_id,
+            "evidence_run_nonce_sha256": sha256_bytes(
+                self.evidence_run_nonce.encode("utf-8")
+            ),
         }
 
     def run_preflight(self) -> dict[str, Any]:
@@ -207,6 +225,10 @@ class Operator:
                 name: getattr(self.expected, name)
                 for name in self.expected.__dataclass_fields__
             },
+            "evidence_run_id": self.evidence_run_id,
+            "evidence_run_nonce_sha256": sha256_bytes(
+                self.evidence_run_nonce.encode("utf-8")
+            ),
         }
 
     def _add(self, name: str, value: Any) -> None:
@@ -243,7 +265,7 @@ class Operator:
         return attestation
 
     def _positive(self, model: str, digest: str, name: str) -> None:
-        challenge = f"certforge-r5-positive-{model}-{uuid.uuid4()}"
+        challenge = self._challenge(f"positive:{model}")
         request = _chat(model, f"R5 provenance probe for {model}")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
@@ -286,7 +308,7 @@ class Operator:
         finally:
             if not released:
                 self._release(token)
-        challenge = f"certforge-r5-wrong-active-{uuid.uuid4()}"
+        challenge = self._challenge("wrong-active")
         request = _chat(self.expected.target_model, "R5 wrong-active control")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
@@ -333,7 +355,7 @@ class Operator:
         finally:
             if not released:
                 self._release(token)
-        challenge = f"certforge-r5-unloaded-{uuid.uuid4()}"
+        challenge = self._challenge("unloaded")
         request = _chat(self.expected.target_model, "R5 unloaded-adapter control")
         result = self.transport.request(
             "POST", "/v1/chat/completions", body=request,
@@ -524,7 +546,14 @@ def _clean(body: Mapping[str, Any], target: str, wrong: str) -> None:
         raise R5Error("maintenance state is not clean")
 
 
-def write_evidence(directory: Path, evidence: Mapping[str, Any], report: Mapping[str, Any]) -> dict[str, Any]:
+def write_evidence(
+    directory: Path,
+    evidence: Mapping[str, Any],
+    report: Mapping[str, Any],
+    *,
+    evidence_run_id: str,
+    evidence_run_nonce: str,
+) -> dict[str, Any]:
     directory.mkdir(parents=True, exist_ok=False)
     entries: list[dict[str, Any]] = []
     values = {**dict(evidence), "r5-report": dict(report)}
@@ -535,6 +564,8 @@ def write_evidence(directory: Path, evidence: Mapping[str, Any], report: Mapping
         entries.append({"name": path.name, "ordinal": ordinal,
                         "sha256": sha256_bytes(content), "size_bytes": len(content)})
     manifest = {"schema": "echo.certification-forge.evidence-manifest/v1",
+                "evidence_run_id": evidence_run_id,
+                "evidence_run_nonce_sha256": sha256_bytes(evidence_run_nonce.encode("utf-8")),
                 "entries": entries,
                 "merkle_root": merkle_root(x["sha256"] for x in entries)}
     (directory / "evidence-manifest.json").write_text(
@@ -575,17 +606,21 @@ def _build_bundle(operator: "Operator", mode: str) -> dict[str, Any]:
     }
 
 
-def execute(expected: ExpectedIdentity, *, mode: str = "full",
+def execute(expected: ExpectedIdentity, *, evidence_run_id: str,
+            evidence_run_nonce: str, mode: str = "full",
             transport: Transport | None = None,
             evidence_directory: Path | None = None) -> dict[str, Any]:
     if mode not in {"full", "preflight"}:
         raise ValueError("mode must be 'full' or 'preflight'")
-    operator = Operator(transport or LoopbackTransport(), expected)
+    operator = Operator(transport or LoopbackTransport(), expected,
+                        evidence_run_id, evidence_run_nonce)
     report = operator.run_preflight() if mode == "preflight" else operator.run()
     report["forge_verification_bundle"] = _build_bundle(operator, mode)
     if evidence_directory is not None:
         report["evidence_manifest"] = write_evidence(
-            evidence_directory, operator.evidence, report)
+            evidence_directory, operator.evidence, report,
+            evidence_run_id=evidence_run_id,
+            evidence_run_nonce=evidence_run_nonce)
     return report
 
 
@@ -600,6 +635,8 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wrong-model", default="echo-r2d2")
     parser.add_argument("--mode", choices=("full", "preflight"), default="full")
     parser.add_argument("--evidence-directory", required=True, type=Path)
+    parser.add_argument("--evidence-run-id", required=True)
+    parser.add_argument("--evidence-run-nonce", required=True)
     return parser.parse_args(argv)
 
 
@@ -617,7 +654,8 @@ def main(argv: list[str] | None = None) -> int:
         target_model=args.target_model,
         wrong_model=args.wrong_model,
     )
-    report = execute(expected, mode=args.mode,
+    report = execute(expected, evidence_run_id=args.evidence_run_id,
+                     evidence_run_nonce=args.evidence_run_nonce, mode=args.mode,
                      evidence_directory=args.evidence_directory)
     print(json.dumps(report, indent=2, sort_keys=True))
     if args.mode == "preflight":

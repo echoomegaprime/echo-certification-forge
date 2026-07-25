@@ -54,7 +54,12 @@ def _operator_argv(mode: str, run_id: str = "run-contract-1") -> list[str]:
     """Build the fixed command exactly as the router does, then split it the way
     a POSIX shell on ANVIL would."""
     identity = core.validate_identity(_REQUEST)
-    command = core.build_operator_command(identity, mode=mode, evidence_run_id=run_id)
+    command = core.build_operator_command(
+        identity,
+        mode=mode,
+        evidence_run_id=run_id,
+        evidence_run_nonce="operator-contract-nonce-01",
+    )
     argv = shlex.split(command)
     assert argv[0] == "python3"
     assert argv[1] == core.OPERATOR_PATH
@@ -68,6 +73,8 @@ def test_built_command_parses_with_real_operator_argparse(mode: str) -> None:
     assert args.target_model == core.TARGET_MODEL
     assert args.wrong_model == core.WRONG_MODEL
     assert args.evidence_directory == Path(f"{core.EVIDENCE_ROOT}/run-contract-1")
+    assert args.evidence_run_id == "run-contract-1"
+    assert args.evidence_run_nonce == "operator-contract-nonce-01"
 
 
 def test_parsed_identity_round_trips_and_validates_operator_side() -> None:
@@ -101,7 +108,7 @@ def test_every_emitted_identity_flag_is_required_by_the_operator() -> None:
     argv = _operator_argv("preflight")
     identity_flags = [token for token in argv if token.startswith("--")
                       and token not in {"--mode", "--target-model", "--wrong-model"}]
-    assert len(identity_flags) == 9  # 8 identity values + --evidence-directory
+    assert len(identity_flags) == 11  # 8 identity + directory + run id + nonce
     for flag in identity_flags:
         index = argv.index(flag)
         mutilated = argv[:index] + argv[index + 2:]

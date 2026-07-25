@@ -138,6 +138,7 @@ class R5AsyncSubmit(BaseModel):
     expected_gs343_digest: str = Field(..., min_length=64, max_length=64)
     expected_r2d2_digest: str = Field(..., min_length=64, max_length=64)
     evidence_run_id: str = Field(..., min_length=1, max_length=64)
+    evidence_run_nonce: str = Field(..., min_length=16, max_length=128)
     dry_run: bool = False  # async is for the FULL run; preflight also supported for plumbing checks
 
 
@@ -192,7 +193,12 @@ async def submit_async(req: R5AsyncSubmit, x_echo_api_key: str | None = Header(N
     if not node.get("is_reachable_from_forge"):
         raise HTTPException(status_code=503, detail="anvil not reachable from forge")
 
-    operator_cmd = core.build_operator_command(identity, mode=mode, evidence_run_id=run_id)
+    operator_cmd = core.build_operator_command(
+        identity,
+        mode=mode,
+        evidence_run_id=run_id,
+        evidence_run_nonce=req.evidence_run_nonce,
+    )
     launch = _launch_command(operator_cmd, run_id)
     try:
         _exit, stdout, stderr = await _ssh_run(node, launch, timeout=30.0)

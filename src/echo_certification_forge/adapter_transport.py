@@ -139,6 +139,7 @@ def parse_verified_adapter_bundle(
     expected_tenant_id: str,
     allowed_runner_ids: Collection[str] = ("anvil-adapter-runner",),
     max_records: int = 64,
+    expected_trust_roots: dict[str, str] | None = None,
 ) -> tuple[AdapterExecutionRecord, ...]:
     """Verify and parse a signed ANVIL adapter execution response.
 
@@ -165,11 +166,37 @@ def parse_verified_adapter_bundle(
         raise AdapterBundleError(f"runner is not approved: {response.runner_id}")
 
     body = _record(response.body, "body")
-    _exact_keys(body, {"schema_version", "kind", "records"}, "body")
+    expected_body_keys = {"schema_version", "kind", "records"}
+    if expected_trust_roots is not None or "trust_roots" in body:
+        expected_body_keys.add("trust_roots")
+    _exact_keys(body, expected_body_keys, "body")
     if body["schema_version"] != "1.0.0":
         raise AdapterBundleError("unsupported adapter bundle schema_version")
     if body["kind"] != "adapter_execution_bundle":
         raise AdapterBundleError("unsupported adapter bundle kind")
+    if "trust_roots" in body:
+        trust_roots = _record(body["trust_roots"], "body.trust_roots")
+        expected_fields = {
+            "registry_id",
+            "runner_key_id",
+            "policy_id",
+            "policy_sha256",
+            "qualification_trust_pins_sha256",
+            "r5_trust_pins_sha256",
+            "external_trust_pins_sha256",
+        }
+        _exact_keys(trust_roots, expected_fields, "body.trust_roots")
+        if expected_trust_roots is not None and trust_roots != expected_trust_roots:
+            raise AdapterBundleError(
+                "signed adapter bundle trust roots differ from independent registry"
+            )
+        for field in (
+            "policy_sha256",
+            "qualification_trust_pins_sha256",
+            "r5_trust_pins_sha256",
+            "external_trust_pins_sha256",
+        ):
+            require_sha256(str(trust_roots[field]), f"body.trust_roots.{field}")
     records_raw = body["records"]
     if not isinstance(records_raw, list):
         raise AdapterBundleError("body.records must be an array")

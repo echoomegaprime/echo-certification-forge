@@ -27,7 +27,8 @@ VALUES
         "expected_base_model_revision",
         "expected_gs343_digest",
         "expected_r2d2_digest",
-        "evidence_run_id"
+        "evidence_run_id",
+        "evidence_run_nonce"
       ],
       "properties":{
         "expected_server_build_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
@@ -39,6 +40,7 @@ VALUES
         "expected_gs343_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
         "expected_r2d2_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
         "evidence_run_id":{"type":"string","pattern":"^[A-Za-z0-9._-]{1,64}$"},
+        "evidence_run_nonce":{"type":"string","minLength":16,"maxLength":128},
         "dry_run":{"type":"boolean","default":true}
       }
     }'::jsonb,

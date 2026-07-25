@@ -123,7 +123,12 @@ def test_validate_run_id_rejects(bad):
 def test_build_command_is_fixed_and_quoted():
     _, _, kid = _keypair()
     ident = core.validate_identity(_identity(kid))
-    cmd = core.build_operator_command(ident, mode="preflight", evidence_run_id="run-1")
+    cmd = core.build_operator_command(
+        ident,
+        mode="preflight",
+        evidence_run_id="run-1",
+        evidence_run_nonce="run-1-nonce-00000001",
+    )
     assert cmd.startswith("python3 " + core.OPERATOR_PATH)
     assert "--mode preflight" in cmd
     assert "--target-model echo-gs343" in cmd
@@ -139,9 +144,19 @@ def test_build_command_rejects_bad_mode_and_runid():
     _, _, kid = _keypair()
     ident = core.validate_identity(_identity(kid))
     with pytest.raises(core.R5CoreError):
-        core.build_operator_command(ident, mode="destroy", evidence_run_id="x")
+        core.build_operator_command(
+            ident,
+            mode="destroy",
+            evidence_run_id="x",
+            evidence_run_nonce="destroy-nonce-000001",
+        )
     with pytest.raises(core.R5CoreError):
-        core.build_operator_command(ident, mode="full", evidence_run_id="../etc")
+        core.build_operator_command(
+            ident,
+            mode="full",
+            evidence_run_id="../etc",
+            evidence_run_nonce="invalid-run-id-nonce",
+        )
 
 
 # --- FORGE-side bundle verification ---------------------------------------
@@ -261,7 +276,10 @@ def _expected(kid: str) -> "op.ExpectedIdentity":
 
 def test_operator_preflight_ok():
     _, pem, kid = _keypair()
-    report = op.execute(_expected(kid), mode="preflight",
+    report = op.execute(_expected(kid),
+                        evidence_run_id="router-preflight-ok",
+                        evidence_run_nonce="router-preflight-ok-nonce-01",
+                        mode="preflight",
                         transport=_FakeTransport(pem, kid))
     assert report["run_outcome"] == "PREFLIGHT_OK"
     assert report["r5_gate"] == "BLOCK"  # preflight never authorises
@@ -271,7 +289,10 @@ def test_operator_preflight_ok():
 
 def test_operator_preflight_identity_mismatch_inconclusive():
     _, pem, kid = _keypair()
-    report = op.execute(_expected(kid), mode="preflight",
+    report = op.execute(_expected(kid),
+                        evidence_run_id="router-preflight-bad",
+                        evidence_run_nonce="router-preflight-bad-nonce",
+                        mode="preflight",
                         transport=_FakeTransport(pem, kid, matching=False))
     assert report["run_outcome"] == "INCONCLUSIVE"
     assert report["blocker"]

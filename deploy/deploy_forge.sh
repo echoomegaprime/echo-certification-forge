@@ -12,6 +12,7 @@ BRANCH="${CERTFORGE_BRANCH:-main}"
 RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-releases}"
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
+ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 LOCK_FILE="${CERTFORGE_DEPLOY_LOCK:-/run/lock/echo-certforge-deploy.lock}"
@@ -40,7 +41,12 @@ RELEASE_DIR="$RELEASE_ROOT/$RELEASE_ID"
 RELEASE_TMP="$RELEASE_DIR.tmp.$$"
 echo "   candidate=$NEW_SHA"
 
-mkdir -p "$RELEASE_ROOT" "$STATE_ROOT/evidence" "$STATE_ROOT/trusted-public-keys"
+mkdir -p \
+  "$RELEASE_ROOT" \
+  "$STATE_ROOT/evidence" \
+  "$STATE_ROOT/trusted-public-keys" \
+  "$STATE_ROOT/run-output" \
+  "$STATE_ROOT/deploy-scratch"
 trap 'rm -rf "$RELEASE_TMP"' EXIT
 mkdir "$RELEASE_TMP"
 git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
@@ -57,17 +63,35 @@ printf '%s\n' "$NEW_SHA" >"$RELEASE_DIR/.certforge-release-sha"
 trap - EXIT
 
 echo "== [3/8] verify release inputs =="
-test -f "$RELEASE_DIR/policies/mandatory-rules.v1.json" || {
-  echo "!! policy manifest missing"
+test -f "$RELEASE_DIR/policies/mandatory-rules.v2.json" || {
+  echo "!! v2 policy manifest missing"
   exit 1
 }
 test -x "$RELEASE_DIR/.venv/bin/python" || {
   echo "!! release venv missing"
   exit 1
 }
+test -f "$ADAPTER_DIR/adapter-bundle-response.json" || {
+  echo "!! adapter bundle missing"
+  exit 1
+}
+test -f "$ADAPTER_DIR/adapter-policy.json" || {
+  echo "!! adapter policy missing"
+  exit 1
+}
+test -f "$ADAPTER_DIR/trusted-adapter-registry.json" || {
+  echo "!! trusted adapter registry missing"
+  exit 1
+}
+test -f "$ADAPTER_DIR/adapter-runner-signing-key.pem" || {
+  echo "!! adapter runner signing key missing"
+  exit 1
+}
 
 echo "== [4/8] staging boot on 127.0.0.1:$STAGING_PORT =="
-STAGING_ROOT="$(mktemp -d /tmp/certforge-staging.XXXXXX)"
+STAGING_ROOT="$STATE_ROOT/deploy-scratch/staging.$RELEASE_ID"
+rm -rf "$STAGING_ROOT"
+mkdir -p "$STAGING_ROOT"
 STAGING_PID=""
 cleanup_staging() {
   if [ -n "$STAGING_PID" ]; then
@@ -83,8 +107,12 @@ if ss -H -ltn "sport = :$STAGING_PORT" | grep -q .; then
 fi
 export ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3"
 export ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence"
-export ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v1.json"
+export ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json"
 export ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys"
+export ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
+export ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
+export ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
+export ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
 "$RELEASE_DIR/.venv/bin/python" -m uvicorn echo_certification_forge.app:app \
   --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning \
   >"$STAGING_ROOT/service.log" 2>&1 &
@@ -131,7 +159,7 @@ if [ -L "$CURRENT_LINK" ]; then
 fi
 PREV_ENABLED="$(systemctl is-enabled "$SERVICE.service" 2>/dev/null || true)"
 PREV_ACTIVE="$(systemctl is-active "$SERVICE.service" 2>/dev/null || true)"
-UNIT_BACKUP="$(mktemp /tmp/echo-certforge.service.XXXXXX)"
+UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge.service.$RELEASE_ID"
 HAD_UNIT=0
 UNIT_KIND="missing"
 UNIT_LINK_TARGET=""
@@ -145,7 +173,7 @@ elif sudo test -f "$UNIT_PATH"; then
   HAD_UNIT=1
 fi
 DB_PATH="$STATE_ROOT/certforge.sqlite3"
-DB_BACKUP="$(mktemp /tmp/echo-certforge-db.XXXXXX)"
+DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
 HAD_DB=0
 DB_SNAPSHOT_READY=0
 
@@ -278,8 +306,12 @@ WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
 Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
-Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v1.json
+Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
+Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
+Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
 ExecStart=$CURRENT_LINK/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5
