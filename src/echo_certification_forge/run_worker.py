@@ -49,8 +49,6 @@ _PRODUCTION_MANIFEST_ID = "certforge.release-strict.v2"
 _PRODUCTION_MANIFEST_SHA256 = (
     "7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4"
 )
-
-
 class _ClaimHeartbeat:
     def __init__(self, governance: SubscriberGovernance, claim) -> None:
         self._governance = governance
