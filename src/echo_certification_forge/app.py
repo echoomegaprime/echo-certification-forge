@@ -7,6 +7,7 @@ from pathlib import Path
 from .evidence import EvidenceStore
 from .policy import RuleManifest
 from .release_hooks import WebhookSecretRegistry
+from .runner import TrustedTransportRegistry
 from .service import ServiceContext, create_app
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import SubscriberGovernance, SubscriberPolicy
@@ -46,6 +47,20 @@ _subscribers = (
     if _subscribers_enabled and _subscriber_pepper is not None
     else None
 )
+_transport_keys = Path(
+    os.environ.get(
+        "ECHO_CERTFORGE_TRANSPORT_KEYS",
+        _REPO_ROOT / "var" / "trusted-transport-keys",
+    )
+)
+
+
+def _load_transport_registry(directory: Path) -> TrustedTransportRegistry:
+    registry = TrustedTransportRegistry.empty()
+    if directory.is_dir():
+        for path in sorted(directory.glob("*.pem")):
+            registry.add_pem(path.read_text(encoding="ascii"))
+    return registry
 
 app = create_app(
     ServiceContext(
@@ -56,5 +71,6 @@ app = create_app(
         deployment_ledger_path=_deployment_ledger,
         webhook_secrets=WebhookSecretRegistry.from_file(_webhook_keys),
         deployment_credentials=WebhookSecretRegistry.from_file(_deployment_keys),
+        transport_registry=_load_transport_registry(_transport_keys),
     )
 )

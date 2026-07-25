@@ -49,6 +49,7 @@ mkdir -p \
   "$RELEASE_ROOT" \
   "$STATE_ROOT/evidence" \
   "$STATE_ROOT/trusted-public-keys" \
+  "$STATE_ROOT/trusted-transport-keys" \
   "$STATE_ROOT/run-output" \
   "$STATE_ROOT/dispatch-output" \
   "$STATE_ROOT/deploy-scratch"
@@ -141,6 +142,7 @@ ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
 ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence" \
 ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json" \
 ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys" \
+ECHO_CERTFORGE_TRANSPORT_KEYS="$STATE_ROOT/trusted-transport-keys" \
 ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json" \
 ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json" \
 ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json" \
@@ -419,6 +421,7 @@ Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
 Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
 Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
 Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
+Environment=ECHO_CERTFORGE_TRANSPORT_KEYS=$STATE_ROOT/trusted-transport-keys
 EnvironmentFile=$ENV_FILE
 ExecStart=$CURRENT_LINK/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure

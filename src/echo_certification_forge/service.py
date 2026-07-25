@@ -36,6 +36,12 @@ from .intake import (
 from .models import RunState, SignedVerdictEnvelope
 from .policy import RuleManifest
 from .release_hooks import WebhookSecretRegistry
+from .operational_telemetry import (
+    OperationalTelemetryError,
+    OperationalTelemetryRegistry,
+    SignedOperationalReport,
+)
+from .runner import TrustedTransportRegistry
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import (
     MemberRole,
@@ -69,6 +75,14 @@ class ServiceContext:
     deployment_credentials: WebhookSecretRegistry = field(
         default_factory=lambda: WebhookSecretRegistry(secrets={})
     )
+    transport_registry: TrustedTransportRegistry | None = None
+    operational_registry: OperationalTelemetryRegistry | None = None
+
+    def __post_init__(self) -> None:
+        if self.transport_registry is None:
+            self.transport_registry = TrustedTransportRegistry.empty()
+        if self.operational_registry is None:
+            self.operational_registry = OperationalTelemetryRegistry(self.store.db_path)
 
 
 class DeployGateRequest(BaseModel):
@@ -147,7 +161,7 @@ class MemberRoleUpdateRequest(BaseModel):
 
 
 def create_app(context: ServiceContext) -> FastAPI:
-    app = FastAPI(title="Echo Certification Forge", version="0.4.0")
+    app = FastAPI(title="Echo Certification Forge", version="0.8.0")
 
     @app.middleware("http")
     async def audit_final_request_outcome(request: Request, call_next):
@@ -247,6 +261,8 @@ def create_app(context: ServiceContext) -> FastAPI:
             content={"detail": "request_validation_error"},
             headers={"X-Certforge-Audit-Code": "request_validation_error"},
         )
+    assert context.transport_registry is not None
+    assert context.operational_registry is not None
 
     def tenant(value: str | None) -> str:
         if value is None or not value.strip():
@@ -1135,6 +1151,24 @@ def create_app(context: ServiceContext) -> FastAPI:
         except SubscriberError as exc:
             raise subscriber_error(exc) from exc
 
+    @app.post("/v1/internal/worker-heartbeats")
+    def ingest_worker_heartbeat(report: SignedOperationalReport) -> dict[str, Any]:
+        try:
+            return context.operational_registry.ingest_worker_heartbeat(
+                report, context.transport_registry
+            )
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+    @app.post("/v1/internal/adapter-inventory")
+    def ingest_adapter_inventory(report: SignedOperationalReport) -> dict[str, Any]:
+        try:
+            return context.operational_registry.ingest_adapter_inventory(
+                report, context.transport_registry
+            )
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
     @app.get("/v1/subscriber/telemetry")
     def subscriber_telemetry(
         x_tenant_id: str | None = Header(default=None),
@@ -1154,6 +1188,9 @@ def create_app(context: ServiceContext) -> FastAPI:
             )
             recent_run_rows = context.store.list_runs(
                 principal.organization_id, limit=_TELEMETRY_RUN_LIMIT
+            )
+            authenticated = context.operational_registry.snapshot(
+                principal.organization_id
             )
         except SubscriberError as exc:
             raise subscriber_error(exc) from exc
@@ -1207,9 +1244,10 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "concurrent_run_limit": concurrent_limit,
                 "active_runs": active_runs,
                 "quota_slots_remaining": max(concurrent_limit - active_runs, 0),
-                "runner_health": "UNKNOWN",
-                "runner_health_reason": "No authenticated worker-heartbeat contract is available.",
+                "runner_health": authenticated["runner"]["health"],
+                "runner_health_reason": authenticated["runner"]["reason"],
                 "capacity_basis": "subscription_quota_only",
+                "authenticated_runner_source": authenticated["runner"],
             },
             "subscription": {
                 "plan_code": principal.plan_code,
@@ -1224,11 +1262,8 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "recent_runs": recent_runs,
                 "recent_runs_limit": _TELEMETRY_RUN_LIMIT,
             },
-            "adapters": {
-                "inventory_status": "UNAVAILABLE",
-                "maturity_status": "UNAVAILABLE",
-                "reason": "No authenticated adapter-registry telemetry contract is available.",
-            },
+            "adapters": authenticated["adapters"],
+            "authenticated_source_snapshot_sha256": authenticated["snapshot_sha256"],
         }
 
     @app.get("/v1/subscriber/audit")
