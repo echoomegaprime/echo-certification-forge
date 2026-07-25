@@ -302,7 +302,9 @@ def materialize_curriculum_ledger(
     manifest_path = ledger_path.with_suffix(ledger_path.suffix + ".manifest.json")
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
     return manifest, manifest_path
 
@@ -1146,6 +1148,7 @@ def sign_teacher_response_ledger(
         )
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     return {
         "response_path": str(response_path),
@@ -1947,7 +1950,9 @@ def build_corpora(
         paths.manifest.parent.mkdir(parents=True, exist_ok=True)
         temporary = paths.manifest.with_suffix(".json.tmp")
         temporary.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         temporary.replace(paths.manifest)
     validation["curriculum_source_sha256"] = source_digests
