@@ -832,7 +832,7 @@ def _free_port() -> int:
 
 @pytest.mark.skipif(_bash_executable() is None, reason="no usable bash for the .sh integration")
 def test_enforce_admission_sh_records_real_outcomes_end_to_end(
-    context, certified_target, environment, manifest
+    context, certified_target, environment, manifest, tmp_path
 ):
     """The supplied pipeline integration closes the loop by itself: enforce_admission.sh
     obtains the admission, runs the REAL deploy command, and records the REAL outcome —
@@ -874,19 +874,37 @@ def test_enforce_admission_sh_records_real_outcomes_end_to_end(
         "CERTFORGE_RULE_MANIFEST_DIGEST": manifest.digest,
         "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET,
         "CERTFORGE_PYTHON": sys.executable.replace("\\", "/"),
+        # a production deployment may never begin without a rollback mechanism
+        "CERTFORGE_ROLLBACK_CMD": "true",
     }
 
-    def run_wrapper(deploy_env: str, deployment_id: str, *deploy_cmd: str):
+    def run_wrapper(deploy_env: str, deployment_id: str, *deploy_cmd: str,
+                    drop_rollback_cmd: bool = False):
+        env = {**base_env, "CERTFORGE_ENVIRONMENT": deploy_env,
+               "CERTFORGE_DEPLOYMENT_ID": deployment_id}
+        if drop_rollback_cmd:
+            env.pop("CERTFORGE_ROLLBACK_CMD", None)
         return subprocess.run(
             [bash, script, *deploy_cmd],
             capture_output=True,
             text=True,
             timeout=120,
-            env={**base_env, "CERTFORGE_ENVIRONMENT": deploy_env,
-                 "CERTFORGE_DEPLOYMENT_ID": deployment_id},
+            env=env,
         )
 
     try:
+        # production WITHOUT a rollback mechanism fails closed BEFORE any admission is
+        # requested and BEFORE the deploy command can run
+        marker = tmp_path / "no-rollback-deploy-ran.marker"
+        proc = run_wrapper(
+            "production", "deploy-sh-norollback", "touch", str(marker).replace("\\", "/"),
+            drop_rollback_cmd=True,
+        )
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert "CERTFORGE_ROLLBACK_CMD" in proc.stderr
+        assert proc.stdout.strip() == ""  # no admission was minted
+        assert not marker.exists()  # the deployment never began
+
         # production FIRST is denied (exit 2) and no deploy command runs
         proc = run_wrapper("production", "deploy-sh-early", "true")
         assert proc.returncode == 2, proc.stdout + proc.stderr
@@ -909,11 +927,14 @@ def test_enforce_admission_sh_records_real_outcomes_end_to_end(
         assert prod_proc.returncode == 0, prod_proc.stdout + prod_proc.stderr
         assert '"status": "SUCCEEDED"' in prod_proc.stdout
 
-        # a FAILING production deploy exits with the deploy status and records FAILED
+        # a FAILING production deploy exits with the deploy status, records FAILED,
+        # executes the mandatory rollback against the BOUND candidate and records it
         fail_proc = run_wrapper("production", "deploy-sh-fail", "false")
         assert fail_proc.returncode == 1, fail_proc.stdout + fail_proc.stderr
         assert "recording FAILED outcome" in fail_proc.stderr
         assert '"status": "FAILED"' in fail_proc.stdout
+        assert "EXECUTING ROLLBACK" in fail_proc.stderr
+        assert '"status": "ROLLED_BACK"' in fail_proc.stdout
     finally:
         server.should_exit = True
         thread.join(timeout=10)
@@ -921,8 +942,8 @@ def test_enforce_admission_sh_records_real_outcomes_end_to_end(
     audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
     assert audit["chain_valid"] is True
     outcomes = [row for row in audit["records"] if row["record_type"] == "OUTCOME"]
-    # staging SUCCEEDED + production SUCCEEDED + production FAILED, all via the script
-    assert len(outcomes) == 3
+    # staging SUCCEEDED + production SUCCEEDED + production FAILED + ROLLED_BACK, all via the script
+    assert len(outcomes) == 4
     assert all(row["admission_id"] for row in outcomes)
 
 
@@ -1176,3 +1197,289 @@ def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
         if row["record_type"] == "OUTCOME" and row["admission_id"] == admission_id
     ]
     assert outcomes == []
+
+# --------------------------------------------------------------------------------------
+# Outcome submission is idempotent/recoverable across commit-then-response-loss
+# --------------------------------------------------------------------------------------
+
+
+def test_http_outcome_operation_id_idempotency(client, certified_target, environment, manifest):
+    """A stable operation id turns an ambiguous lost response into an idempotent
+    recovery: the exact retry returns the committed record (200, replayed), while
+    conflicting payloads and nonce replays remain rejected."""
+    artifact = certified_target.artifact_sha256
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
+    assert response.status_code == 201
+
+    staging = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "staging", environment, manifest, "deploy-opid-s1"),
+    ).json()
+    assert staging["allowed"] is True, staging["reasons"]
+    outcome_path = f"/v1/deployments/admissions/{staging['admission_id']}/outcome"
+    payload = {"status": "SUCCEEDED", "detail": "staging green", "operation_id": "op-http-0001"}
+
+    first = _post_signed(client, outcome_path, payload)
+    assert first.status_code == 201
+    assert first.json()["replayed"] is False
+    record_id = first.json()["record_id"]
+
+    # the EXACT retry (fresh nonce, same operation) returns the committed outcome
+    replay = _post_signed(client, outcome_path, payload)
+    assert replay.status_code == 200
+    assert replay.json()["replayed"] is True
+    assert replay.json()["record_id"] == record_id
+
+    # a reused operation id with a DIFFERENT payload is a conflict, never a dedupe
+    conflict = _post_signed(
+        client, outcome_path,
+        {"status": "FAILED", "detail": "staging green", "operation_id": "op-http-0001"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "outcome_operation_conflict"
+    conflict = _post_signed(
+        client, outcome_path,
+        {"status": "SUCCEEDED", "detail": "other detail", "operation_id": "op-http-0001"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "outcome_operation_conflict"
+
+    # a NEW operation id (or none) against the terminal admission keeps the strict guard
+    terminal = _post_signed(
+        client, outcome_path,
+        {"status": "SUCCEEDED", "detail": "staging green", "operation_id": "op-http-9999"},
+    )
+    assert terminal.status_code == 409
+    assert terminal.json()["detail"] == "outcome_already_terminal"
+    terminal = _post_signed(client, outcome_path, {"status": "SUCCEEDED", "detail": "staging green"})
+    assert terminal.status_code == 409
+    assert terminal.json()["detail"] == "outcome_already_terminal"
+
+    # idempotent recovery does NOT weaken nonce replay protection: reusing the exact
+    # nonce is still rejected even for the same committed operation
+    pinned = "aa11bb22cc33dd44ee55ff6677889900"
+    ok = _post_signed(client, outcome_path, payload, nonce=pinned)
+    assert ok.status_code == 200
+    assert ok.json()["replayed"] is True
+    replayed_nonce = _post_signed(client, outcome_path, payload, nonce=pinned)
+    assert replayed_nonce.status_code == 401
+    assert replayed_nonce.json()["detail"] == "deployment_credential_nonce_reused"
+
+
+class _DropResponseProxy:
+    """TCP proxy that forwards every connection but DROPS the response of connection
+    number ``drop`` (1-based) AFTER fully reading it from the upstream — the server
+    commits, the client never learns (commit-then-response-loss)."""
+
+    def __init__(self, upstream_port: int, drop: int) -> None:
+        self.upstream_port = upstream_port
+        self.drop = drop
+        self.connections = 0
+        self.dropped = 0
+        self._listener = socket.socket()
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self.port = self._listener.getsockname()[1]
+        self._listener.listen(8)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    @staticmethod
+    def _pump_request(source: socket.socket, sink: socket.socket) -> None:
+        try:
+            while True:
+                data = source.recv(65536)
+                if not data:
+                    break
+                sink.sendall(data)
+        except OSError:
+            pass
+        finally:
+            try:
+                sink.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    def _handle(self, connection: socket.socket, index: int) -> None:
+        try:
+            upstream = socket.create_connection(("127.0.0.1", self.upstream_port), timeout=30)
+        except OSError:
+            connection.close()
+            return
+        threading.Thread(
+            target=self._pump_request, args=(connection, upstream), daemon=True
+        ).start()
+        drop_this = index == self.drop
+        try:
+            while True:
+                data = upstream.recv(65536)
+                if not data:
+                    break
+                if not drop_this:
+                    connection.sendall(data)
+                # when dropping, keep reading so the upstream finishes (and COMMITS)
+        except OSError:
+            pass
+        finally:
+            if drop_this:
+                self.dropped += 1
+            try:
+                upstream.close()
+            except OSError:
+                pass
+            try:
+                connection.close()
+            except OSError:
+                pass
+
+    def _serve(self) -> None:
+        self._listener.settimeout(0.5)
+        while not self._stop.is_set():
+            try:
+                connection, _ = self._listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            self.connections += 1
+            threading.Thread(
+                target=self._handle, args=(connection, self.connections), daemon=True
+            ).start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        try:
+            self._listener.close()
+        except OSError:
+            pass
+        self._thread.join(timeout=5)
+
+
+@pytest.mark.skipif(_bash_executable() is None, reason="no usable bash for the .sh integration")
+def test_enforce_admission_sh_recovers_committed_outcome_when_response_is_dropped(
+    context, certified_target, environment, manifest, tmp_path
+):
+    """Commit-then-response-loss on the FAILED outcome: the server commits the outcome
+    (binding the rollback candidate) but the response never reaches the wrapper. The
+    stable operation id lets the retry RECOVER the committed record, the rollback runs
+    against the exact bound target, and ROLLED_BACK records successfully."""
+    import urllib.request
+
+    import uvicorn
+
+    app = create_app(context)
+    client = TestClient(app)
+    artifact = certified_target.artifact_sha256
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
+    assert response.status_code == 201
+
+    # staging accepted + a good production deployment establish the last-known-good
+    staging = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "staging", environment, manifest, "deploy-drop-s1"),
+    ).json()
+    assert staging["allowed"] is True, staging["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "staging green"},
+    )
+    assert response.status_code == 201
+    good_prod = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "production", environment, manifest, "deploy-drop-p0"),
+    ).json()
+    assert good_prod["allowed"] is True, good_prod["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{good_prod['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "prod green"},
+    )
+    assert response.status_code == 201
+
+    port = _free_port()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=2) as live:
+                if live.status == 200:
+                    break
+        except OSError:
+            time.sleep(0.2)
+    else:
+        raise RuntimeError("live service never became healthy")
+
+    # connection order through the proxy: 1=admit, 2=FAILED attempt 1 (COMMITTED but the
+    # response is dropped), 3=FAILED retry (idempotent recovery), 4=ROLLED_BACK
+    proxy = _DropResponseProxy(port, drop=2)
+    marker = tmp_path / "rollback-target.marker"
+    bash = _bash_executable()
+    script = str(Path(__file__).parents[1] / "deploy" / "enforce_admission.sh").replace("\\", "/")
+    marker_posix = str(marker).replace("\\", "/")
+    try:
+        proc = subprocess.run(
+            [bash, script, "false"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={
+                **os.environ,
+                "CERTFORGE_URL": f"http://127.0.0.1:{proxy.port}",
+                "CERTFORGE_TENANT": TENANT,
+                "CERTFORGE_ARTIFACT_DIGEST": artifact,
+                "CERTFORGE_ENVIRONMENT": "production",
+                "CERTFORGE_ENV_IDENTITY_DIGEST": environment.identity_digest,
+                "CERTFORGE_RULE_MANIFEST_DIGEST": manifest.digest,
+                "CERTFORGE_DEPLOYMENT_ID": "deploy-drop-p1",
+                "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET,
+                "CERTFORGE_PYTHON": sys.executable.replace("\\", "/"),
+                "CERTFORGE_ROLLBACK_CMD":
+                    f"printf %s \"$CERTFORGE_ROLLBACK_TARGET\" > '{marker_posix}'",
+            },
+        )
+    finally:
+        proxy.stop()
+        server.should_exit = True
+        thread.join(timeout=10)
+
+    # reporting completed via recovery -> exit is the DEPLOY status, not fail-closed 3
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert proxy.dropped == 1
+    # attempt 1 failed (dropped response) but the retry recovered the COMMITTED record
+    assert "FAILED outcome recording attempt 1/3 failed" in proc.stderr
+    assert "attempt 3/3 failed" not in proc.stderr
+    assert '"replayed": true' in proc.stdout
+    assert '"status": "FAILED"' in proc.stdout
+    assert '"status": "ROLLED_BACK"' in proc.stdout
+    # the rollback executed against the EXACT bound last-known-good digest
+    assert marker.exists(), proc.stdout + proc.stderr
+    assert marker.read_text(encoding="utf-8").strip() == artifact
+
+    # the server committed the FAILED outcome exactly ONCE despite the retry, plus the
+    # ROLLED_BACK naming the bound candidate; the chain stays valid
+    audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
+    assert audit["chain_valid"] is True
+    sh_admissions = [
+        row
+        for row in audit["records"]
+        if row["record_type"] == "ADMISSION"
+        and row["deployment_environment"] == "production"
+        and row["record_id"] != good_prod["admission_id"]
+    ]
+    assert len(sh_admissions) == 1
+    from echo_certification_forge.deployment import DeploymentLedger
+
+    ledger = DeploymentLedger(context.deployment_ledger_path)
+    sh_outcomes = ledger.outcomes(sh_admissions[0]["record_id"], TENANT)
+    payloads = [json.loads(row["payload_json"]) for row in sh_outcomes]
+    statuses = [payload["status"] for payload in payloads]
+    assert statuses == ["FAILED", "ROLLED_BACK"]
+    assert payloads[0]["rollback_candidate"]["artifact_sha256"] == artifact
+    assert payloads[1]["rollback_to"] == artifact

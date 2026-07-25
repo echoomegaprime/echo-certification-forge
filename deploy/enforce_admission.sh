@@ -22,17 +22,28 @@
 #   CERTFORGE_DEPLOYMENT_ID           unique id for this deployment attempt
 #   CERTFORGE_DEPLOY_SECRET           tenant deployment credential (HMAC secret) — the
 #                                     hook signs every admission/outcome request with it
+#   CERTFORGE_ROLLBACK_CMD            REQUIRED for production deployments: the command
+#                                     that rolls production back. A production deployment
+#                                     may NEVER begin without a rollback path, so a
+#                                     missing rollback command fails closed (exit 3)
+#                                     BEFORE any admission is requested. It is ALWAYS run
+#                                     after a FAILED production deployment (even when
+#                                     outcome recording is down); it receives the
+#                                     candidate BOUND into the FAILED outcome record in
+#                                     CERTFORGE_ROLLBACK_TARGET and, when it succeeds, a
+#                                     ROLLED_BACK outcome naming that exact bound digest
+#                                     is recorded. Incomplete outcome reporting fails the
+#                                     pipeline closed (exit 3) AFTER the rollback has
+#                                     executed.
 # Optional environment:
 #   CERTFORGE_REQUESTED_BY            actor recorded on the admission (default deployment.pipeline)
 #   CERTFORGE_PYTHON                  python interpreter to use (default python3)
-#   CERTFORGE_ROLLBACK_CMD            command ALWAYS run after a FAILED production
-#                                     deployment (even when outcome recording is down);
-#                                     it receives the candidate BOUND into the FAILED
-#                                     outcome record in CERTFORGE_ROLLBACK_TARGET and,
-#                                     when it succeeds, a ROLLED_BACK outcome naming that
-#                                     exact bound digest is recorded. Incomplete outcome
-#                                     reporting fails the pipeline closed (exit 3) AFTER
-#                                     the rollback has executed.
+#
+# Outcome recording is idempotent/recoverable: every logical outcome gets ONE stable
+# operation id reused (with a fresh signature nonce) across up to 3 attempts, so if the
+# forge COMMITTED an outcome but the response was lost, the retry recovers the committed
+# record — including the bound rollback candidate a rollback must name — instead of
+# tripping the terminal-transition guard.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,33 +65,32 @@ if [ "$#" -eq 0 ]; then
   exit 3
 fi
 
-record_outcome() {
-  # record_outcome STATUS DETAIL [ROLLBACK_TO]
-  local status="$1" detail="$2" rollback_to="${3:-}"
-  local extra=()
-  if [ -n "$rollback_to" ]; then
-    extra=(--rollback-to "$rollback_to")
-  fi
-  if ! "$PYTHON_BIN" "$HOOK" outcome \
-      --forge-url "$CERTFORGE_URL" \
-      --tenant "$CERTFORGE_TENANT" \
-      --admission-id "$ADMISSION_ID" \
-      --status "$status" \
-      --detail "$detail" \
-      "${extra[@]}"; then
-    echo "!! OUTCOME NOT RECORDED ($status) — the ledger has no record of this deployment result" >&2
-    return 3
-  fi
+# A production deployment must NEVER begin without a rollback mechanism in place.
+# This is checked BEFORE any admission is requested, so no admission is ever minted
+# for a production deployment that could not be rolled back.
+if [ "$CERTFORGE_ENVIRONMENT" = "production" ] && [ -z "${CERTFORGE_ROLLBACK_CMD:-}" ]; then
+  echo "!! ADMISSION BLOCKED — production deployments require CERTFORGE_ROLLBACK_CMD;" >&2
+  echo "   no rollback mechanism means the deployment must not begin (fail-closed)" >&2
+  exit 3
+fi
+
+new_operation_id() {
+  # One stable operation id per LOGICAL outcome, reused across retries so a committed
+  # outcome whose response was lost is recovered idempotently on the next attempt.
+  "$PYTHON_BIN" -c 'import secrets; print("op-" + secrets.token_hex(16))'
 }
 
 record_outcome_retry() {
   # record_outcome_retry OUTVAR STATUS DETAIL [ROLLBACK_TO]
-  # Up to 3 attempts (fresh signature/nonce each — the hook signs per invocation).
-  # Captures the hook's stdout JSON into OUTVAR and echoes it; returns nonzero when
-  # every attempt failed. NEVER exits the script — the caller decides what failure
-  # of REPORTING means (it must not prevent the actual rollback).
+  # Up to 3 attempts under ONE stable operation id (fresh signature/nonce each — the hook
+  # signs per invocation), so a commit-then-response-loss is RECOVERED: the retry returns
+  # the committed record instead of tripping the terminal-transition guard. Captures the
+  # hook's stdout JSON into OUTVAR and echoes it; returns nonzero when every attempt
+  # failed. NEVER exits the script — the caller decides what failure of REPORTING means
+  # (it must not prevent the actual rollback).
   local __outvar="$1" status="$2" detail="$3" rollback_to="${4:-}"
-  local extra=() out="" rc=1 attempt
+  local extra=() out="" rc=1 attempt operation_id
+  operation_id="$(new_operation_id)"
   if [ -n "$rollback_to" ]; then
     extra=(--rollback-to "$rollback_to")
   fi
@@ -92,6 +102,7 @@ record_outcome_retry() {
         --admission-id "$ADMISSION_ID" \
         --status "$status" \
         --detail "$detail" \
+        --operation-id "$operation_id" \
         "${extra[@]}")"
     rc=$?
     set -e
@@ -143,7 +154,11 @@ DEPLOY_STATUS=$?
 set -e
 
 if [ "$DEPLOY_STATUS" -eq 0 ]; then
-  record_outcome SUCCEEDED "deployment command succeeded: $*"
+  SUCCESS_OUT=""
+  if ! record_outcome_retry SUCCESS_OUT SUCCEEDED "deployment command succeeded: $*"; then
+    echo "!! OUTCOME NOT RECORDED (SUCCEEDED) — the ledger has no record of this deployment result" >&2
+    exit 3
+  fi
   echo "== DEPLOYMENT SUCCEEDED — outcome recorded against $ADMISSION_ID =="
   exit 0
 fi

@@ -102,6 +102,12 @@ class OutcomeBody(BaseModel):
     status: str = Field(pattern=r"^(SUCCEEDED|FAILED|ROLLED_BACK)$")
     detail: str = Field(min_length=1, max_length=4096)
     rollback_to: str | None = Field(default=None, pattern=r"^(sha256:)?[0-9a-f]{64}$")
+    # Client-chosen persistent operation id: part of the signed body, persisted in the
+    # ledger payload. An EXACT retry (same id + same terminal payload) idempotently
+    # returns the committed outcome (HTTP 200, replayed=true) so a caller whose response
+    # was lost after the commit can recover it; a reused id with a different payload is
+    # rejected (409 outcome_operation_conflict).
+    operation_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]{8,128}$")
 
 
 def install_deployment_api(
@@ -217,6 +223,7 @@ def install_deployment_api(
     async def report_outcome(
         admission_id: str,
         request: Request,
+        response: Response,
         x_tenant_id: str | None = Header(default=None),
     ) -> dict[str, object]:
         tenant_id = tenant(x_tenant_id)
@@ -234,17 +241,23 @@ def install_deployment_api(
                 detail=body.detail,
                 actor=_ACTOR,
                 rollback_to=body.rollback_to,
+                operation_id=body.operation_id,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="admission not found") from exc
         except OutcomeError as exc:
             raise HTTPException(status_code=409, detail=exc.code) from exc
+        replayed = bool(record.get("replayed", False))
+        if replayed:
+            # Idempotent recovery of an already committed outcome — nothing was inserted.
+            response.status_code = 200
         return {
             "admission_id": admission_id,
             "record_id": record["record_id"],
             "status": body.status,
             "chain_hash": record["chain_hash"],
             "payload": record["payload"],
+            "replayed": replayed,
         }
 
     @app.get("/v1/deployments/rollback-target")

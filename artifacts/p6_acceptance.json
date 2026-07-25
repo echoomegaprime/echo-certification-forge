@@ -1,7 +1,7 @@
 {
   "phase": "P6",
   "title": "deployment enforcement and platform integration \u2014 live local acceptance",
-  "generated_at": "2026-07-25T10:33:09.418559Z",
+  "generated_at": "2026-07-25T11:11:00.072928Z",
   "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
   "passed": true,
   "checks": [
@@ -11,7 +11,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-ed7e2b498f33116ea86e05b9006f9226\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"ad8dc0a24bf9e47fa00d69799d7a6c72f34f15b98daee596772227269abf536a\", \"created_at\": \"2026-07-25T10:33:03.926884Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-3ca5a1dc96a06bec7f89ec3f6cf39662\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"c6de76df9a494efe941f731c81fa194a7c64e5966aff453c3fce993837dbb579\", \"created_at\": \"2026-07-25T11:10:54.923504Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -29,7 +29,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-338a71986cf1bb043951239a977d3013\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"4e73c3a973a0dd3deb9288d9c6f2c1bf54aee4d868186c45ed89e744236f0dd1\", \"created_at\": \"2026-07-25T10:33:04.152027Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-1ddefaf657bd427d34929c9634a2f19a\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"627c0c9b0a8f4346997076bfb456e8c949ab0e6bd4263fcdfbc12533595cd6c4\", \"created_at\": \"2026-07-25T11:10:55.150472Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -38,7 +38,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-10a2d45c38d567adc8e187ef041eb720\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"1ca8ff48108c0c84d3b4be42bd6c9d5ada9bfa89f156492a47a77b7d5eb0f9c3\", \"created_at\": \"2026-07-25T10:33:04.362160Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-6250bbcb84187375868c19e2315ba8b3\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"7292c564630be3f35c025ec9b4aff03cb5e2f5a4cc7d7e3c360ce176bba272ab\", \"created_at\": \"2026-07-25T11:10:55.377342Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -57,8 +57,8 @@
       "passed": true,
       "detail": {
         "failure_candidate": {
-          "admission_id": "dep-266fa35421cbf633c6867fd5ec744e63",
-          "admitted_at": "2026-07-25T10:33:05.112825Z",
+          "admission_id": "dep-7d195f76b69425716f3c5633d3c7086c",
+          "admitted_at": "2026-07-25T11:10:55.975016Z",
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "deployment_id": "deploy-a3-prd",
           "run_id": "cert-p6-v1"
@@ -66,15 +66,16 @@
         "rollback_target": {
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "run_id": "cert-p6-v1",
-          "admission_id": "dep-266fa35421cbf633c6867fd5ec744e63",
+          "admission_id": "dep-7d195f76b69425716f3c5633d3c7086c",
           "deployment_id": "deploy-a3-prd",
-          "admitted_at": "2026-07-25T10:33:05.112825Z"
+          "admitted_at": "2026-07-25T11:10:55.975016Z"
         },
         "rolled_back": {
-          "admission_id": "dep-2e78a101e214199e3bc0e082edc69f8a",
+          "admission_id": "dep-a8b68312b552f25f1759f561101bb895",
           "artifact_sha256": "6cf9eb2e75fbaf4037393188b98be82a05499dcfc0c45a6eeeb840bd7f775c20",
           "deployment_environment": "production",
           "detail": "restored v1",
+          "operation_id": null,
           "rollback_to": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "status": "ROLLED_BACK"
         }
@@ -86,7 +87,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-669b62c00e05cf23db42bf43b5ae27dd\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"388be983dee4fbf2bd7fdb4dca40f0b695c5af4058191876fe6c78871b0fe83d\", \"created_at\": \"2026-07-25T10:33:06.789504Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-0babed2fe847d7bee88e18c79f511138\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"f9e62e6adff79b76b8820b71a0b14981592d669bac239b89671c171e2b51256f\", \"created_at\": \"2026-07-25T11:10:57.488988Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {

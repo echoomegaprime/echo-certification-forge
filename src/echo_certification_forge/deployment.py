@@ -74,6 +74,38 @@ class OutcomeError(Exception):
         self.code = code
 
 
+class _OutcomeReplay(Exception):
+    """Internal signal: the exact same outcome operation was already committed.
+
+    Raised UNDER the ledger write lock when a retried submission (same
+    ``operation_id`` + identical terminal payload) matches a committed record, so
+    the caller can return the committed outcome instead of inserting a duplicate —
+    the recovery path for commit-then-response-loss."""
+
+    def __init__(self, record: dict[str, Any]) -> None:
+        super().__init__("outcome_operation_replayed")
+        self.record = record
+
+
+def _row_to_record(row: Any) -> dict[str, Any]:
+    """Rehydrate a ledger row into the same shape ``DeploymentLedger.append`` returns."""
+    return {
+        "record_id": row["record_id"],
+        "tenant_id": row["tenant_id"],
+        "record_type": row["record_type"],
+        "admission_id": row["admission_id"],
+        "run_id": row["run_id"],
+        "artifact_sha256": row["artifact_sha256"],
+        "deployment_environment": row["deployment_environment"],
+        "allowed": None if row["allowed"] is None else bool(row["allowed"]),
+        "payload": json.loads(str(row["payload_json"])),
+        "actor": row["actor"],
+        "created_at": row["created_at"],
+        "record_hash": row["record_hash"],
+        "chain_hash": row["chain_hash"],
+    }
+
+
 def normalize_artifact_digest(value: str) -> str:
     """Accept ``sha256:<hex>`` (registry form) or bare hex; return validated bare lowercase hex."""
     candidate = value.strip().lower()
@@ -619,6 +651,7 @@ class DeploymentAdmissionController:
         detail: str,
         actor: str,
         rollback_to: str | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """Record the real deployment outcome for an ALLOWED admission (append-only).
 
@@ -633,6 +666,16 @@ class DeploymentAdmissionController:
           the last-known-good rollback candidate that was persisted in that FAILED record —
           the binding is frozen at failure time, so concurrent deployment activity can
           never drift the accepted rollback target.
+
+        Idempotent recovery (commit-then-response-loss): when the caller supplies an
+        ``operation_id``, it is persisted in the outcome payload (and therefore covered by
+        the caller's request signature via the body hash). An EXACT retry — same
+        ``operation_id``, same status, detail and ``rollback_to`` — returns the already
+        committed record (``replayed: True``) instead of ``outcome_already_terminal``, so a
+        client whose response was lost after the commit can recover the recorded outcome
+        (including the bound rollback candidate). A reused ``operation_id`` carrying ANY
+        different payload is rejected with ``outcome_operation_conflict``; submissions
+        without an ``operation_id`` keep the strict terminal behavior.
 
         A FAILED production outcome persists the current last-known-good rollback
         candidate in the recorded payload; that frozen digest is the only digest a
@@ -661,6 +704,7 @@ class DeploymentAdmissionController:
             "artifact_sha256": admission["artifact_sha256"],
             "deployment_environment": admission["deployment_environment"],
             "rollback_to": normalized_rollback,
+            "operation_id": operation_id,
         }
         if (
             status is DeploymentOutcomeStatus.FAILED
@@ -671,11 +715,26 @@ class DeploymentAdmissionController:
 
         def _validate_transition(connection: sqlite3.Connection) -> None:
             rows = connection.execute(
-                "SELECT payload_json FROM deployment_records WHERE admission_id = ?"
+                "SELECT * FROM deployment_records WHERE admission_id = ?"
                 " AND tenant_id = ? AND record_type = ? ORDER BY ordinal ASC",
                 (admission_id, tenant_id, DeploymentRecordType.OUTCOME.value),
             ).fetchall()
             existing = [json.loads(str(row["payload_json"])) for row in rows]
+            if operation_id is not None:
+                for row, entry in zip(rows, existing):
+                    if entry.get("operation_id") != operation_id:
+                        continue
+                    same_operation = (
+                        entry.get("status") == status.value
+                        and entry.get("detail") == detail
+                        and entry.get("rollback_to") == normalized_rollback
+                    )
+                    if not same_operation:
+                        # The operation id is bound to ONE exact terminal payload — a
+                        # reused id carrying anything different is a conflict, never a
+                        # silent dedup to a stale outcome.
+                        raise OutcomeError("outcome_operation_conflict")
+                    raise _OutcomeReplay(_row_to_record(row))
             statuses = [entry.get("status") for entry in existing]
             if status is not DeploymentOutcomeStatus.ROLLED_BACK:
                 if statuses:
@@ -704,18 +763,21 @@ class DeploymentAdmissionController:
             if normalized_rollback != bound_digest:
                 raise OutcomeError("rollback_target_mismatch")
 
-        record = self.ledger.append(
-            DeploymentRecordType.OUTCOME,
-            tenant_id,
-            payload,
-            actor,
-            admission_id=admission_id,
-            run_id=admission["run_id"],
-            artifact_sha256=admission["artifact_sha256"],
-            deployment_environment=admission["deployment_environment"],
-            precondition=_validate_transition,
-        )
-        return {**record}
+        try:
+            record = self.ledger.append(
+                DeploymentRecordType.OUTCOME,
+                tenant_id,
+                payload,
+                actor,
+                admission_id=admission_id,
+                run_id=admission["run_id"],
+                artifact_sha256=admission["artifact_sha256"],
+                deployment_environment=admission["deployment_environment"],
+                precondition=_validate_transition,
+            )
+        except _OutcomeReplay as replay:
+            return {**replay.record, "replayed": True}
+        return {**record, "replayed": False}
 
     def rollback_target(self, tenant_id: str) -> dict[str, Any] | None:
         """Last-known-good production artifact whose certification is STILL valid right now.

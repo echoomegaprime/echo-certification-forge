@@ -883,3 +883,95 @@ def test_concurrent_outcome_reports_have_exactly_one_winner(
     assert len(recorded) == 1
     assert json.loads(str(recorded[0]["payload_json"]))["status"] == winners[0][1]
     assert ledger.verify_chain()[0] is True
+
+def test_outcome_operation_id_idempotent_replay_and_conflict(
+    controller, store, manifest, environment, signer, tmp_path
+):
+    """A stable client operation id makes outcome submission recoverable across
+    commit-then-response-loss: the EXACT retry returns the committed record
+    (replayed) instead of tripping the terminal-transition guard, while a reused
+    id with a different payload is rejected as a conflict."""
+    target = _target("op-idem-v1")
+    _certify(store, manifest, signer, environment, tmp_path, "cert-op-idem", target)
+    controller.bind_certification("cert-op-idem", TENANT, ACTOR)
+    staging = controller.admit(
+        _admission(target.artifact_sha256, "staging", environment, manifest, "deploy-op-idem"),
+        ACTOR,
+    )
+    assert staging.allowed, staging.reasons
+
+    first = controller.report_outcome(
+        staging.admission_id,
+        TENANT,
+        DeploymentOutcomeStatus.SUCCEEDED,
+        "staging green",
+        ACTOR,
+        operation_id="op-stable-0001",
+    )
+    assert first["replayed"] is False
+    assert first["payload"]["operation_id"] == "op-stable-0001"
+
+    # EXACT retry of the same operation (same id + same status/detail/rollback_to)
+    # returns the COMMITTED record instead of outcome_already_terminal.
+    replay = controller.report_outcome(
+        staging.admission_id,
+        TENANT,
+        DeploymentOutcomeStatus.SUCCEEDED,
+        "staging green",
+        ACTOR,
+        operation_id="op-stable-0001",
+    )
+    assert replay["replayed"] is True
+    assert replay["record_id"] == first["record_id"]
+    assert replay["payload"] == first["payload"]
+
+    # Same operation id but a DIFFERENT payload is a conflict, never a silent dedupe.
+    with pytest.raises(OutcomeError) as conflict_detail:
+        controller.report_outcome(
+            staging.admission_id,
+            TENANT,
+            DeploymentOutcomeStatus.SUCCEEDED,
+            "different detail text",
+            ACTOR,
+            operation_id="op-stable-0001",
+        )
+    assert conflict_detail.value.code == "outcome_operation_conflict"
+    with pytest.raises(OutcomeError) as conflict_status:
+        controller.report_outcome(
+            staging.admission_id,
+            TENANT,
+            DeploymentOutcomeStatus.FAILED,
+            "staging green",
+            ACTOR,
+            operation_id="op-stable-0001",
+        )
+    assert conflict_status.value.code == "outcome_operation_conflict"
+
+    # A NEW operation id against the already-terminal admission keeps the strict
+    # terminal guard (idempotency never weakens immutability).
+    with pytest.raises(OutcomeError) as terminal:
+        controller.report_outcome(
+            staging.admission_id,
+            TENANT,
+            DeploymentOutcomeStatus.SUCCEEDED,
+            "staging green",
+            ACTOR,
+            operation_id="op-stable-9999",
+        )
+    assert terminal.value.code == "outcome_already_terminal"
+
+    # And submissions WITHOUT an operation id keep prior strict behavior.
+    with pytest.raises(OutcomeError) as legacy:
+        controller.report_outcome(
+            staging.admission_id,
+            TENANT,
+            DeploymentOutcomeStatus.SUCCEEDED,
+            "staging green",
+            ACTOR,
+        )
+    assert legacy.value.code == "outcome_already_terminal"
+
+    # The chain stays linear and valid with exactly one committed outcome.
+    outcomes = controller.ledger.outcomes(staging.admission_id, TENANT)
+    assert len(outcomes) == 1
+    assert controller.ledger.verify_chain()[0] is True

@@ -100,6 +100,16 @@ def build_parser() -> argparse.ArgumentParser:
     outcome.add_argument("--status", required=True, choices=list(OUTCOME_STATUSES))
     outcome.add_argument("--detail", required=True, help="Human-readable deployment result detail")
     outcome.add_argument("--rollback-to", default=None, help="Artifact digest restored by a rollback")
+    outcome.add_argument(
+        "--operation-id",
+        default=None,
+        help=(
+            "Stable client operation id reused (with a FRESH nonce) on every retry of the"
+            " SAME outcome submission: if the forge committed the outcome but the response"
+            " was lost, the retry idempotently returns the committed record instead of"
+            " outcome_already_terminal"
+        ),
+    )
     outcome.add_argument("--timeout", type=float, default=30.0)
     return parser
 
@@ -127,13 +137,13 @@ def _signed_headers(secret: str, tenant: str, method: str, path: str, body: byte
 
 
 def _post_signed(forge_url: str, path: str, tenant: str, secret: str, body: bytes,
-                 timeout: float, expected_status: int) -> dict:
+                 timeout: float, expected_status: tuple[int, ...]) -> dict:
     url = forge_url.rstrip("/") + path
     headers = {"Content-Type": "application/json", "X-Tenant-ID": tenant}
     headers.update(_signed_headers(secret, tenant, "POST", urllib.parse.urlsplit(url).path, body))
     request = urllib.request.Request(url, data=body, method="POST", headers=headers)
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        if response.status != expected_status:
+        if response.status not in expected_status:
             raise RuntimeError(f"unexpected status: {response.status}")
         return json.loads(response.read().decode("utf-8"))
 
@@ -150,17 +160,21 @@ def request_admission(args: argparse.Namespace, secret: str) -> dict:
         }
     ).encode("utf-8")
     return _post_signed(args.forge_url, "/v1/deployments/admissions", args.tenant, secret,
-                        body, args.timeout, expected_status=200)
+                        body, args.timeout, expected_status=(200,))
 
 
 def record_outcome(args: argparse.Namespace, secret: str) -> dict:
     payload: dict = {"status": args.status, "detail": args.detail}
     if args.rollback_to:
         payload["rollback_to"] = args.rollback_to
+    if args.operation_id:
+        payload["operation_id"] = args.operation_id
     body = json.dumps(payload).encode("utf-8")
     path = f"/v1/deployments/admissions/{urllib.parse.quote(args.admission_id, safe='')}/outcome"
+    # 201 = newly committed; 200 = idempotent replay of the SAME committed operation
+    # (recovery after a lost response) — both mean the ledger holds the outcome.
     return _post_signed(args.forge_url, path, args.tenant, secret, body,
-                        args.timeout, expected_status=201)
+                        args.timeout, expected_status=(201, 200))
 
 
 def run_admit(args: argparse.Namespace, secret: str) -> int:
