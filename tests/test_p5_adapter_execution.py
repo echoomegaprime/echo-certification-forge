@@ -41,6 +41,8 @@ from echo_certification_forge.family_r5 import execute as execute_r5
 from echo_certification_forge.evidence import merkle_root
 from echo_certification_forge.runner import RunnerEphemeralIdentity
 from echo_certification_forge.run_worker import _load_adapter_inputs, main as run_worker_main
+from echo_certification_forge.run_worker import _worker_environment
+from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.production_launch import production_worker_args
 from test_family_r5 import FakeFamilyTransport, expected as expected_r5
 from test_p5_qualification import (
@@ -603,6 +605,7 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     tmp_path: Path,
     complete_qualification,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     qualification, trust = complete_qualification
     selected = sources(tmp_path / "sources")
@@ -664,8 +667,10 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
         adapter_registry=registry,
         adapter_runner_signing_key=adapter_key_path,
     )
-    monkeypatch.setenv("ECHO_CERTFORGE_DB", str(tmp_path / "certforge.sqlite3"))
-    monkeypatch.setenv("ECHO_CERTFORGE_EVIDENCE_ROOT", str(tmp_path / "evidence"))
+    db_path = tmp_path / "certforge.sqlite3"
+    evidence_root = tmp_path / "evidence"
+    monkeypatch.setenv("ECHO_CERTFORGE_DB", str(db_path))
+    monkeypatch.setenv("ECHO_CERTFORGE_EVIDENCE_ROOT", str(evidence_root))
     monkeypatch.setenv(
         "ECHO_CERTFORGE_POLICY",
         str(Path(__file__).parents[1] / "policies" / "mandatory-rules.v2.json"),
@@ -677,6 +682,22 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     monkeypatch.setenv("ECHO_CERTFORGE_ENTITLED_TENANTS", "echo-sovereign")
     monkeypatch.setenv("ECHO_CERTFORGE_WORK_ROOT", str(tmp_path / "workspaces"))
     assert run_worker_main(args) == 0
+    result = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert result["adapter_bundle_response_sha256"]
+    assert result["signed"] is True
+    expected_environment = _worker_environment(
+        adapter_set_digest(records),
+        result["adapter_bundle_response_sha256"],
+    )
+    assert result["environment_identity_digest"] == expected_environment.identity_digest
+    store = EvidenceStore(db_path, evidence_root)
+    adapter_artifact = next(
+        item
+        for item in store.list_evidence(run_id, "echo-sovereign")
+        if item["artifact_id"] == "adapter-bundle-response"
+    )
+    assert adapter_artifact["sha256"] == result["adapter_bundle_response_sha256"]
+    assert store.verify_evidence(run_id, "echo-sovereign").valid is True
 
 
 def test_production_worker_rejects_v1_manifest_without_adapters(
@@ -695,6 +716,34 @@ def test_production_worker_rejects_v1_manifest_without_adapters(
             json.dumps({"type": "local", "path": str(target)}),
             "--policy",
             str(Path(__file__).parents[1] / "policies" / "mandatory-rules.v1.json"),
+        ]
+    )
+    assert result == 2
+
+
+def test_production_worker_rejects_copied_v2_rule_in_unpinned_manifest(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).parents[1] / "policies" / "mandatory-rules.v2.json"
+    manifest = json.loads(source.read_text(encoding="utf-8"))
+    adapter_rule = next(
+        rule for rule in manifest["rules"] if rule["id"] == "adapter_identity_and_quality"
+    )
+    adapter_rule["description"] = "attacker copied the rule but changed the manifest"
+    attacker_manifest = tmp_path / "attacker-v2.json"
+    write_json(attacker_manifest, manifest)
+    target = tmp_path / "target"
+    target.mkdir()
+    result = run_worker_main(
+        [
+            "--run-id",
+            "production-manifest-copy",
+            "--tenant",
+            "echo-sovereign",
+            "--target-json",
+            json.dumps({"type": "local", "path": str(target)}),
+            "--policy",
+            str(attacker_manifest),
         ]
     )
     assert result == 2

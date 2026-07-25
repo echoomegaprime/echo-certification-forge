@@ -150,12 +150,17 @@ async def _ensure_table() -> None:
                  run_id text PRIMARY KEY,
                  mode text NOT NULL,
                  status text NOT NULL DEFAULT 'RUNNING',
+                 request_sha256 text,
                  identity_json jsonb NOT NULL,
                  requested_by text NOT NULL,
                  started_at timestamptz NOT NULL DEFAULT now(),
                  completed_at timestamptz,
                  result_json jsonb
                )"""
+        )
+        await conn.execute(
+            "ALTER TABLE arcanum_sdk.r5_async_runs "
+            "ADD COLUMN IF NOT EXISTS request_sha256 text"
         )
 
 
@@ -170,27 +175,96 @@ async def submit_async(req: R5AsyncSubmit, x_echo_api_key: str | None = Header(N
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     mode = "preflight" if req.dry_run else "full"
 
+    request_data, request_sha256 = core.build_async_request_binding(
+        identity,
+        mode=mode,
+        evidence_run_id=run_id,
+        evidence_run_nonce=req.evidence_run_nonce,
+    )
     await _ensure_table()
     pool = await pg_pool()
     async with pool.acquire() as conn:
-        existing = await conn.fetchrow(
-            "SELECT run_id, status, mode FROM arcanum_sdk.r5_async_runs WHERE run_id = $1", run_id
+        reserved = await conn.fetchrow(
+            """INSERT INTO arcanum_sdk.r5_async_runs
+                 (run_id, mode, status, request_sha256, identity_json, requested_by)
+               VALUES ($1, $2, 'RESERVED', $3, $4, $5)
+               ON CONFLICT (run_id) DO NOTHING
+               RETURNING run_id, status, mode, request_sha256""",
+            run_id,
+            mode,
+            request_sha256,
+            json.dumps(request_data),
+            "sovereign",
         )
-    if existing is not None:
-        # Idempotent: do not relaunch a run that already exists.
-        return {"run_id": run_id, "status": existing["status"], "mode": existing["mode"],
-                "poll_capability": "echo.certforge.r5.status", "idempotent": True}
+        if reserved is None:
+            existing = await conn.fetchrow(
+                "SELECT run_id, status, mode, request_sha256 "
+                "FROM arcanum_sdk.r5_async_runs WHERE run_id = $1",
+                run_id,
+            )
+            decision = core.async_reservation_decision(
+                existing["request_sha256"] if existing else None,
+                request_sha256,
+            )
+            if decision == "idempotent":
+                return {
+                    "run_id": run_id,
+                    "status": existing["status"],
+                    "mode": existing["mode"],
+                    "poll_capability": "echo.certforge.r5.status",
+                    "idempotent": True,
+                }
+            raise HTTPException(
+                status_code=409,
+                detail="evidence_run_id already reserved for different request",
+            )
 
     if not await _grant_active():
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE arcanum_sdk.r5_async_runs
+                      SET status='FAILED', completed_at=now(), result_json=$2
+                    WHERE run_id=$1 AND request_sha256=$3""",
+                run_id,
+                json.dumps({"error": "action-broker grant not active"}),
+                request_sha256,
+            )
         await audit("certforge-r5-async", "grant_denied", core.GRANT_AGENT, run_id,
                     {"run_id": run_id, "mode": mode})
         raise HTTPException(status_code=403, detail="action-broker grant not active")
     if not _ASYNCSSH:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE arcanum_sdk.r5_async_runs
+                      SET status='FAILED', completed_at=now(), result_json=$2
+                    WHERE run_id=$1 AND request_sha256=$3""",
+                run_id,
+                json.dumps({"error": "asyncssh unavailable"}),
+                request_sha256,
+            )
         raise HTTPException(status_code=503, detail="asyncssh unavailable on FORGE")
     node = await _get_node(core.ANVIL_NODE)
     if not node:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE arcanum_sdk.r5_async_runs
+                      SET status='FAILED', completed_at=now(), result_json=$2
+                    WHERE run_id=$1 AND request_sha256=$3""",
+                run_id,
+                json.dumps({"error": "anvil node not in registry"}),
+                request_sha256,
+            )
         raise HTTPException(status_code=503, detail="anvil node not in registry")
     if not node.get("is_reachable_from_forge"):
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE arcanum_sdk.r5_async_runs
+                      SET status='FAILED', completed_at=now(), result_json=$2
+                    WHERE run_id=$1 AND request_sha256=$3""",
+                run_id,
+                json.dumps({"error": "anvil not reachable"}),
+                request_sha256,
+            )
         raise HTTPException(status_code=503, detail="anvil not reachable from forge")
 
     operator_cmd = core.build_operator_command(
@@ -203,19 +277,38 @@ async def submit_async(req: R5AsyncSubmit, x_echo_api_key: str | None = Header(N
     try:
         _exit, stdout, stderr = await _ssh_run(node, launch, timeout=30.0)
     except (asyncio.TimeoutError, OSError, Exception) as exc:  # noqa: BLE001
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE arcanum_sdk.r5_async_runs
+                      SET status='FAILED', completed_at=now(), result_json=$2
+                    WHERE run_id=$1 AND request_sha256=$3""",
+                run_id,
+                json.dumps({"error": f"launch_failure:{type(exc).__name__}"}),
+                request_sha256,
+            )
         await audit("certforge-r5-async", "launch_failure", core.GRANT_AGENT, run_id,
                     {"run_id": run_id, "mode": mode, "error": f"{type(exc).__name__}: {exc}"})
         raise HTTPException(status_code=502, detail=f"anvil launch failed: {type(exc).__name__}") from exc
     if f"LAUNCHED:{run_id}" not in stdout:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE arcanum_sdk.r5_async_runs
+                      SET status='FAILED', completed_at=now(), result_json=$2
+                    WHERE run_id=$1 AND request_sha256=$3""",
+                run_id,
+                json.dumps({"error": "launch_not_confirmed"}),
+                request_sha256,
+            )
         raise HTTPException(status_code=502,
                             detail={"error": "launch_not_confirmed", "stderr_tail": stderr[-300:]})
 
     async with pool.acquire() as conn:
         await conn.execute(
-            """INSERT INTO arcanum_sdk.r5_async_runs (run_id, mode, status, identity_json, requested_by)
-               VALUES ($1, $2, 'RUNNING', $3, $4)
-               ON CONFLICT (run_id) DO NOTHING""",
-            run_id, mode, json.dumps(identity), "sovereign",
+            """UPDATE arcanum_sdk.r5_async_runs
+                  SET status='RUNNING'
+                WHERE run_id=$1 AND request_sha256=$2 AND status='RESERVED'""",
+            run_id,
+            request_sha256,
         )
     await audit("certforge-r5-async", "launched", core.GRANT_AGENT, run_id,
                 {"run_id": run_id, "mode": mode})
@@ -243,7 +336,8 @@ async def status(run_id: str, x_echo_api_key: str | None = Header(None)) -> dict
                 "result": json.loads(row["result_json"]) if row["result_json"] else None}
 
     # still RUNNING — check ANVIL for the completion marker
-    identity = json.loads(row["identity_json"])
+    request_data = json.loads(row["identity_json"])
+    identity = request_data.get("identity", request_data)
     mode = row["mode"]
     node = await _get_node(core.ANVIL_NODE)
     if not node or not node.get("is_reachable_from_forge"):
@@ -275,7 +369,13 @@ async def status(run_id: str, x_echo_api_key: str | None = Header(None)) -> dict
 
     bundle = report.get("forge_verification_bundle") or {}
     try:
-        forge_verify = core.verify_forge_bundle(bundle, identity, mode=mode)
+        forge_verify = core.verify_forge_bundle(
+            bundle,
+            identity,
+            mode=mode,
+            expected_run_id=run_id,
+            expected_run_nonce=request_data["evidence_run_nonce"],
+        )
     except core.R5CoreError as exc:
         forge_verify = {"all_ok": False, "reason": str(exc), "receipts": [],
                         "identity_ok": False, "key_id_ok": False}

@@ -581,13 +581,20 @@ def _build_bundle(operator: "Operator", mode: str) -> dict[str, Any]:
     attestation = operator.evidence.get("attestation") or {}
     receipts: list[dict[str, Any]] = []
     if mode == "full":
-        for control, key in (("wrong_active_adapter", "wrong-active-response"),
-                             ("unloaded_adapter", "unloaded-response")):
-            body = (operator.evidence.get(key) or {}).get("body") or {}
+        for control, evidence_key in (
+            ("positive_target", "positive-target"),
+            ("positive_wrong", "positive-wrong"),
+            ("wrong_active_adapter", "wrong-active-response"),
+            ("unloaded_adapter", "unloaded-response"),
+        ):
+            evidence = operator.evidence.get(evidence_key) or {}
+            body = evidence.get("body") or {}
             receipt = body.get("routing_receipt")
             if isinstance(receipt, dict):
                 receipts.append({
                     "control": control,
+                    "status_code": evidence.get("status_code"),
+                    "error_code": body.get("error_code"),
                     "key_id": receipt.get("key_id"),
                     "payload": receipt.get("payload"),
                     "signature_b64": receipt.get("signature_b64"),

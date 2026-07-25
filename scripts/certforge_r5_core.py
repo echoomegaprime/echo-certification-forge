@@ -108,6 +108,45 @@ def validate_run_id(evidence_run_id: Any) -> str:
     return evidence_run_id
 
 
+def build_async_request_binding(
+    identity: Mapping[str, str],
+    *,
+    mode: str,
+    evidence_run_id: str,
+    evidence_run_nonce: str,
+) -> tuple[dict[str, Any], str]:
+    if mode not in {"full", "preflight"}:
+        raise R5CoreError("mode must be 'full' or 'preflight'")
+    run_id = validate_run_id(evidence_run_id)
+    if not isinstance(evidence_run_nonce, str) or len(evidence_run_nonce) < 16:
+        raise R5CoreError("evidence_run_nonce must contain at least 16 characters")
+    binding = {
+        "run_id": run_id,
+        "identity": validate_identity_reverse(identity),
+        "mode": mode,
+        "evidence_run_nonce": evidence_run_nonce,
+        "evidence_run_nonce_sha256": sha256_bytes(
+            evidence_run_nonce.encode("utf-8")
+        ),
+    }
+    return binding, sha256_bytes(canonical_json(binding).encode("utf-8"))
+
+
+def async_reservation_decision(
+    existing_request_sha256: str | None,
+    requested_sha256: str,
+) -> str:
+    _check("sha256", requested_sha256, "requested_sha256")
+    if existing_request_sha256 is None:
+        return "launch"
+    _check("sha256", existing_request_sha256, "existing_request_sha256")
+    return (
+        "idempotent"
+        if existing_request_sha256 == requested_sha256
+        else "conflict"
+    )
+
+
 def build_operator_command(
     identity: Mapping[str, str],
     *,
@@ -174,6 +213,8 @@ def verify_forge_bundle(
     identity: Mapping[str, str],
     *,
     mode: str,
+    expected_run_id: str | None = None,
+    expected_run_nonce: str | None = None,
 ) -> dict[str, Any]:
     """Independent FORGE-side verification of the operator's evidence bundle.
 
@@ -208,14 +249,76 @@ def verify_forge_bundle(
 
     receipt_results: list[dict[str, Any]] = []
     if mode == "full":
+        run_id = validate_run_id(expected_run_id)
+        if not isinstance(expected_run_nonce, str) or len(expected_run_nonce) < 16:
+            raise R5CoreError(
+                "expected_run_nonce must contain at least 16 characters"
+            )
         receipts = bundle.get("receipts")
-        if not isinstance(receipts, list) or len(receipts) != 2:
-            problems.append("expected exactly two control receipts")
+        if not isinstance(receipts, list) or len(receipts) != 4:
+            problems.append("expected exactly four control receipts")
             receipts = receipts if isinstance(receipts, list) else []
+        controls = {
+            "positive_target": {
+                "status": 200,
+                "error": None,
+                "model": TARGET_MODEL,
+                "digest": ident["target_adapter_digest"],
+                "routing_mode": "lora_adapter",
+                "adapter_applied": True,
+                "persona_applied": True,
+                "challenge": (
+                    f"certforge-r5:{run_id}:{expected_run_nonce}:"
+                    f"positive:{TARGET_MODEL}:"
+                ),
+            },
+            "positive_wrong": {
+                "status": 200,
+                "error": None,
+                "model": WRONG_MODEL,
+                "digest": ident["wrong_adapter_digest"],
+                "routing_mode": "lora_adapter",
+                "adapter_applied": True,
+                "persona_applied": True,
+                "challenge": (
+                    f"certforge-r5:{run_id}:{expected_run_nonce}:"
+                    f"positive:{WRONG_MODEL}:"
+                ),
+            },
+            "wrong_active_adapter": {
+                "status": 409,
+                "error": "ADAPTER_IDENTITY_MISMATCH",
+                "model": TARGET_MODEL,
+                "selected": WRONG_MODEL,
+                "digest": None,
+                "routing_mode": "failure",
+                "adapter_applied": False,
+                "persona_applied": False,
+                "challenge": (
+                    f"certforge-r5:{run_id}:{expected_run_nonce}:wrong-active:"
+                ),
+            },
+            "unloaded_adapter": {
+                "status": 503,
+                "error": "ADAPTER_NOT_ACTIVE",
+                "model": TARGET_MODEL,
+                "selected": None,
+                "digest": None,
+                "routing_mode": "failure",
+                "adapter_applied": False,
+                "persona_applied": False,
+                "challenge": (
+                    f"certforge-r5:{run_id}:{expected_run_nonce}:unloaded:"
+                ),
+            },
+        }
+        seen_controls: set[str] = set()
+        request_ids: set[str] = set()
         for entry in receipts:
             control = entry.get("control") if isinstance(entry, Mapping) else None
             sig_ok = False
             kid_ok = False
+            semantic_ok = False
             try:
                 payload = entry["payload"]
                 signature = entry["signature_b64"]
@@ -224,17 +327,62 @@ def verify_forge_bundle(
                 key.verify(base64.b64decode(signature, validate=True),
                            canonical_json(payload).encode())
                 sig_ok = True
+                expected_control = controls.get(control)
+                request_id = payload.get("request_id")
+                selected = expected_control.get(
+                    "selected", expected_control["model"]
+                )
+                semantic_ok = bool(
+                    expected_control
+                    and control not in seen_controls
+                    and entry.get("status_code") == expected_control["status"]
+                    and entry.get("error_code") == expected_control["error"]
+                    and payload.get("requested_model") == expected_control["model"]
+                    and payload.get("registry_adapter_id")
+                    == expected_control["model"]
+                    and payload.get("selected_adapter_id") == selected
+                    and payload.get("selected_adapter_digest")
+                    == expected_control["digest"]
+                    and payload.get("routing_mode")
+                    == expected_control["routing_mode"]
+                    and payload.get("adapter_applied")
+                    is expected_control["adapter_applied"]
+                    and payload.get("persona_applied")
+                    is expected_control["persona_applied"]
+                    and payload.get("fallback_used") is False
+                    and isinstance(payload.get("challenge_nonce"), str)
+                    and payload["challenge_nonce"].startswith(
+                        expected_control["challenge"]
+                    )
+                    and isinstance(request_id, str)
+                    and request_id
+                    and request_id not in request_ids
+                )
+                if semantic_ok:
+                    seen_controls.add(str(control))
+                    request_ids.add(request_id)
             except (InvalidSignature, ValueError, TypeError, KeyError, AttributeError):
                 sig_ok = False
             receipt_results.append(
-                {"control": control, "signature_ok": sig_ok, "key_id_ok": kid_ok})
-            if not (sig_ok and kid_ok):
+                {
+                    "control": control,
+                    "signature_ok": sig_ok,
+                    "key_id_ok": kid_ok,
+                    "semantic_ok": semantic_ok,
+                }
+            )
+            if not (sig_ok and kid_ok and semantic_ok):
                 problems.append(f"receipt {control} failed verification")
+        if seen_controls != set(controls) or len(request_ids) != 4:
+            problems.append("required control coverage or request-id uniqueness failed")
 
     all_ok = key_id_ok and identity_ok and (
         mode == "preflight"
-        or (len(receipt_results) == 2
-            and all(r["signature_ok"] and r["key_id_ok"] for r in receipt_results)))
+        or (len(receipt_results) == 4
+            and all(
+                r["signature_ok"] and r["key_id_ok"] and r["semantic_ok"]
+                for r in receipt_results
+            )))
     return {
         "all_ok": all_ok,
         "identity_ok": identity_ok,

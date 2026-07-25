@@ -45,6 +45,8 @@ def _keypair():
 
 D = "a" * 64  # a valid-looking sha256
 D2 = "b" * 64
+RUN_ID = "forge-verify-run"
+RUN_NONCE = "forge-verify-run-nonce-01"
 
 
 def _identity(kid: str) -> dict[str, str]:
@@ -60,7 +62,16 @@ def _identity(kid: str) -> dict[str, str]:
     }
 
 
-def _bundle(pem: str, kid: str, *, mode: str, priv=None, tamper=False, wrong_kid=False):
+def _bundle(
+    pem: str,
+    kid: str,
+    *,
+    mode: str,
+    priv=None,
+    tamper=False,
+    wrong_kid=False,
+    receipt_run_id: str = RUN_ID,
+):
     b = {
         "public_key_pem": pem,
         "attested_key_id": kid,
@@ -73,14 +84,54 @@ def _bundle(pem: str, kid: str, *, mode: str, priv=None, tamper=False, wrong_kid
     }
     if mode == "full" and priv is not None:
         receipts = []
-        for control in ("wrong_active_adapter", "unloaded_adapter"):
-            payload = {"schema": op.RECEIPT_SCHEMA, "control": control,
-                       "signature_key_id": ("ed25519:" + "0" * 32) if wrong_kid else kid}
+        controls = (
+            ("positive_target", 200, None, core.TARGET_MODEL, core.TARGET_MODEL, D, "lora_adapter", True),
+            ("positive_wrong", 200, None, core.WRONG_MODEL, core.WRONG_MODEL, D2, "lora_adapter", True),
+            ("wrong_active_adapter", 409, "ADAPTER_IDENTITY_MISMATCH", core.TARGET_MODEL, core.WRONG_MODEL, None, "failure", False),
+            ("unloaded_adapter", 503, "ADAPTER_NOT_ACTIVE", core.TARGET_MODEL, None, None, "failure", False),
+        )
+        labels = {
+            "positive_target": f"positive:{core.TARGET_MODEL}",
+            "positive_wrong": f"positive:{core.WRONG_MODEL}",
+            "wrong_active_adapter": "wrong-active",
+            "unloaded_adapter": "unloaded",
+        }
+        for index, (
+            control,
+            status,
+            error,
+            requested_model,
+            selected_model,
+            digest,
+            routing_mode,
+            applied,
+        ) in enumerate(controls, start=1):
+            payload = {
+                "schema": op.RECEIPT_SCHEMA,
+                "request_id": f"request-{index}",
+                "challenge_nonce": (
+                    f"certforge-r5:{receipt_run_id}:{RUN_NONCE}:"
+                    f"{labels[control]}:challenge-{index}"
+                ),
+                "requested_model": requested_model,
+                "registry_adapter_id": requested_model,
+                "selected_adapter_id": selected_model,
+                "selected_adapter_digest": digest,
+                "routing_mode": routing_mode,
+                "adapter_applied": applied,
+                "persona_applied": applied,
+                "fallback_used": False,
+                "signature_key_id": (
+                    "ed25519:" + "0" * 32
+                ) if wrong_kid else kid,
+            }
             sig = priv.sign(core.canonical_json(payload).encode())
             sig_b64 = base64.b64encode(sig).decode()
             if tamper:
                 sig_b64 = base64.b64encode(b"\x00" + sig[1:]).decode()
             receipts.append({"control": control,
+                             "status_code": status,
+                             "error_code": error,
                              "key_id": ("ed25519:" + "0" * 32) if wrong_kid else kid,
                              "payload": payload, "signature_b64": sig_b64})
         b["receipts"] = receipts
@@ -159,6 +210,45 @@ def test_build_command_rejects_bad_mode_and_runid():
         )
 
 
+def test_async_reservation_digest_is_exact_and_conflict_safe():
+    _, _, kid = _keypair()
+    identity = core.validate_identity(_identity(kid))
+    first, first_sha = core.build_async_request_binding(
+        identity,
+        mode="full",
+        evidence_run_id="async-reservation",
+        evidence_run_nonce="async-reservation-nonce-01",
+    )
+    repeated, repeated_sha = core.build_async_request_binding(
+        identity,
+        mode="full",
+        evidence_run_id="async-reservation",
+        evidence_run_nonce="async-reservation-nonce-01",
+    )
+    _, mismatch_sha = core.build_async_request_binding(
+        identity,
+        mode="full",
+        evidence_run_id="async-reservation",
+        evidence_run_nonce="async-reservation-nonce-02",
+    )
+    assert first == repeated and first_sha == repeated_sha
+    assert mismatch_sha != first_sha
+    assert core.async_reservation_decision(None, first_sha) == "launch"
+    assert core.async_reservation_decision(first_sha, repeated_sha) == "idempotent"
+    assert core.async_reservation_decision(first_sha, mismatch_sha) == "conflict"
+
+
+def test_async_router_reserves_before_launch_and_persists_failures():
+    text = (_SCRIPTS / "certforge_r5_async_router.py").read_text(encoding="utf-8")
+    reserve_at = text.index("INSERT INTO arcanum_sdk.r5_async_runs")
+    launch_at = text.index("_ssh_run(node, launch")
+    assert reserve_at < launch_at
+    assert "ON CONFLICT (run_id) DO NOTHING" in text
+    assert "request_sha256" in text
+    assert "status='FAILED'" in text
+    assert "evidence_run_id already reserved for different request" in text
+
+
 # --- FORGE-side bundle verification ---------------------------------------
 
 def test_verify_bundle_preflight_ok():
@@ -186,15 +276,28 @@ def test_verify_bundle_identity_mismatch():
 def test_verify_bundle_full_valid_receipts():
     priv, pem, kid = _keypair()
     b = _bundle(pem, kid, mode="full", priv=priv)
-    v = core.verify_forge_bundle(b, core.validate_identity(_identity(kid)), mode="full")
+    v = core.verify_forge_bundle(
+        b,
+        core.validate_identity(_identity(kid)),
+        mode="full",
+        expected_run_id=RUN_ID,
+        expected_run_nonce=RUN_NONCE,
+    )
     assert v["all_ok"]
-    assert len(v["receipts"]) == 2 and all(r["signature_ok"] for r in v["receipts"])
+    assert len(v["receipts"]) == 4
+    assert all(r["signature_ok"] and r["semantic_ok"] for r in v["receipts"])
 
 
 def test_verify_bundle_full_tampered_signature():
     priv, pem, kid = _keypair()
     b = _bundle(pem, kid, mode="full", priv=priv, tamper=True)
-    v = core.verify_forge_bundle(b, core.validate_identity(_identity(kid)), mode="full")
+    v = core.verify_forge_bundle(
+        b,
+        core.validate_identity(_identity(kid)),
+        mode="full",
+        expected_run_id=RUN_ID,
+        expected_run_nonce=RUN_NONCE,
+    )
     assert not v["all_ok"]
     assert any(not r["signature_ok"] for r in v["receipts"])
 
@@ -202,8 +305,35 @@ def test_verify_bundle_full_tampered_signature():
 def test_verify_bundle_full_wrong_receipt_key_id():
     priv, pem, kid = _keypair()
     b = _bundle(pem, kid, mode="full", priv=priv, wrong_kid=True)
-    v = core.verify_forge_bundle(b, core.validate_identity(_identity(kid)), mode="full")
+    v = core.verify_forge_bundle(
+        b,
+        core.validate_identity(_identity(kid)),
+        mode="full",
+        expected_run_id=RUN_ID,
+        expected_run_nonce=RUN_NONCE,
+    )
     assert not v["all_ok"]
+
+
+def test_verify_bundle_rejects_old_run_duplicate_replay():
+    priv, pem, kid = _keypair()
+    bundle = _bundle(
+        pem,
+        kid,
+        mode="full",
+        priv=priv,
+        receipt_run_id="old-forge-run",
+    )
+    bundle["receipts"][1] = dict(bundle["receipts"][0])
+    v = core.verify_forge_bundle(
+        bundle,
+        core.validate_identity(_identity(kid)),
+        mode="full",
+        expected_run_id=RUN_ID,
+        expected_run_nonce=RUN_NONCE,
+    )
+    assert not v["all_ok"]
+    assert any(not receipt["semantic_ok"] for receipt in v["receipts"])
 
 
 # --- result assembly + redaction ------------------------------------------
