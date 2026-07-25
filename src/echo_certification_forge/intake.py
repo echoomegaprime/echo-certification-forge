@@ -133,7 +133,7 @@ def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
         payload = json.loads(verdict_row["payload_json"])
         release_verdict = payload.get("release_verdict", release_verdict)
         evidence_merkle_root = payload.get("evidence_merkle_root")
-    return {
+    projected = {
         "run_id": run_id,
         "tenant_id": tenant_id,
         "state": to_public_state(row["state"]),
@@ -146,6 +146,10 @@ def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+    if row.get("source_run_id") is not None:
+        projected["source_run_id"] = row["source_run_id"]
+        projected["rerun_sequence"] = int(row["rerun_sequence"])
+    return projected
 
 
 class SubmitError(Exception):
@@ -162,6 +166,8 @@ def submit(
     manifest: RuleManifest,
     request: SubmitRequest,
     tenant_header: str,
+    *,
+    source_run_id: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Idempotent, tenant-fail-closed run submission.
 
@@ -216,6 +222,7 @@ def submit(
             manifest_digest=manifest.digest,
             declared_artifact_sha256=request.target.artifact_sha256,
             declared_source_commit=request.target.source_commit,
+            source_run_id=source_run_id,
         )
     except sqlite3.IntegrityError:
         # A concurrent or recovered submit already created this deterministic run. Finish any

@@ -930,6 +930,8 @@ class SubscriberGovernance:
         owner_display_name: str,
         plan_code: str = "developer",
         status: OrganizationStatus = OrganizationStatus.TRIALING,
+        organization_id: str | None = None,
+        owner_user_id: str | None = None,
     ) -> ProvisionedOrganization:
         require_identifier(slug, "slug")
         if not display_name.strip() or not owner_display_name.strip():
@@ -938,8 +940,10 @@ class SubscriberGovernance:
         if "@" not in email or len(email) > 254:
             raise ValueError("owner_email is invalid")
         plan = self.policy.plan(plan_code)
-        organization_id = self._new_id("org")
-        user_id = self._new_id("usr")
+        organization_id = organization_id or self._new_id("org")
+        user_id = owner_user_id or self._new_id("usr")
+        require_identifier(organization_id, "organization_id")
+        require_identifier(user_id, "owner_user_id")
         now = self._now()
         now_text = to_utc_iso(now)
         period_end = to_utc_iso(now + timedelta(days=30))
@@ -1995,7 +1999,7 @@ class SubscriberGovernance:
         self,
         connection: sqlite3.Connection,
         organization_id: str,
-        plan: PlanPolicy,
+        plan: PlanDefinition,
         now: str,
     ) -> None:
         row = connection.execute(
@@ -3352,6 +3356,40 @@ class SubscriberGovernance:
                 target_identity_digest,
             )
 
+    def rerun_dispatch_template(
+        self, principal: SubscriberPrincipal, run_id: str
+    ) -> tuple[dict[str, Any], list[str] | None]:
+        """Return the exact tenant-owned dispatch contract for a governed rerun."""
+        require_identifier(run_id, "run_id")
+        self.require(principal, Permission.RUN_CREATE)
+        with self._connection() as connection:
+            self._require_with_connection(connection, principal, Permission.RUN_CREATE)
+            row = connection.execute(
+                """
+                SELECT d.target_json, d.journey_json
+                FROM subscriber_run_dispatches d
+                JOIN runs r ON r.run_id = d.run_id
+                WHERE d.run_id = ? AND d.organization_id = ? AND r.tenant_id = ?
+                """,
+                (run_id, principal.organization_id, principal.organization_id),
+            ).fetchone()
+        if row is None:
+            raise SubscriberError(409, "source_run_not_rerunnable")
+        try:
+            target = json.loads(str(row["target_json"]))
+            journey = (
+                json.loads(str(row["journey_json"]))
+                if row["journey_json"] is not None
+                else None
+            )
+        except json.JSONDecodeError as exc:
+            raise SubscriberError(503, "source_dispatch_invalid") from exc
+        if not isinstance(target, dict) or (
+            journey is not None and not isinstance(journey, list)
+        ):
+            raise SubscriberError(503, "source_dispatch_invalid")
+        return target, journey
+
     def pending_intake_requests(self, limit: int = 100) -> list[PendingSubscriberIntake]:
         if limit <= 0 or limit > 1000:
             raise ValueError("limit must be between 1 and 1000")
@@ -3421,6 +3459,7 @@ class SubscriberGovernance:
         manifest_digest: str,
         target_spec: Mapping[str, Any],
         journey: list[str] | None,
+        source_run_id: str | None = None,
     ) -> bool:
         require_identifier(run_id, "run_id")
         require_identifier(target_type, "target_type")
@@ -3428,6 +3467,8 @@ class SubscriberGovernance:
         require_sha256(target_identity_digest, "target_identity_digest")
         require_sha256(environment_identity_digest, "environment_identity_digest")
         require_sha256(manifest_digest, "manifest_digest")
+        if source_run_id is not None:
+            require_identifier(source_run_id, "source_run_id")
         if reservation.policy_version != manifest_id:
             raise SubscriberError(422, "policy_unknown")
         if not target_reference.strip():
@@ -3531,6 +3572,25 @@ class SubscriberGovernance:
                 if actual_binding != expected_binding:
                     raise SubscriberError(409, "run_reservation_binding_conflict")
                 if existing_run is None:
+                    rerun_sequence: int | None = None
+                    if source_run_id is not None:
+                        source = connection.execute(
+                            "SELECT tenant_id, state FROM runs WHERE run_id = ?",
+                            (source_run_id,),
+                        ).fetchone()
+                        if (
+                            source is None
+                            or source["tenant_id"] != reservation.organization_id
+                            or source["state"] not in _TERMINAL_RUN_STATES
+                        ):
+                            raise SubscriberError(409, "source_run_not_terminal")
+                        rerun_sequence = int(
+                            connection.execute(
+                                "SELECT COALESCE(MAX(rerun_sequence), 0) + 1 AS sequence "
+                                "FROM runs WHERE tenant_id = ? AND source_run_id = ?",
+                                (reservation.organization_id, source_run_id),
+                            ).fetchone()["sequence"]
+                        )
                     connection.execute(
                         """
                         INSERT INTO runs(
@@ -3538,9 +3598,10 @@ class SubscriberGovernance:
                             target_identity_digest, environment_identity_json,
                             environment_identity_digest, rule_manifest_id,
                             rule_manifest_digest, run_outcome, state, created_at,
-                            updated_at, policy_version, target_reference, project_id
+                            updated_at, policy_version, target_reference, project_id,
+                            source_run_id, rerun_sequence
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'INCONCLUSIVE',
-                                  'CREATED', ?, ?, ?, ?, ?)
+                                  'CREATED', ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             run_id,
@@ -3556,6 +3617,8 @@ class SubscriberGovernance:
                             reservation.policy_version,
                             target_reference,
                             reservation.project_id,
+                            source_run_id,
+                            rerun_sequence,
                         ),
                     )
                     existing_run = connection.execute(
@@ -3573,6 +3636,7 @@ class SubscriberGovernance:
                     environment_identity_digest,
                     manifest_id,
                     manifest_digest,
+                    source_run_id,
                 )
                 actual_run = (
                     existing_run["tenant_id"],
@@ -3586,6 +3650,7 @@ class SubscriberGovernance:
                     existing_run["environment_identity_digest"],
                     existing_run["rule_manifest_id"],
                     existing_run["rule_manifest_digest"],
+                    existing_run["source_run_id"],
                 )
                 if actual_run != expected_run:
                     raise SubscriberError(409, "run_materialization_conflict")

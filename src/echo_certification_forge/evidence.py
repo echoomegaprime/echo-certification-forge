@@ -108,7 +108,9 @@ class EvidenceStore:
             updated_at TEXT NOT NULL,
             policy_version TEXT,
             target_reference TEXT,
-            project_id TEXT
+            project_id TEXT,
+            source_run_id TEXT,
+            rerun_sequence INTEGER
         );
         CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id, created_at);
 
@@ -239,6 +241,24 @@ class EvidenceStore:
                 connection.execute("ALTER TABLE runs ADD COLUMN target_reference TEXT")
             if "project_id" not in existing:
                 connection.execute("ALTER TABLE runs ADD COLUMN project_id TEXT")
+            if "source_run_id" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN source_run_id TEXT")
+            if "rerun_sequence" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN rerun_sequence INTEGER")
+            connection.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS idx_runs_source
+                    ON runs(tenant_id, source_run_id, rerun_sequence);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_source_sequence
+                    ON runs(tenant_id, source_run_id, rerun_sequence)
+                    WHERE source_run_id IS NOT NULL;
+                CREATE TRIGGER IF NOT EXISTS no_update_run_lineage
+                    BEFORE UPDATE OF source_run_id, rerun_sequence ON runs
+                    WHEN OLD.source_run_id IS NOT NEW.source_run_id
+                      OR OLD.rerun_sequence IS NOT NEW.rerun_sequence
+                    BEGIN SELECT RAISE(ABORT, 'run lineage is immutable'); END;
+                """
+            )
 
     def register_run(
         self,
@@ -292,6 +312,7 @@ class EvidenceStore:
         declared_artifact_sha256: str | None = None,
         declared_source_commit: str | None = None,
         project_id: str | None = None,
+        source_run_id: str | None = None,
     ) -> None:
         """Register a run from a client-declared, pre-computed target identity digest.
 
@@ -309,6 +330,8 @@ class EvidenceStore:
         require_identifier(policy_version, "policy_version")
         if project_id is not None:
             require_identifier(project_id, "project_id")
+        if source_run_id is not None:
+            require_identifier(source_run_id, "source_run_id")
         require_identifier(manifest_id, "manifest_id")
         if not target_reference.strip():
             raise ValueError("target_reference is required")
@@ -325,6 +348,21 @@ class EvidenceStore:
             target_json["declared_source_commit"] = declared_source_commit
         now = to_utc_iso(utc_now())
         with self._connection() as connection:
+            rerun_sequence: int | None = None
+            if source_run_id is not None:
+                source = connection.execute(
+                    "SELECT tenant_id FROM runs WHERE run_id = ?",
+                    (source_run_id,),
+                ).fetchone()
+                if source is None or source["tenant_id"] != tenant_id:
+                    raise KeyError(f"unknown source run: {source_run_id}")
+                rerun_sequence = int(
+                    connection.execute(
+                        "SELECT COALESCE(MAX(rerun_sequence), 0) + 1 AS sequence "
+                        "FROM runs WHERE tenant_id = ? AND source_run_id = ?",
+                        (tenant_id, source_run_id),
+                    ).fetchone()["sequence"]
+                )
             connection.execute(
                 """
                 INSERT INTO runs(
@@ -332,8 +370,8 @@ class EvidenceStore:
                     environment_identity_json, environment_identity_digest,
                     rule_manifest_id, rule_manifest_digest, run_outcome, state,
                     created_at, updated_at, policy_version, target_reference,
-                    project_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    project_id, source_run_id, rerun_sequence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -351,6 +389,8 @@ class EvidenceStore:
                     policy_version,
                     target_reference,
                     project_id,
+                    source_run_id,
+                    rerun_sequence,
                 ),
             )
 

@@ -26,8 +26,10 @@ from .evidence import (
     EvidenceStore,
 )
 from .intake import (
+    SubmitEnvironment,
     SubmitError,
     SubmitRequest,
+    SubmitTarget,
     project_run,
     submit,
 )
@@ -82,6 +84,11 @@ class ProjectCreateRequest(BaseModel):
     slug: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     name: str = Field(min_length=1, max_length=160)
     target_reference: str = Field(min_length=1, max_length=2048)
+
+
+class RerunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=8, max_length=128)
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -674,6 +681,128 @@ def create_app(context: ServiceContext) -> FastAPI:
         except SubscriberError as exc:
             raise subscriber_error(exc) from exc
         return result.to_dict()
+
+    @app.post("/v1/subscriber/certifications/{run_id}/rerun", status_code=201)
+    def subscriber_rerun(
+        run_id: str,
+        request: RerunRequest,
+        response: Response,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        """Create a governed queued run with immutable lineage to a terminal source."""
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.RUN_CREATE,
+            "certifications.rerun",
+        )
+        reservation = None
+        try:
+            source = context.store.get_run(run_id, principal.organization_id)
+            if source["state"] not in _TERMINAL_STATES:
+                raise SubscriberError(409, "source_run_not_terminal")
+            if (
+                source.get("policy_version") != context.manifest.manifest_id
+                or source["rule_manifest_digest"] != context.manifest.digest
+            ):
+                raise SubscriberError(409, "source_policy_not_active")
+            target = json.loads(source["target_identity_json"])
+            environment = json.loads(source["environment_identity_json"])
+            target_type = str(target.get("target_type", ""))
+            target_reference = str(
+                source.get("target_reference")
+                or target.get("reference")
+                or target.get("canonical_ref")
+                or ""
+            )
+            project_id = source.get("project_id")
+            if not target_type or not target_reference or not project_id:
+                raise SubscriberError(409, "source_run_not_rerunnable")
+
+            internal_key = "rerun-" + sha256_json(
+                {
+                    "source_run_id": run_id,
+                    "idempotency_key": request.idempotency_key,
+                }
+            )
+            runner_image_digest = environment.get("runner_image_digest")
+            if runner_image_digest is None and environment.get("runner_image_sha256"):
+                runner_image_digest = "sha256:" + str(environment["runner_image_sha256"])
+            rerun_request = SubmitRequest(
+                tenant_id=principal.organization_id,
+                project_id=str(project_id),
+                target=SubmitTarget(
+                    target_type=target_type,
+                    identity_digest=source["target_identity_digest"],
+                    reference=target_reference,
+                ),
+                environment=SubmitEnvironment(
+                    identity_digest=source["environment_identity_digest"],
+                    runner_image_digest=runner_image_digest,
+                ),
+                policy_version=context.manifest.manifest_id,
+                idempotency_key=internal_key,
+            )
+            target_spec, journey = context.subscribers.rerun_dispatch_template(
+                principal, run_id
+            )
+            request_digest = sha256_json(
+                {
+                    "request": rerun_request.request_digest(),
+                    "active_rule_manifest_digest": context.manifest.digest,
+                }
+            )
+            scoped_key = f"{internal_key}@{context.manifest.digest[:16]}"
+            reservation = context.subscribers.reserve_certification_run(
+                principal,
+                project_id=str(project_id),
+                idempotency_key=scoped_key,
+                request_digest=request_digest,
+                policy_version=rerun_request.policy_version,
+                target_type=rerun_request.target.target_type,
+                target_reference=rerun_request.target.reference,
+                target_identity_digest=rerun_request.target.identity_digest,
+                dispatch_target_spec=target_spec,
+                journey=journey,
+                submit_request=rerun_request.model_dump(exclude_none=True),
+            )
+            rerun_id = rerun_request.run_id(context.manifest.digest)
+            created = context.subscribers.materialize_reserved_run(
+                reservation,
+                run_id=rerun_id,
+                target_type=rerun_request.target.target_type,
+                target_reference=rerun_request.target.reference,
+                target_identity_digest=rerun_request.target.identity_digest,
+                environment_identity_digest=rerun_request.environment.identity_digest,
+                environment_json=rerun_request.environment.model_dump(exclude_none=True),
+                manifest_id=context.manifest.manifest_id,
+                manifest_digest=context.manifest.digest,
+                target_spec=target_spec,
+                journey=journey,
+                source_run_id=run_id,
+            )
+            response.status_code = 201 if created else 200
+            body = project_run(
+                context.store,
+                context.store.get_run(rerun_id, principal.organization_id),
+            )
+            context.subscribers.audit_resource_event(
+                principal,
+                action="certification.rerun",
+                resource_type="certification",
+                resource_id=rerun_id,
+                details={"source_run_id": run_id, "status_code": response.status_code},
+            )
+            return body
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except SubscriberError as exc:
+            if reservation is not None and reservation.created:
+                context.subscribers.release_reservation(
+                    reservation, reason="rerun_rejected", compensate_meter=True
+                )
+            raise subscriber_error(exc) from exc
 
     @app.get("/v1/subscriber/me")
     def subscriber_me(

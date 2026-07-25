@@ -68,7 +68,7 @@ def test_provision_is_idempotent_only_when_tenant_and_vault_both_exist(tmp_path,
     monkeypatch.setattr(subject, "_vault_has_service", lambda *_args: True)
     result = subject.provision(args)
     assert result["ok"] is True and result["created"] is False
-    assert result["organization_id"].startswith("org_")
+    assert result["organization_id"] == args.organization_id
     assert result["project_id"].startswith("prj_")
     assert result["vault_service"] == subject.DEFAULT_SERVICE
 
@@ -83,10 +83,12 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
 
 def test_desktop_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("('echo.certforge.admin.") == 6
-    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 7
+    assert sql.count("('echo.certforge.admin.") == 7
+    assert sql.count('"Authorization":"vault:certforge.desktop_admin_api_key"') == 18
+    assert '"X-Tenant-ID":"org-echo-sovereign"' in sql
     assert "echo.certforge.telemetry" in sql
     assert "echo.certforge.admin.evidence_artifact" in sql
+    assert "echo.certforge.admin.rerun" in sql
     assert "5 MiB raw" in sql
     assert "WHERE id = 'echo.certforge.admin.evidence_artifact'" in sql
     assert "ecf_" not in sql

@@ -3335,3 +3335,103 @@ def test_subscriber_telemetry_is_bounded_tenant_scoped_and_truthful(
     )
     assert isolated.status_code == 200
     assert isolated.json()["queue"]["total"] == 0
+
+
+def test_subscriber_rerun_creates_immutable_lineage_without_mutating_source(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    owner = _provision(governance, "rerun", plan_code="professional")
+    other = _provision(governance, "rerun-other", plan_code="professional")
+    source_path = tmp_path / "rerun-source"
+    source_path.mkdir()
+    (source_path / "journey.py").write_text(
+        "print('rerun-source-ok')\n", encoding="utf-8"
+    )
+    source_run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        owner.organization_id,
+        owner.bootstrap_api_key,
+        source_path,
+        key="subscriber-rerun-source-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    result = run(
+        source_run_id,
+        owner.organization_id,
+        {"type": "local", "path": str(source_path)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        entitled=frozenset(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    assert result["state"] == RunState.COMPLETED.value
+    source_before = store.get_run(source_run_id, owner.organization_id)
+    evidence_before = store.list_evidence(source_run_id, owner.organization_id)
+    verdict_before = store.latest_signed_verdict(
+        source_run_id, owner.organization_id
+    )
+    assert evidence_before and verdict_before is not None
+
+    headers = _headers(owner.organization_id, owner.bootstrap_api_key)
+    rerun = client.post(
+        f"/v1/subscriber/certifications/{source_run_id}/rerun",
+        headers=headers,
+        json={"idempotency_key": "desktop-rerun-attempt-01"},
+    )
+    assert rerun.status_code == 201
+    body = rerun.json()
+    rerun_id = body["run_id"]
+    assert rerun_id != source_run_id
+    assert body["source_run_id"] == source_run_id
+    assert body["rerun_sequence"] == 1
+    assert body["state"] == "QUEUED"
+    assert body["release_verdict"] == "NOT_READY"
+    assert body["evidence_merkle_root"] is None
+    assert body["target_identity_digest"] == source_before["target_identity_digest"]
+    assert body["environment_identity_digest"] == source_before[
+        "environment_identity_digest"
+    ]
+
+    replay = client.post(
+        f"/v1/subscriber/certifications/{source_run_id}/rerun",
+        headers=headers,
+        json={"idempotency_key": "desktop-rerun-attempt-01"},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["run_id"] == rerun_id
+    assert replay.json()["rerun_sequence"] == 1
+
+    nonterminal = client.post(
+        f"/v1/subscriber/certifications/{rerun_id}/rerun",
+        headers=headers,
+        json={"idempotency_key": "desktop-rerun-nonterminal"},
+    )
+    assert nonterminal.status_code == 409
+    assert nonterminal.json()["detail"] == "source_run_not_terminal"
+    isolated = client.post(
+        f"/v1/subscriber/certifications/{source_run_id}/rerun",
+        headers=_headers(other.organization_id, other.bootstrap_api_key),
+        json={"idempotency_key": "desktop-rerun-isolation"},
+    )
+    assert isolated.status_code == 404
+
+    assert store.get_run(source_run_id, owner.organization_id) == source_before
+    assert store.list_evidence(source_run_id, owner.organization_id) == evidence_before
+    assert store.latest_signed_verdict(
+        source_run_id, owner.organization_id
+    ) == verdict_before
+    with pytest.raises(sqlite3.IntegrityError, match="run lineage is immutable"):
+        with store._connection() as connection:
+            connection.execute(
+                "UPDATE runs SET source_run_id = ? WHERE run_id = ?",
+                (rerun_id, rerun_id),
+            )
+    audit = client.get("/v1/subscriber/audit", headers=headers).json()
+    event = next(row for row in audit if row["action"] == "certification.rerun")
+    assert event["resource_id"] == rerun_id
+    assert event["details"]["source_run_id"] == source_run_id
+    assert owner.bootstrap_api_key not in json.dumps(audit)

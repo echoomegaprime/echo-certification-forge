@@ -38,13 +38,13 @@ def _sovereign_key(path: Path) -> str:
 def _organization_exists(db_path: Path, organization_id: str) -> bool:
     with sqlite3.connect(db_path) as connection:
         row = connection.execute(
-            "SELECT 1 FROM subscriber_organizations WHERE slug = ?",
+            "SELECT 1 FROM subscriber_organizations WHERE organization_id = ?",
             (organization_id,),
         ).fetchone()
     return row is not None
 
 
-def _existing_control(db_path: Path, organization_slug: str, project_slug: str) -> dict[str, str]:
+def _existing_control(db_path: Path, organization_id: str, project_slug: str) -> dict[str, str]:
     with sqlite3.connect(db_path) as connection:
         connection.row_factory = sqlite3.Row
         row = connection.execute(
@@ -53,9 +53,9 @@ def _existing_control(db_path: Path, organization_slug: str, project_slug: str) 
             FROM subscriber_organizations o
             LEFT JOIN subscriber_projects p
               ON p.organization_id = o.organization_id AND p.slug = ?
-            WHERE o.slug = ?
+            WHERE o.organization_id = ?
             """,
-            (project_slug, organization_slug),
+            (project_slug, organization_id),
         ).fetchone()
     if row is None or row["project_id"] is None:
         raise RuntimeError("existing Desktop tenant is missing its governed project")
@@ -94,7 +94,7 @@ def _store_in_vault(
         {
             "service": service,
             "username": "echo-desktop",
-            "secret": account["api_key"],
+            "secret": "Bearer " + account["api_key"],
             "metadata": {
                 "organization_id": account["organization_id"],
                 "tenant_id": account["tenant_id"],
@@ -156,12 +156,14 @@ def provision(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     provisioned = governance.provision_organization(
-        slug=args.organization_id,
+        slug=args.tenant_id,
         display_name=args.organization_name,
         owner_email=args.owner_email,
-        owner_display_name=args.owner_user_id,
+        owner_display_name=args.organization_name + " Desktop Administrator",
         plan_code=args.plan,
         status=OrganizationStatus.ACTIVE,
+        organization_id=args.organization_id,
+        owner_user_id=args.owner_user_id,
     )
     principal = governance.authenticate(
         provisioned.bootstrap_api_key,
