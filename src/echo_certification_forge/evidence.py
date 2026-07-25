@@ -35,6 +35,22 @@ from .state_machine import validate_transition
 _ZERO_HASH = "0" * 64
 
 
+class EvidenceArtifactUnavailable(RuntimeError):
+    """The immutable descriptor exists but its retained bytes are unavailable."""
+
+
+class EvidenceArtifactRestricted(PermissionError):
+    """The artifact is not in a release-safe redaction state."""
+
+
+class EvidenceArtifactTooLarge(ValueError):
+    """The artifact exceeds the bounded retrieval contract."""
+
+
+class EvidenceArtifactIntegrityError(RuntimeError):
+    """Stored bytes no longer match their immutable evidence descriptor."""
+
+
 def merkle_root(leaves: Iterable[str]) -> str:
     level = [bytes.fromhex(item) for item in leaves]
     if not level:
@@ -589,6 +605,54 @@ class EvidenceStore:
                 (run_id, tenant_id),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def read_evidence_artifact(
+        self,
+        run_id: str,
+        tenant_id: str,
+        artifact_id: str,
+        *,
+        max_bytes: int,
+    ) -> tuple[dict[str, Any], bytes]:
+        """Read one release-safe artifact after re-verifying its immutable descriptor."""
+        require_identifier(artifact_id, "artifact_id")
+        if max_bytes < 1:
+            raise ValueError("max_bytes must be positive")
+        self.get_run(run_id, tenant_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT artifact_id, run_id, tenant_id, relative_path, sha256, size_bytes, "
+                "media_type, source_component, redaction_status, ordinal, created_at "
+                "FROM evidence_artifacts WHERE artifact_id = ? AND run_id = ? AND tenant_id = ?",
+                (artifact_id, run_id, tenant_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"unknown artifact: {artifact_id}")
+        if row["redaction_status"] not in {
+            RedactionStatus.COMPLETE.value,
+            RedactionStatus.NOT_REQUIRED.value,
+        }:
+            raise EvidenceArtifactRestricted("artifact redaction is incomplete")
+        declared_size = int(row["size_bytes"])
+        if declared_size > max_bytes:
+            raise EvidenceArtifactTooLarge("artifact exceeds retrieval limit")
+        try:
+            artifact_path = contained_path(self.evidence_root, row["relative_path"])
+        except ValueError as exc:
+            raise EvidenceArtifactIntegrityError("artifact path is invalid") from exc
+        if not artifact_path.is_file():
+            raise EvidenceArtifactUnavailable("artifact content is unavailable")
+        content = artifact_path.read_bytes()
+        if len(content) != declared_size or sha256_bytes(content) != row["sha256"]:
+            raise EvidenceArtifactIntegrityError("artifact bytes failed descriptor verification")
+        descriptor = {
+            key: row[key]
+            for key in (
+                "artifact_id", "run_id", "tenant_id", "sha256", "size_bytes",
+                "media_type", "source_component", "redaction_status", "ordinal", "created_at",
+            )
+        }
+        return descriptor, content
 
     def set_retention(
         self, run_id: str, tenant_id: str, artifact_id: str,

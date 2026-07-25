@@ -84,8 +84,10 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
 
 def test_admin_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("('echo.certforge.admin.") == 5
-    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 5
+    assert sql.count("('echo.certforge.admin.") == 6
+    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 6
+    assert "echo.certforge.admin.evidence_artifact" in sql
+    assert "5 MiB raw" in sql
     assert "ecf_" not in sql
 
 

@@ -1,4 +1,4 @@
--- Register the 11 safe-core and 5 hardened-administration Echo Desktop
+-- Register the 11 safe-core and 6 hardened-administration Echo Desktop
 -- operator-facing echo.certforge.* SDK capabilities as
 -- handler_kind='http' proxies to the live
 -- echo-certforge.service on FORGE :8309. Idempotent (ON CONFLICT DO UPDATE).
@@ -93,6 +93,12 @@ VALUES
    'http', 'http://127.0.0.1:8309/v1/subscriber/audit', 'GET', 'query', 'forge',
    '{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":500}},"additionalProperties":false}'::jsonb,
    'certforge.admin.read', 1, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.evidence_artifact',
+   'Certification Forge administration: retrieve one tenant-owned, release-safe evidence artifact after server-side size and SHA-256 verification. Response is bounded to 5 MiB raw and audited. Subscriber credentials are resolved only inside the SDK gate.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/evidence/{artifact_id}', 'GET', 'path', 'forge',
+   '{"type":"object","required":["run_id","artifact_id"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128},"artifact_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.read', 1, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 30, 'active', 'unknown'),
 
   ('echo.certforge.admin.legal_hold_create',
    'Certification Forge administration: create an audited legal hold for one owned run or the tenant. Tier-2 HMAC and Desktop reauthentication are required.',

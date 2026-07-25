@@ -1,6 +1,7 @@
 """Tenant-scoped read and deploy-gate API surface."""
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -9,7 +10,13 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .deploy_gate import DeployGate
-from .evidence import EvidenceStore
+from .evidence import (
+    EvidenceArtifactIntegrityError,
+    EvidenceArtifactRestricted,
+    EvidenceArtifactTooLarge,
+    EvidenceArtifactUnavailable,
+    EvidenceStore,
+)
 from .intake import (
     SubmitEnvironment,
     SubmitError,
@@ -26,6 +33,9 @@ from .models import (
 from .platform import ApiPrincipal, CertificationPlatform, PlatformError
 from .policy import RuleManifest
 from .signing import TrustedPublicKeyRegistry
+
+
+_MAX_ADMIN_ARTIFACT_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(slots=True)
@@ -227,6 +237,60 @@ def create_app(context: ServiceContext) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         return {"run_id": run_id, "artifacts": artifacts}  # redacted index, never raw content
+
+    @app.get("/v1/subscriber/certifications/{run_id}/evidence/{artifact_id}")
+    def get_evidence_artifact(
+        run_id: str,
+        artifact_id: str,
+        x_certforge_api_key: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        actor = principal(x_certforge_api_key)
+        try:
+            context.platform.require_role(actor, "owner", "admin")
+            subscription = context.platform.subscription(actor.organization_id)
+            if "full_evidence" not in subscription["limits"]["entitlements"]:
+                raise PlatformError("full_evidence_entitlement_required", 403)
+            descriptor, content = context.store.read_evidence_artifact(
+                run_id,
+                actor.tenant_id,
+                artifact_id,
+                max_bytes=_MAX_ADMIN_ARTIFACT_BYTES,
+            )
+            context.platform.audit(
+                actor.organization_id,
+                actor.project_id,
+                f"api_key:{actor.key_id}",
+                "evidence.download",
+                "evidence_artifact",
+                artifact_id,
+                {
+                    "run_id": run_id,
+                    "sha256": descriptor["sha256"],
+                    "size_bytes": descriptor["size_bytes"],
+                },
+            )
+            return {
+                "run_id": run_id,
+                "artifact_id": artifact_id,
+                "sha256": descriptor["sha256"],
+                "size_bytes": descriptor["size_bytes"],
+                "media_type": descriptor["media_type"],
+                "redaction_status": descriptor["redaction_status"],
+                "encoding": "base64",
+                "payload_base64": base64.b64encode(content).decode("ascii"),
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="artifact_not_found") from exc
+        except EvidenceArtifactRestricted as exc:
+            raise HTTPException(status_code=403, detail="artifact_redaction_incomplete") from exc
+        except EvidenceArtifactTooLarge as exc:
+            raise HTTPException(status_code=413, detail="artifact_too_large") from exc
+        except EvidenceArtifactUnavailable as exc:
+            raise HTTPException(status_code=410, detail="artifact_content_unavailable") from exc
+        except EvidenceArtifactIntegrityError as exc:
+            raise HTTPException(status_code=409, detail="artifact_integrity_failed") from exc
+        except PlatformError as exc:
+            raise platform_error(exc) from exc
 
     @app.post("/v1/certifications/{run_id}/verify")
     def verify_run(

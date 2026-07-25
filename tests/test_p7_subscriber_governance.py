@@ -1,6 +1,7 @@
 """P7 acceptance: tenant, billing, quota, retention, audit, and public verification."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -249,3 +250,89 @@ def test_p7_legal_hold_audit_public_verification_and_revocation(
         "verification.publish",
         "verdict.lifecycle",
     }.issubset(actions)
+
+
+def test_subscriber_artifact_download_is_bounded_tenant_scoped_and_audited(
+    store, manifest, target, environment, tmp_path
+):
+    trusted = _certify(store, manifest, target, environment, tmp_path)
+    platform = CertificationPlatform(store.db_path)
+    account = _bootstrap(
+        platform,
+        suffix="artifact-owner",
+        tenant_id=target.tenant_id,
+        plan="professional",
+    )
+    other = _bootstrap(
+        platform,
+        suffix="artifact-other",
+        tenant_id="tenant-artifact-other",
+        plan="professional",
+    )
+    client = TestClient(
+        create_app(ServiceContext(store, manifest, trusted, platform=platform))
+    )
+    artifact_id = "cert-p7-rule-tenant_isolation"
+    descriptor = next(
+        item for item in store.list_evidence("cert-p7", target.tenant_id)
+        if item["artifact_id"] == artifact_id
+    )
+    route = f"/v1/subscriber/certifications/cert-p7/evidence/{artifact_id}"
+
+    denied = client.get(route)
+    assert denied.status_code == 401
+    isolated = client.get(
+        route, headers={"X-CertForge-API-Key": other["api_key"]}
+    )
+    assert isolated.status_code == 404
+
+    downloaded = client.get(
+        route, headers={"X-CertForge-API-Key": account["api_key"]}
+    )
+    assert downloaded.status_code == 200
+    body = downloaded.json()
+    content = base64.b64decode(body["payload_base64"], validate=True)
+    assert body["encoding"] == "base64"
+    assert body["run_id"] == "cert-p7"
+    assert body["artifact_id"] == artifact_id
+    assert body["sha256"] == descriptor["sha256"]
+    assert body["size_bytes"] == len(content) == descriptor["size_bytes"]
+    assert hashlib.sha256(content).hexdigest() == body["sha256"]
+    assert body["redaction_status"] in {"COMPLETE", "NOT_REQUIRED"}
+
+    audit = client.get(
+        "/v1/subscriber/audit",
+        headers={"X-CertForge-API-Key": account["api_key"]},
+    )
+    event = next(row for row in audit.json() if row["action"] == "evidence.download")
+    assert event["object_id"] == artifact_id
+    assert event["detail"] == {
+        "run_id": "cert-p7",
+        "sha256": descriptor["sha256"],
+        "size_bytes": descriptor["size_bytes"],
+    }
+
+
+def test_subscriber_artifact_download_rejects_unverified_bytes(
+    store, manifest, target, environment, tmp_path
+):
+    trusted = _certify(store, manifest, target, environment, tmp_path)
+    platform = CertificationPlatform(store.db_path)
+    account = _bootstrap(
+        platform,
+        suffix="artifact-tamper",
+        tenant_id=target.tenant_id,
+        plan="professional",
+    )
+    client = TestClient(
+        create_app(ServiceContext(store, manifest, trusted, platform=platform))
+    )
+    artifact_id = "cert-p7-rule-tenant_isolation"
+    artifact = store.evidence_root / target.tenant_id / "cert-p7" / "artifacts" / f"{artifact_id}.bin"
+    artifact.write_bytes(b"tampered")
+    response = client.get(
+        f"/v1/subscriber/certifications/cert-p7/evidence/{artifact_id}",
+        headers={"X-CertForge-API-Key": account["api_key"]},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "artifact_integrity_failed"
