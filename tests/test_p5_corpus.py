@@ -226,6 +226,7 @@ def test_builds_versioned_contract_weighted_corpora(signed_corpora):
         )
         assert manifest["dataset_version"] == "p5-v2"
         assert manifest["validation"]["verified_teacher_target_rows"] == 1_600
+        assert manifest["curriculum_source"]["selected_seed_rows"] == 1_800
     assert (
         validate_corpora(
             v2_output,
