@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from .canonical import sha256_json
+from .canonical import sha256_json, to_utc_iso, utc_now
 from .deploy_gate import DeployGate
 from .deployment import DeploymentAdmissionController, DeploymentLedger
 from .deployment_service import install_deployment_api
@@ -45,6 +45,13 @@ from .subscriber import (
 
 
 _MAX_ADMIN_ARTIFACT_BYTES = 5 * 1024 * 1024
+_TELEMETRY_RUN_LIMIT = 25
+_TELEMETRY_EVENT_LIMIT = 64
+_TERMINAL_STATES = {
+    RunState.COMPLETED.value,
+    RunState.CANCELLED.value,
+    RunState.INFRASTRUCTURE_FAILURE.value,
+}
 
 
 @dataclass(slots=True)
@@ -998,6 +1005,102 @@ def create_app(context: ServiceContext) -> FastAPI:
             return context.subscribers.usage_summary(principal)
         except SubscriberError as exc:
             raise subscriber_error(exc) from exc
+
+    @app.get("/v1/subscriber/telemetry")
+    def subscriber_telemetry(
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        """Project bounded operational truth without implying worker health we cannot prove."""
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.USAGE_READ,
+            "telemetry.read",
+        )
+        try:
+            usage = context.subscribers.usage_summary(principal)
+            raw_state_counts = context.store.count_runs_by_state(
+                principal.organization_id
+            )
+            recent_run_rows = context.store.list_runs(
+                principal.organization_id, limit=_TELEMETRY_RUN_LIMIT
+            )
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+        state_counts = {state.value: 0 for state in RunState}
+        for state, count in raw_state_counts.items():
+            state_counts[state] = count
+        active_runs = sum(
+            count for state, count in state_counts.items() if state not in _TERMINAL_STATES
+        )
+        concurrent_limit = int(usage["limits"]["concurrent_runs"])
+        run_limit = int(usage["limits"]["monthly_certification_runs"])
+        run_usage = int(usage["meters"].get("certification_runs", 0))
+        budgets = {
+            "certification_runs": {
+                "used": run_usage,
+                "limit": run_limit,
+                "remaining": max(run_limit - run_usage, 0),
+            }
+        }
+
+        recent_runs = []
+        for row in recent_run_rows:
+            events = context.store.list_state_events(
+                str(row["run_id"]),
+                principal.organization_id,
+                limit=_TELEMETRY_EVENT_LIMIT,
+            )
+            recent_runs.append(
+                {
+                    "run_id": row["run_id"],
+                    "state": row["state"],
+                    "run_outcome": row["run_outcome"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "timeline": events,
+                    "timeline_truncated": len(events) >= _TELEMETRY_EVENT_LIMIT,
+                }
+            )
+
+        return {
+            "generated_at": to_utc_iso(utc_now()),
+            "queue": {
+                "queued": state_counts[RunState.QUEUED.value],
+                "active": active_runs,
+                "terminal": sum(state_counts[state] for state in _TERMINAL_STATES),
+                "total": sum(state_counts.values()),
+                "state_counts": state_counts,
+            },
+            "capacity": {
+                "concurrent_run_limit": concurrent_limit,
+                "active_runs": active_runs,
+                "quota_slots_remaining": max(concurrent_limit - active_runs, 0),
+                "runner_health": "UNKNOWN",
+                "runner_health_reason": "No authenticated worker-heartbeat contract is available.",
+                "capacity_basis": "subscription_quota_only",
+            },
+            "subscription": {
+                "plan_code": principal.plan_code,
+                "period_start": usage["period_started_at"],
+                "period_end": usage["period_ended_at"],
+                "certification_runs_limit": run_limit,
+            },
+            "budgets": budgets,
+            "state_machine": {
+                "ordered_states": [state.value for state in RunState],
+                "terminal_states": sorted(_TERMINAL_STATES),
+                "recent_runs": recent_runs,
+                "recent_runs_limit": _TELEMETRY_RUN_LIMIT,
+            },
+            "adapters": {
+                "inventory_status": "UNAVAILABLE",
+                "maturity_status": "UNAVAILABLE",
+                "reason": "No authenticated adapter-registry telemetry contract is available.",
+            },
+        }
 
     @app.get("/v1/subscriber/audit")
     def get_audit(

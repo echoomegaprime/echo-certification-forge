@@ -439,10 +439,45 @@ class EvidenceStore:
             raise KeyError(f"unknown run: {run_id}")
         return result
 
-    def list_runs(self, tenant_id: str) -> list[dict[str, Any]]:
+    def list_runs(
+        self, tenant_id: str, *, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM runs WHERE tenant_id = ? ORDER BY created_at DESC"
+        params: tuple[Any, ...] = (tenant_id,)
+        if limit is not None:
+            bounded_limit = min(max(int(limit), 1), 500)
+            query += " LIMIT ?"
+            params = (tenant_id, bounded_limit)
+        with self._connection() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def count_runs_by_state(self, tenant_id: str) -> dict[str, int]:
+        """Return tenant-scoped run counts without loading the run population."""
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM runs WHERE tenant_id = ? ORDER BY created_at DESC", (tenant_id,)
+                """SELECT state, COUNT(*) AS count
+                     FROM runs
+                    WHERE tenant_id = ?
+                    GROUP BY state""",
+                (tenant_id,),
+            ).fetchall()
+        return {str(row["state"]): int(row["count"]) for row in rows}
+
+    def list_state_events(
+        self, run_id: str, tenant_id: str, *, limit: int = 64
+    ) -> list[dict[str, Any]]:
+        """Return a bounded, ordered state timeline after enforcing tenant ownership."""
+        self.get_run(run_id, tenant_id)
+        bounded_limit = min(max(int(limit), 1), 256)
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT event_id, prior_state, next_state, workflow_version, created_at
+                     FROM state_events
+                    WHERE run_id = ? AND tenant_id = ?
+                    ORDER BY event_id ASC
+                    LIMIT ?""",
+                (run_id, tenant_id, bounded_limit),
             ).fetchall()
         return [dict(row) for row in rows]
 

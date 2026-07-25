@@ -3275,3 +3275,63 @@ def test_subscriber_artifact_download_rejects_unverified_bytes(tmp_path, manifes
     )
     assert response.status_code == 409
     assert response.json()["detail"] == "artifact_integrity_failed"
+
+
+def test_subscriber_telemetry_is_bounded_tenant_scoped_and_truthful(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    owner = _provision(governance, "telemetry", plan_code="professional")
+    other = _provision(governance, "telemetry-other", plan_code="professional")
+    run_id = "cert-p7-telemetry"
+    store.register_declared_run(
+        run_id,
+        owner.organization_id,
+        "git",
+        _digest("telemetry-target"),
+        "https://github.com/example/telemetry@0123456789abcdef",
+        _digest("telemetry-environment"),
+        {"runner_image_digest": "sha256:" + _digest("telemetry-runner")},
+        manifest.manifest_id,
+        manifest.manifest_id,
+        manifest.digest,
+    )
+    store.transition_state(
+        run_id,
+        owner.organization_id,
+        RunState.QUEUED,
+        "p8c.acceptance",
+        "accepted for execution",
+        "p8c.telemetry.v1",
+    )
+
+    assert client.get("/v1/subscriber/telemetry").status_code == 401
+    owner_headers = _headers(owner.organization_id, owner.bootstrap_api_key)
+    response = client.get("/v1/subscriber/telemetry", headers=owner_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["queue"]["queued"] == body["queue"]["active"] == 1
+    assert body["queue"]["total"] == 1
+    assert body["capacity"]["active_runs"] == 1
+    assert body["capacity"]["runner_health"] == "UNKNOWN"
+    assert body["capacity"]["capacity_basis"] == "subscription_quota_only"
+    assert body["budgets"]["certification_runs"]["limit"] == 500
+    assert body["adapters"]["inventory_status"] == "UNAVAILABLE"
+    recent = body["state_machine"]["recent_runs"]
+    assert len(recent) == 1 and recent[0]["run_id"] == run_id
+    timeline = recent[0]["timeline"]
+    assert len(timeline) == 1
+    assert timeline[0]["prior_state"] == "CREATED"
+    assert timeline[0]["next_state"] == "QUEUED"
+    assert timeline[0]["workflow_version"]
+    assert timeline[0]["created_at"].endswith("Z")
+    assert "actor" not in json.dumps(body)
+    assert "accepted for execution" not in json.dumps(body)
+    assert owner.bootstrap_api_key not in json.dumps(body)
+
+    isolated = client.get(
+        "/v1/subscriber/telemetry",
+        headers=_headers(other.organization_id, other.bootstrap_api_key),
+    )
+    assert isolated.status_code == 200
+    assert isolated.json()["queue"]["total"] == 0
