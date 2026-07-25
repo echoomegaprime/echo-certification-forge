@@ -44,6 +44,8 @@ class _ClaimHeartbeat:
         self._governance = governance
         self._claim = claim
         self._stop = threading.Event()
+        self._failed = threading.Event()
+        self._failure_code = "worker_run_heartbeat_lost"
         self._thread = threading.Thread(
             target=self._run,
             name=f"certforge-heartbeat-{claim.run_id}",
@@ -55,10 +57,14 @@ class _ClaimHeartbeat:
         while not self._stop.wait(interval):
             try:
                 self._governance.heartbeat_worker_claim(self._claim)
-            except SubscriberError:
+            except SubscriberError as exc:
+                self._failure_code = exc.code
+                self._failed.set()
                 return
             except (OSError, sqlite3.Error):
-                continue
+                self._failure_code = "worker_run_heartbeat_storage_failed"
+                self._failed.set()
+                return
 
     def start(self) -> None:
         self._thread.start()
@@ -67,6 +73,13 @@ class _ClaimHeartbeat:
         self._stop.set()
         if self._thread.is_alive():
             self._thread.join(timeout=2)
+
+    def assert_active(self) -> None:
+        if self._failed.is_set():
+            raise SubscriberError(409, self._failure_code)
+        self._governance.assert_worker_claim_active(self._claim)
+        if self._failed.is_set():
+            raise SubscriberError(409, self._failure_code)
 
 
 def _env_digest(component: str) -> str:
@@ -290,14 +303,24 @@ def run(
         return {"run_id": run_id, "error": "run_not_pending", "state": existing["state"]}
 
     executor = RunExecutor(store, manifest, signer)
-    journey_runner = sandboxed_journey_runner(sandbox) if sandbox is not None else None
+    journey_runner = None
     entitlement = StaticEntitlement(entitled or frozenset())
     retention = RetentionPolicy()
+    execution_guard = None
+    completion_callback = None
     if subscribers is not None:
         try:
-            if claim is None:
+            if claim is None or heartbeat is None:
                 raise SubscriberError(409, "worker_run_claim_missing")
-            authorization = subscribers.authorize_worker_execution(claim)
+            heartbeat.assert_active()
+            authorization = subscribers.authorize_worker_execution(
+                claim,
+                target_identity=target.to_dict(),
+                target_identity_digest=target.identity_digest,
+                environment_identity=environment.to_dict(),
+                environment_identity_digest=environment.identity_digest,
+            )
+            heartbeat.assert_active()
             retention_days = authorization.retention_days
             if retention_days <= 0:
                 raise ValueError("subscriber retention must be positive")
@@ -306,24 +329,22 @@ def run(
                 exc.code if isinstance(exc, SubscriberError)
                 else "subscriber_governance_lookup_failed"
             )
+            if heartbeat is not None:
+                heartbeat.stop()
+            if claim is not None:
+                try:
+                    subscribers.fail_worker_execution(claim, reason=reason)
+                except (OSError, sqlite3.Error, SubscriberError):
+                    pass
             current = store.get_run(run_id, tenant)
-            if current["state"] != RunState.QUEUED.value:
-                if claim is not None:
-                    if heartbeat is not None:
-                        heartbeat.stop()
-                    subscribers.finish_worker_claim(
-                        claim, reason="execution_authorization_denied"
-                    )
-                shutil.rmtree(workdir, ignore_errors=True)
-                return {
-                    "run_id": run_id,
-                    "state": current["state"],
-                    "signed": False,
-                    "error": "subscriber_execution_denied",
-                    "detail": reason,
-                }
-            retention_days = 1
-            allowed = False
+            shutil.rmtree(workdir, ignore_errors=True)
+            return {
+                "run_id": run_id,
+                "state": current["state"],
+                "signed": False,
+                "error": "subscriber_execution_denied",
+                "detail": reason,
+            }
         else:
             allowed = True
             reason = "subscriber_entitled"
@@ -335,28 +356,65 @@ def run(
             retention_class=f"subscriber-{retention_days}d",
             ttl_seconds=retention_days * 24 * 3600,
         )
-    try:
-        result = executor.execute(
-            run_id,
-            tenant,
-            acquired.source_root,
-            entitlement=entitlement,
-            retention=retention,
-            journey=journey,
-            journey_runner=journey_runner,
-            control_attestations={
-                "runner_control_channel": True,
-                "signing_authority_separation": True,
-            },
-            adapter_records=adapter_records,
-            adapter_policy=adapter_policy,
+        execution_guard = heartbeat.assert_active
+        completion_callback = lambda envelope: subscribers.complete_worker_execution(
+            claim, envelope
         )
-    finally:
-        if claim is not None:
+    if sandbox is not None:
+        journey_runner = sandboxed_journey_runner(sandbox, execution_guard)
+    try:
+        try:
+            result = executor.execute(
+                run_id,
+                tenant,
+                acquired.source_root,
+                entitlement=entitlement,
+                retention=retention,
+                journey=journey,
+                journey_runner=journey_runner,
+                control_attestations={
+                    "runner_control_channel": True,
+                    "signing_authority_separation": True,
+                },
+                adapter_records=adapter_records,
+                adapter_policy=adapter_policy,
+                execution_guard=execution_guard,
+                completion_callback=completion_callback,
+            )
+        except SubscriberError as exc:
             if heartbeat is not None:
                 heartbeat.stop()
-            subscribers.finish_worker_claim(claim, reason="execution_finished")
+            if claim is not None and subscribers is not None:
+                try:
+                    subscribers.fail_worker_execution(claim, reason=exc.code)
+                except (OSError, sqlite3.Error, SubscriberError):
+                    pass
+            current = store.get_run(run_id, tenant)
+            return {
+                "run_id": run_id,
+                "state": current["state"],
+                "signed": False,
+                "error": "subscriber_execution_fenced",
+                "detail": exc.code,
+            }
+    finally:
         shutil.rmtree(workdir, ignore_errors=True)
+    if claim is not None and subscribers is not None:
+        if heartbeat is not None:
+            heartbeat.stop()
+        if result.final_state != RunState.COMPLETED.value:
+            try:
+                subscribers.finish_worker_claim(
+                    claim, reason="execution_finished", require_active=True
+                )
+            except SubscriberError as exc:
+                return {
+                    "run_id": run_id,
+                    "state": store.get_run(run_id, tenant)["state"],
+                    "signed": False,
+                    "error": "subscriber_execution_fenced",
+                    "detail": exc.code,
+                }
     return {
         "run_id": result.run_id,
         "state": result.final_state,

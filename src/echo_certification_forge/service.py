@@ -325,13 +325,28 @@ def create_app(context: ServiceContext) -> FastAPI:
                     journey=request.journey,
                     submit_request=request.model_dump(exclude_none=True),
                 )
-            status_code, body = submit(context.store, context.manifest, request, tenant_id)
             if context.subscribers is not None and reservation is not None:
-                context.subscribers.bind_run(
+                created = context.subscribers.materialize_reserved_run(
                     reservation,
-                    str(body["run_id"]),
+                    run_id=request.run_id(),
+                    target_type=request.target.target_type,
+                    target_reference=request.target.reference,
+                    target_identity_digest=request.target.identity_digest,
+                    environment_identity_digest=request.environment.identity_digest,
+                    environment_json=request.environment.model_dump(exclude_none=True),
+                    manifest_id=context.manifest.manifest_id,
+                    manifest_digest=context.manifest.digest,
                     target_spec=target_spec,
                     journey=request.journey,
+                )
+                status_code = 201 if created else 200
+                body = project_run(
+                    context.store,
+                    context.store.get_run(request.run_id(), tenant_id),
+                )
+            else:
+                status_code, body = submit(
+                    context.store, context.manifest, request, tenant_id
                 )
         except SubmitError as exc:
             if reservation is not None and reservation.created:

@@ -131,7 +131,7 @@ class PendingSubscriberIntake:
 class SubscriberPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = Field(pattern=r"^1\.2\.1$")
+    schema_version: str = Field(pattern=r"^1\.2\.2$")
     policy_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     api_key_max_ttl_days: int = Field(ge=1, le=3650)
     api_key_secret_bytes: int = Field(ge=24, le=64)
@@ -3312,6 +3312,299 @@ class SubscriberGovernance:
             )
         return pending
 
+    def materialize_reserved_run(
+        self,
+        reservation: RunReservation,
+        *,
+        run_id: str,
+        target_type: str,
+        target_reference: str,
+        target_identity_digest: str,
+        environment_identity_digest: str,
+        environment_json: Mapping[str, Any],
+        manifest_id: str,
+        manifest_digest: str,
+        target_spec: Mapping[str, Any],
+        journey: list[str] | None,
+    ) -> bool:
+        require_identifier(run_id, "run_id")
+        require_identifier(target_type, "target_type")
+        require_identifier(manifest_id, "manifest_id")
+        require_sha256(target_identity_digest, "target_identity_digest")
+        require_sha256(environment_identity_digest, "environment_identity_digest")
+        require_sha256(manifest_digest, "manifest_digest")
+        if reservation.policy_version != manifest_id:
+            raise SubscriberError(422, "policy_unknown")
+        if not target_reference.strip():
+            raise ValueError("target_reference is required")
+        now = to_utc_iso(self._now())
+        target_identity_json = canonical_json(
+            {
+                "tenant_id": reservation.organization_id,
+                "target_type": target_type,
+                "declared_identity_digest": target_identity_digest,
+                "reference": target_reference,
+            }
+        )
+        environment_identity_json = canonical_json(dict(environment_json))
+        target_json = canonical_json(dict(target_spec))
+        journey_json = canonical_json(journey) if journey is not None else None
+        created = False
+        terminal_error: SubscriberError | None = None
+        with self._connection(immediate=True) as connection:
+            row = connection.execute(
+                """
+                SELECT r.state, r.run_id, r.project_id, r.policy_version,
+                       r.target_type, r.target_reference, r.target_identity_digest,
+                       p.status AS project_status, o.status AS organization_status,
+                       s.status AS subscription_status
+                FROM subscriber_run_reservations AS r
+                INNER JOIN subscriber_projects AS p
+                    ON p.organization_id = r.organization_id
+                   AND p.project_id = r.project_id
+                INNER JOIN subscriber_organizations AS o
+                    ON o.organization_id = r.organization_id
+                INNER JOIN subscriber_subscriptions AS s
+                    ON s.organization_id = r.organization_id
+                WHERE r.organization_id = ? AND r.idempotency_key = ?
+                  AND r.request_digest = ?
+                """,
+                (
+                    reservation.organization_id,
+                    reservation.idempotency_key,
+                    reservation.request_digest,
+                ),
+            ).fetchone()
+            existing_run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise SubscriberError(409, "run_reservation_binding_missing")
+            terminal_replay = bool(
+                row["state"] == "RELEASED"
+                and row["run_id"] == run_id
+                and existing_run is not None
+                and existing_run["state"] in _TERMINAL_RUN_STATES
+            )
+            active = terminal_replay or (
+                row["state"] in {"RESERVED", "BOUND"}
+                and row["project_status"] == "ACTIVE"
+                and row["organization_status"] in {"TRIALING", "ACTIVE"}
+                and row["subscription_status"] in {"TRIALING", "ACTIVE"}
+            )
+            if not active:
+                if (
+                    existing_run is not None
+                    and existing_run["tenant_id"] == reservation.organization_id
+                    and existing_run["state"] in {"CREATED", "QUEUED"}
+                ):
+                    self._transition_run_with_connection(
+                        connection,
+                        run_id,
+                        reservation.organization_id,
+                        str(existing_run["state"]),
+                        "CANCELLED",
+                        "certforge.intake",
+                        "reservation_inactive_before_binding",
+                        "p7.subscriber",
+                        now,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE runs SET run_outcome = 'CANCELLED', updated_at = ?
+                        WHERE run_id = ? AND tenant_id = ?
+                        """,
+                        (now, run_id, reservation.organization_id),
+                    )
+                terminal_error = SubscriberError(409, "run_reservation_inactive")
+            else:
+                expected_binding = (
+                    reservation.project_id,
+                    reservation.policy_version,
+                    target_type,
+                    target_reference,
+                    target_identity_digest,
+                )
+                actual_binding = (
+                    row["project_id"],
+                    row["policy_version"],
+                    row["target_type"],
+                    row["target_reference"],
+                    row["target_identity_digest"],
+                )
+                if actual_binding != expected_binding:
+                    raise SubscriberError(409, "run_reservation_binding_conflict")
+                if existing_run is None:
+                    connection.execute(
+                        """
+                        INSERT INTO runs(
+                            run_id, tenant_id, target_identity_json,
+                            target_identity_digest, environment_identity_json,
+                            environment_identity_digest, rule_manifest_id,
+                            rule_manifest_digest, run_outcome, state, created_at,
+                            updated_at, policy_version, target_reference, project_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'INCONCLUSIVE',
+                                  'CREATED', ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            reservation.organization_id,
+                            target_identity_json,
+                            target_identity_digest,
+                            environment_identity_json,
+                            environment_identity_digest,
+                            manifest_id,
+                            manifest_digest,
+                            now,
+                            now,
+                            reservation.policy_version,
+                            target_reference,
+                            reservation.project_id,
+                        ),
+                    )
+                    existing_run = connection.execute(
+                        "SELECT * FROM runs WHERE run_id = ?",
+                        (run_id,),
+                    ).fetchone()
+                    created = True
+                expected_run = (
+                    reservation.organization_id,
+                    reservation.project_id,
+                    reservation.policy_version,
+                    target_type,
+                    target_reference,
+                    target_identity_digest,
+                    environment_identity_digest,
+                    manifest_id,
+                    manifest_digest,
+                )
+                actual_run = (
+                    existing_run["tenant_id"],
+                    existing_run["project_id"],
+                    existing_run["policy_version"],
+                    json.loads(existing_run["target_identity_json"]).get(
+                        "target_type"
+                    ),
+                    existing_run["target_reference"],
+                    existing_run["target_identity_digest"],
+                    existing_run["environment_identity_digest"],
+                    existing_run["rule_manifest_id"],
+                    existing_run["rule_manifest_digest"],
+                )
+                if actual_run != expected_run:
+                    raise SubscriberError(409, "run_materialization_conflict")
+                if existing_run["state"] == "CREATED":
+                    self._transition_run_with_connection(
+                        connection,
+                        run_id,
+                        reservation.organization_id,
+                        "CREATED",
+                        "QUEUED",
+                        "certforge.intake",
+                        "accepted",
+                        "p7.subscriber",
+                        now,
+                    )
+                elif existing_run["state"] != "QUEUED":
+                    if not (
+                        row["state"] == "BOUND"
+                        and row["run_id"] == run_id
+                        and existing_run["state"] in _TERMINAL_RUN_STATES
+                    ):
+                        raise SubscriberError(409, "run_materialization_state_conflict")
+                idempotency = connection.execute(
+                    """
+                    SELECT request_digest, run_id FROM idempotency_keys
+                    WHERE tenant_id = ? AND idempotency_key = ?
+                    """,
+                    (reservation.organization_id, reservation.idempotency_key),
+                ).fetchone()
+                if idempotency is None:
+                    connection.execute(
+                        """
+                        INSERT INTO idempotency_keys(
+                            tenant_id, idempotency_key, request_digest,
+                            run_id, created_at
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            reservation.organization_id,
+                            reservation.idempotency_key,
+                            reservation.request_digest,
+                            run_id,
+                            now,
+                        ),
+                    )
+                elif (
+                    idempotency["request_digest"] != reservation.request_digest
+                    or idempotency["run_id"] != run_id
+                ):
+                    raise SubscriberError(409, "idempotency_conflict")
+                if not terminal_replay:
+                    cursor = connection.execute(
+                        """
+                        UPDATE subscriber_run_reservations
+                        SET run_id = ?, state = 'BOUND', updated_at = ?
+                        WHERE organization_id = ? AND idempotency_key = ?
+                          AND request_digest = ? AND state IN ('RESERVED', 'BOUND')
+                          AND (run_id IS NULL OR run_id = ?)
+                        """,
+                        (
+                            run_id,
+                            now,
+                            reservation.organization_id,
+                            reservation.idempotency_key,
+                            reservation.request_digest,
+                            run_id,
+                        ),
+                    )
+                    if cursor.rowcount != 1:
+                        raise SubscriberError(409, "run_reservation_conflict")
+                dispatch = connection.execute(
+                    """
+                    SELECT target_json, journey_json
+                    FROM subscriber_run_dispatches WHERE run_id = ?
+                    """,
+                    (run_id,),
+                ).fetchone()
+                if dispatch is None and not terminal_replay:
+                    connection.execute(
+                        """
+                        INSERT INTO subscriber_run_dispatches(
+                            run_id, organization_id, idempotency_key,
+                            target_json, journey_json, state, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                        """,
+                        (
+                            run_id,
+                            reservation.organization_id,
+                            reservation.idempotency_key,
+                            target_json,
+                            journey_json,
+                            now,
+                            now,
+                        ),
+                    )
+                elif (
+                    dispatch["target_json"] != target_json
+                    or dispatch["journey_json"] != journey_json
+                ):
+                    raise SubscriberError(409, "run_dispatch_binding_conflict")
+                self._append_audit(
+                    connection,
+                    organization_id=reservation.organization_id,
+                    actor_ref="certforge.intake",
+                    action="certification.materialize",
+                    resource_type="certification",
+                    resource_id=run_id,
+                    outcome="allowed",
+                    details={"created": created},
+                )
+        if terminal_error is not None:
+            raise terminal_error
+        return created
+
     def bind_run(
         self,
         reservation: RunReservation,
@@ -4090,8 +4383,24 @@ class SubscriberGovernance:
             )
 
     def authorize_worker_execution(
-        self, claim: WorkerRunClaim
+        self,
+        claim: WorkerRunClaim,
+        *,
+        target_identity: Mapping[str, Any],
+        target_identity_digest: str,
+        environment_identity: Mapping[str, Any],
+        environment_identity_digest: str,
     ) -> WorkerExecutionAuthorization:
+        require_sha256(target_identity_digest, "target_identity_digest")
+        require_sha256(environment_identity_digest, "environment_identity_digest")
+        target_data = dict(target_identity)
+        environment_data = dict(environment_identity)
+        if sha256_json(target_data) != target_identity_digest:
+            raise SubscriberError(409, "worker_target_identity_mismatch")
+        if sha256_json(environment_data) != environment_identity_digest:
+            raise SubscriberError(409, "worker_environment_identity_mismatch")
+        canonical_target = canonical_json(target_data)
+        canonical_environment = canonical_json(environment_data)
         now_value = self._now()
         now = to_utc_iso(now_value)
         lease_expires_at = to_utc_iso(
@@ -4111,7 +4420,9 @@ class SubscriberGovernance:
                            runs.target_identity_json, '$.target_type'
                        ) AS run_target_type,
                        runs.target_reference AS run_target_reference,
-                       runs.target_identity_digest AS run_target_identity_digest
+                       runs.target_identity_digest AS run_target_identity_digest,
+                       runs.environment_identity_digest
+                           AS run_environment_identity_digest
                 FROM subscriber_run_reservations AS r
                 INNER JOIN runs
                     ON runs.run_id = r.run_id
@@ -4148,6 +4459,20 @@ class SubscriberGovernance:
                 != reservation["run_target_identity_digest"]
             ):
                 raise SubscriberError(409, "worker_run_binding_changed")
+            if (
+                target_identity_digest != claim.target_identity_digest
+                or target_identity_digest != reservation["target_identity_digest"]
+                or target_identity_digest != reservation["run_target_identity_digest"]
+                or target_identity.get("tenant_id") != claim.organization_id
+                or target_identity.get("target_type") != claim.target_type
+                or target_identity.get("canonical_ref") != claim.target_reference
+            ):
+                raise SubscriberError(409, "worker_target_identity_mismatch")
+            if (
+                environment_identity_digest
+                != reservation["run_environment_identity_digest"]
+            ):
+                raise SubscriberError(409, "worker_environment_identity_mismatch")
             authorization = self._resolve_worker_governance(
                 connection,
                 claim.organization_id,
@@ -4158,6 +4483,30 @@ class SubscriberGovernance:
                 signing_authority=str(reservation["signing_authority"]),
                 signing_key_id=str(reservation["signing_key_id"]),
             )
+            cursor = connection.execute(
+                """
+                UPDATE runs
+                SET target_identity_json = ?, target_identity_digest = ?,
+                    environment_identity_json = ?,
+                    environment_identity_digest = ?, updated_at = ?
+                WHERE run_id = ? AND tenant_id = ? AND state = 'QUEUED'
+                  AND target_identity_digest = ?
+                  AND environment_identity_digest = ?
+                """,
+                (
+                    canonical_target,
+                    target_identity_digest,
+                    canonical_environment,
+                    environment_identity_digest,
+                    now,
+                    claim.run_id,
+                    claim.organization_id,
+                    claim.target_identity_digest,
+                    environment_identity_digest,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_identity_reconciliation_conflict")
             self._transition_run_with_connection(
                 connection,
                 claim.run_id,
@@ -4205,6 +4554,8 @@ class SubscriberGovernance:
                     "governance_version": authorization.governance_version,
                     "subscription_version": authorization.subscription_version,
                     "lease_expires_at": lease_expires_at,
+                    "target_identity_digest": target_identity_digest,
+                    "environment_identity_digest": environment_identity_digest,
                 },
             )
             return authorization
@@ -4239,17 +4590,81 @@ class SubscriberGovernance:
                 raise SubscriberError(409, "worker_run_claim_inactive")
         return lease_expires_at
 
-    def finish_worker_claim(self, claim: WorkerRunClaim, *, reason: str) -> None:
+    def assert_worker_claim_active(self, claim: WorkerRunClaim) -> None:
+        now = self._now()
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT state, claim_token, lease_expires_at
+                FROM subscriber_run_reservations
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                """,
+                (claim.organization_id, claim.run_id, claim.idempotency_key),
+            ).fetchone()
+        if (
+            row is None
+            or row["state"] not in {"EXECUTING", "STARTED"}
+            or row["claim_token"] is None
+            or not hmac.compare_digest(str(row["claim_token"]), claim.claim_token)
+            or row["lease_expires_at"] is None
+            or parse_utc_iso(str(row["lease_expires_at"])) <= now
+        ):
+            raise SubscriberError(409, "worker_run_claim_inactive")
+
+    def fail_worker_execution(self, claim: WorkerRunClaim, *, reason: str) -> None:
         require_identifier(reason, "reason")
-        now = to_utc_iso(self._now())
+        now_value = self._now()
+        now = to_utc_iso(now_value)
         with self._connection(immediate=True) as connection:
-            cursor = connection.execute(
+            reservation = connection.execute(
+                """
+                SELECT state, claim_token, lease_expires_at
+                FROM subscriber_run_reservations
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                """,
+                (claim.organization_id, claim.run_id, claim.idempotency_key),
+            ).fetchone()
+            run = connection.execute(
+                "SELECT state FROM runs WHERE run_id = ? AND tenant_id = ?",
+                (claim.run_id, claim.organization_id),
+            ).fetchone()
+            if (
+                reservation is None
+                or reservation["state"] not in {"EXECUTING", "STARTED"}
+                or reservation["claim_token"] is None
+                or not hmac.compare_digest(
+                    str(reservation["claim_token"]), claim.claim_token
+                )
+                or reservation["lease_expires_at"] is None
+                or parse_utc_iso(str(reservation["lease_expires_at"])) <= now_value
+            ):
+                raise SubscriberError(409, "worker_run_claim_inactive")
+            if run is not None and str(run["state"]) not in _TERMINAL_RUN_STATES:
+                self._transition_run_with_connection(
+                    connection,
+                    claim.run_id,
+                    claim.organization_id,
+                    str(run["state"]),
+                    "INFRASTRUCTURE_FAILURE",
+                    "certforge.run-worker",
+                    reason,
+                    "p7.subscriber",
+                    now,
+                )
+                connection.execute(
+                    """
+                    UPDATE runs SET run_outcome = 'INFRA_FAILED', updated_at = ?
+                    WHERE run_id = ? AND tenant_id = ?
+                    """,
+                    (now, claim.run_id, claim.organization_id),
+                )
+            connection.execute(
                 """
                 UPDATE subscriber_run_reservations
                 SET state = 'RELEASED', claim_token = NULL,
                     lease_expires_at = NULL, updated_at = ?
                 WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
-                  AND claim_token = ? AND state IN ('EXECUTING', 'STARTED')
+                  AND claim_token = ?
                 """,
                 (
                     now,
@@ -4259,6 +4674,184 @@ class SubscriberGovernance:
                     claim.claim_token,
                 ),
             )
+            connection.execute(
+                """
+                UPDATE subscriber_run_dispatches
+                SET state = 'FAILED', claim_token = NULL, lease_owner = NULL,
+                    lease_expires_at = NULL, last_error = ?, updated_at = ?
+                WHERE run_id = ? AND organization_id = ?
+                  AND state IN ('PENDING', 'CLAIMED')
+                """,
+                (reason, now, claim.run_id, claim.organization_id),
+            )
+            self._append_audit(
+                connection,
+                organization_id=claim.organization_id,
+                actor_ref="certforge.run-worker",
+                action="certification.worker_fail",
+                resource_type="certification",
+                resource_id=claim.run_id,
+                outcome="denied",
+                details={"reason": reason, "claim_fenced": True},
+            )
+
+    def complete_worker_execution(self, claim: WorkerRunClaim, envelope: Any) -> None:
+        payload = getattr(envelope, "payload", None)
+        if not isinstance(payload, dict):
+            raise TypeError("signed verdict envelope payload is required")
+        if (
+            payload.get("run_id") != claim.run_id
+            or payload.get("tenant_id") != claim.organization_id
+        ):
+            raise SubscriberError(409, "worker_completion_identity_mismatch")
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        with self._connection(immediate=True) as connection:
+            reservation = connection.execute(
+                """
+                SELECT state, claim_token, lease_expires_at
+                FROM subscriber_run_reservations
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                """,
+                (claim.organization_id, claim.run_id, claim.idempotency_key),
+            ).fetchone()
+            run = connection.execute(
+                """
+                SELECT state FROM runs WHERE run_id = ? AND tenant_id = ?
+                """,
+                (claim.run_id, claim.organization_id),
+            ).fetchone()
+            if (
+                reservation is None
+                or reservation["state"] != "STARTED"
+                or reservation["claim_token"] is None
+                or not hmac.compare_digest(
+                    str(reservation["claim_token"]), claim.claim_token
+                )
+                or reservation["lease_expires_at"] is None
+                or parse_utc_iso(str(reservation["lease_expires_at"])) <= now_value
+            ):
+                raise SubscriberError(409, "worker_run_claim_inactive")
+            if run is None or run["state"] != "CALCULATING_VERDICT":
+                raise SubscriberError(409, "worker_completion_state_conflict")
+            connection.execute(
+                """
+                INSERT INTO signed_verdicts(
+                    run_id, tenant_id, payload_json, payload_sha256,
+                    signature_b64, key_id, public_key_pem, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim.run_id,
+                    claim.organization_id,
+                    canonical_json(payload),
+                    envelope.payload_sha256,
+                    envelope.signature_b64,
+                    envelope.key_id,
+                    envelope.public_key_pem,
+                    now,
+                ),
+            )
+            self._transition_run_with_connection(
+                connection,
+                claim.run_id,
+                claim.organization_id,
+                "CALCULATING_VERDICT",
+                "FINALIZING_REPORT",
+                "certforge.executor",
+                "finalize",
+                "t4.p5",
+                now,
+            )
+            self._transition_run_with_connection(
+                connection,
+                claim.run_id,
+                claim.organization_id,
+                "FINALIZING_REPORT",
+                "REGISTERING_RESULT",
+                "certforge.executor",
+                "register",
+                "t4.p5",
+                now,
+            )
+            self._transition_run_with_connection(
+                connection,
+                claim.run_id,
+                claim.organization_id,
+                "REGISTERING_RESULT",
+                "COMPLETED",
+                "certforge.executor",
+                "complete",
+                "t4.p5",
+                now,
+            )
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET state = 'RELEASED', claim_token = NULL,
+                    lease_expires_at = NULL, updated_at = ?
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                  AND state = 'STARTED' AND claim_token = ?
+                """,
+                (
+                    now,
+                    claim.organization_id,
+                    claim.run_id,
+                    claim.idempotency_key,
+                    claim.claim_token,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_run_claim_inactive")
+            connection.execute(
+                """
+                UPDATE subscriber_run_dispatches
+                SET state = 'COMPLETE', claim_token = NULL, lease_owner = NULL,
+                    lease_expires_at = NULL, last_error = NULL, updated_at = ?
+                WHERE run_id = ? AND organization_id = ?
+                  AND state IN ('PENDING', 'CLAIMED')
+                """,
+                (now, claim.run_id, claim.organization_id),
+            )
+            self._append_audit(
+                connection,
+                organization_id=claim.organization_id,
+                actor_ref="certforge.run-worker",
+                action="certification.worker_complete",
+                resource_type="certification",
+                resource_id=claim.run_id,
+                outcome="allowed",
+                details={"claim_fenced": True},
+            )
+
+    def finish_worker_claim(
+        self, claim: WorkerRunClaim, *, reason: str, require_active: bool = False
+    ) -> None:
+        require_identifier(reason, "reason")
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        with self._connection(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET state = 'RELEASED', claim_token = NULL,
+                    lease_expires_at = NULL, updated_at = ?
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                  AND claim_token = ? AND state IN ('EXECUTING', 'STARTED')
+                  AND (? = 0 OR lease_expires_at > ?)
+                """,
+                (
+                    now,
+                    claim.organization_id,
+                    claim.run_id,
+                    claim.idempotency_key,
+                    claim.claim_token,
+                    int(require_active),
+                    now,
+                ),
+            )
+            if require_active and cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_run_claim_inactive")
             if cursor.rowcount == 1:
                 run = connection.execute(
                     """

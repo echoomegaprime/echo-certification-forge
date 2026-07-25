@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .evidence import EvidenceStore
-from .intake import SubmitRequest, submit
+from .intake import SubmitRequest
 from .policy import RuleManifest
 from .run_worker import _load_signer, run
 from .sandbox import DEFAULT_IMAGE, DockerSandbox
@@ -26,15 +26,16 @@ def recover_pending_intake(
     recovered = 0
     for pending in governance.pending_intake_requests():
         request = SubmitRequest.model_validate(pending.request)
-        _status, body = submit(
-            store,
-            manifest,
-            request,
-            pending.reservation.organization_id,
-        )
-        governance.bind_run(
+        governance.materialize_reserved_run(
             pending.reservation,
-            str(body["run_id"]),
+            run_id=request.run_id(),
+            target_type=request.target.target_type,
+            target_reference=request.target.reference,
+            target_identity_digest=request.target.identity_digest,
+            environment_identity_digest=request.environment.identity_digest,
+            environment_json=request.environment.model_dump(exclude_none=True),
+            manifest_id=manifest.manifest_id,
+            manifest_digest=manifest.digest,
             target_spec=pending.target_spec,
             journey=pending.journey,
         )

@@ -1,18 +1,29 @@
 {
   "contract_id": "certforge.subscriber-governance.v1",
-  "contract_sha256": "1ab85f4464daf2299b410cbef29c152c45932f8e022664a267ba2a6900f1a242",
-  "generated_at_utc": "2026-07-25T12:03:46.063870Z",
+  "contract_sha256": "30b3167000f55da99fd513f157f5efae4da650d1bd38a402903e0f7738d1ff76",
+  "generated_at_utc": "2026-07-25T13:35:18.647642Z",
   "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
   "manifest_id": "certforge.release-strict.v1",
   "passed": true,
   "phase": "P7",
   "platform": "Windows-11-10.0.22631-SP0",
   "policy_id": "certforge.subscriber-governance.v1",
-  "policy_sha256": "68bea3186afe44dd1a44d1dcb19e5fe9e8831cd7e70e9986cd3926141b0d8ad2",
+  "policy_sha256": "38b5ebd1c7bf7c256221a1247bf2df489ef7fc97c263341704f29374a05a0969",
   "python": "3.13.0 (tags/v3.13.0:60403a5, Oct  7 2024, 09:38:07) [MSC v.1941 64 bit (AMD64)]",
   "release_note": "P7 completion does not override unresolved P5/P6 and hosted-CI blockers.",
   "release_verdict": "NOT_READY",
   "scenarios": {
+    "acquired_identity_digest_mismatch_fails_closed": {
+      "customer_code_executed": false,
+      "passed": true,
+      "worker_result": {
+        "detail": "worker_target_identity_mismatch",
+        "error": "subscriber_execution_denied",
+        "run_id": "cert_6062e81f39608b796f961fd0958066e801eafb34",
+        "signed": false,
+        "state": "INFRASTRUCTURE_FAILURE"
+      }
+    },
     "api_key_lifecycle": {
       "detail": "api_key_revoked",
       "passed": true,
@@ -31,6 +42,10 @@
       },
       "passed": true,
       "version": 3
+    },
+    "atomic_run_reservation_outbox_invariant": {
+      "passed": true,
+      "violations": []
     },
     "audited_validation_and_unhandled_errors": {
       "audited_outcomes": [
@@ -65,8 +80,8 @@
         "meters": {
           "certification_runs": 25
         },
-        "organization_id": "org_c0069a4aa1fd37230d849cef",
-        "period_ended_at": "2026-09-03T12:03:44.017669Z",
+        "organization_id": "org_6b2010ef2dd48548beefcb1e",
+        "period_ended_at": "2026-09-03T13:35:14.690657Z",
         "period_started_at": "2026-06-29T00:00:00Z"
       }
     },
@@ -93,6 +108,42 @@
         "REJECTED_STALE"
       ]
     },
+    "canonical_identity_reconciliation": {
+      "environment_identity": {
+        "adapter_set_sha256": "78e0289d44b4c8c9d8f7b33f6a3e51a3b1b66baa1a69666785afd181b200f160",
+        "egress_policy_sha256": "d57edca0dc282eb488db5fec5e672fce8a52f671f4f6db61eec85c4682c512ca",
+        "harness_sha256": "78225a66af9182f9a7d9e80da45a29a2a02b1bff16167f42218eeb47a1eceaf0",
+        "model_route_sha256": "e724b572de511842618e1c46f76d5176eb5c90aa4f2199db971edb074e72341c",
+        "os_runtime_sha256": "74220a72d1e3bc9071e2b598c5214e2f69f971d93ea6a9949d6ef469ad54be54",
+        "policy_sha256": "cbd6e2405f35dd2ce11593afe98ea802c3ff3ac5fb6dcd636eb498d2e2a1edb5",
+        "prompt_set_sha256": "a5cb80bed25f9928caf03eb37e7891a07692c0eafbb26462b3f2711eaaf33b61",
+        "runner_image_sha256": "7e41caae2ccabdeed0b99accb01cc0eda2d89d37600f0581bbe7c2b145a7a685",
+        "test_plan_sha256": "659a2c638bfeb091a2298758ea6114aa7fd96aa62ff8752d1a6098acbbe9e8ec"
+      },
+      "passed": true,
+      "target_identity": {
+        "artifact_sha256": "1cec663c60d9a790b12e3d2abf4bdf520258591557a48f9d53d8a2c35ed1b1f9",
+        "canonical_ref": "C:/ECHO_OMEGA_PRIME/echo-certification-forge-p7-sol/var/p7-acceptance-runtime/identity-source",
+        "configuration_sha256": null,
+        "dependency_sha256": null,
+        "source_commit": null,
+        "target_type": "local",
+        "tenant_id": "org_9059a1e4fc728dbc3e15ccd6"
+      },
+      "worker_result": {
+        "adapter_set_sha256": "78e0289d44b4c8c9d8f7b33f6a3e51a3b1b66baa1a69666785afd181b200f160",
+        "blocking_findings": [],
+        "environment_identity_digest": "fde66924d4ba2e7bf74276562edbc2df9974a26ce793637486a9de9009c14d3c",
+        "journey_isolation": "none",
+        "release_verdict": "PRODUCTION_READY",
+        "run_id": "cert_7ff619014200f42f1fe9845d997fe495c4971ae2",
+        "run_outcome": "COMPLETE",
+        "signed": true,
+        "signer_public_key_id": "ed25519:a95eb2fe38ca19d6efe2748a129c7798",
+        "state": "COMPLETED",
+        "target_identity_digest": "3a388eb132b23b002c4bf16cd544283e6927a0730d9018a8cc29c533dde90f01"
+      }
+    },
     "concurrent_quota": {
       "detail": "concurrent_run_quota_exceeded",
       "passed": true,
@@ -102,14 +153,25 @@
       "dispatch_attempts": 2,
       "dispatch_state": "COMPLETE",
       "passed": true,
-      "run_id": "cert_db5447d6d647a4eb0216541ed577f383101c071c",
+      "run_id": "cert_fc45cef7ef24f77b69c43aec4174e5ba058fda56",
       "worker_state": "COMPLETED"
     },
     "durable_intake_crash_gap_recovery": {
       "dispatch_state": "COMPLETE",
       "passed": true,
-      "run_id": "cert_210916b711b67fb882a8d264f8274c8b2d4a83d5",
+      "run_id": "cert_1206ee026a3d2b2e805b5ef25e0b86187211bc94",
       "worker_state": "COMPLETED"
+    },
+    "expired_lease_cannot_commit_signed_completion": {
+      "passed": true,
+      "recovered_claims": 1,
+      "worker_result": {
+        "detail": "worker_run_claim_inactive",
+        "error": "subscriber_execution_fenced",
+        "run_id": "cert_5f7bdd5f6882ec78882451c5e9fbbaf50cf1dcc9",
+        "signed": false,
+        "state": "CALCULATING_VERDICT"
+      }
     },
     "expired_prestart_claim_requeue": {
       "passed": true,
@@ -124,9 +186,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_b0f6e7eef016143e49d085ea",
-        "period_ended_at": "2026-08-24T12:03:45.744369Z",
-        "period_started_at": "2026-07-25T12:03:45.744369Z"
+        "organization_id": "org_9063e796467dd39639f66794",
+        "period_ended_at": "2026-08-24T13:35:16.103435Z",
+        "period_started_at": "2026-07-25T13:35:16.103435Z"
       }
     },
     "expired_subscription_read_only": {
@@ -186,19 +248,30 @@
       "passed": true,
       "release_verdict": "NOT_READY",
       "replay_status": 200,
-      "run_id": "cert_23052512e4e2ccada8f6adf4d475b1dea3a3d91d"
+      "run_id": "cert_e502333f740b42c7e066827e108b9fb8ea220da6"
+    },
+    "heartbeat_storage_loss_fences_customer_process": {
+      "customer_code_completed": false,
+      "passed": true,
+      "worker_result": {
+        "detail": "worker_run_heartbeat_storage_failed",
+        "error": "subscriber_execution_fenced",
+        "run_id": "cert_f9f5699e8fa1cf40f6f8db704995bd2eb41d8c74",
+        "signed": false,
+        "state": "INFRASTRUCTURE_FAILURE"
+      }
     },
     "immutable_audit_chain": {
-      "chain_tip": "728f3ac72f0652c4fd7864a8f8975af2252d2bc50755461f457c8fc245f2eb91",
+      "chain_tip": "08d7c6922f88375d4366f792791a1beee57f4a8ac682d9c490a3919dd0de619d",
       "delete_blocked": true,
       "denied_audits": 3,
-      "event_count": 27,
+      "event_count": 28,
       "passed": true,
       "update_blocked": true
     },
     "leased_worker_heartbeat_crash_recovery": {
       "dispatch_state": "FAILED",
-      "heartbeat_expiry": "2026-07-25T12:04:15.709953Z",
+      "heartbeat_expiry": "2026-07-25T13:35:46.073958Z",
       "passed": true,
       "recovered_claims": 1,
       "run_state": "INFRASTRUCTURE_FAILURE",
@@ -212,9 +285,9 @@
         "meters": {
           "certification_runs": 0
         },
-        "organization_id": "org_3db8a6b5bb1d4daf0038ffe4",
-        "period_ended_at": "2026-08-24T12:03:45.562050Z",
-        "period_started_at": "2026-07-25T12:03:45.562050Z"
+        "organization_id": "org_bcf78b8183f538a9e83693a5",
+        "period_ended_at": "2026-08-24T13:35:15.981327Z",
+        "period_started_at": "2026-07-25T13:35:15.981327Z"
       }
     },
     "member_lifecycle_revocation": {
@@ -235,9 +308,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_7a7d740937f84e36cea6f9a1",
-        "period_ended_at": "2026-08-24T12:03:41.452631Z",
-        "period_started_at": "2026-07-25T12:03:41.452631Z"
+        "organization_id": "org_1394155e4c852bd78f12a970",
+        "period_ended_at": "2026-08-24T13:35:11.858095Z",
+        "period_started_at": "2026-07-25T13:35:11.858095Z"
       }
     },
     "persisted_execution_governance_controls": {
@@ -264,14 +337,14 @@
       "prior_state": [
         "developer",
         "ACTIVE",
-        "2026-07-25T12:03:43.813764Z",
-        "2026-08-24T12:03:43.813764Z"
+        "2026-07-25T13:35:14.516686Z",
+        "2026-08-24T13:35:14.516686Z"
       ],
       "resulting_state": [
         "developer",
         "ACTIVE",
-        "2026-07-25T12:03:43.813764Z",
-        "2026-08-24T12:03:43.813764Z"
+        "2026-07-25T13:35:14.516686Z",
+        "2026-08-24T13:35:14.516686Z"
       ]
     },
     "resource_lifecycle_revocation": {
@@ -307,12 +380,13 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_e2f0ea924e19d4b52b636c88",
-        "period_ended_at": "2026-08-24T12:03:42.075854Z",
-        "period_started_at": "2026-07-25T12:03:42.075854Z"
+        "organization_id": "org_a193a4e330e69dc7aa2ceb9e",
+        "period_ended_at": "2026-08-24T13:35:12.460867Z",
+        "period_started_at": "2026-07-25T13:35:12.460867Z"
       }
     },
     "strict_worker_reservation_claim": {
+      "cleanup_status": 200,
       "direct_invocation": {
         "detail": "worker_run_reservation_missing",
         "error": "subscriber_worker_claim_denied",
@@ -328,7 +402,7 @@
       "worker_result": {
         "detail": "worker_run_claim_inactive",
         "error": "subscriber_execution_denied",
-        "run_id": "cert_6eaf2bcd9316c9b595b97ff3a76a1c56d228ecba",
+        "run_id": "cert_1214b810bde893a5da7332354ef97ae56e38853e",
         "signed": false,
         "state": "CANCELLED"
       }
@@ -346,7 +420,7 @@
     "versioned_policy_contract": {
       "contract_id": "certforge.subscriber-governance.v1",
       "passed": true,
-      "schema_version": "1.2.1"
+      "schema_version": "1.2.2"
     },
     "worker_entitlement_and_plan_retention": {
       "active_state": "COMPLETED",
@@ -357,5 +431,5 @@
       "suspended_state": null
     }
   },
-  "schema_version": "1.2.1"
+  "schema_version": "1.2.2"
 }

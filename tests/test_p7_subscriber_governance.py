@@ -3,9 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import socket
 import sqlite3
+import subprocess
 import sys
 import threading
+import time
+import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -18,7 +23,7 @@ from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.intake import SubmitRequest
 from echo_certification_forge.models import RunState, TargetIdentity
-from echo_certification_forge.run_worker import run
+from echo_certification_forge.run_worker import _worker_environment, run
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.subscriber import (
@@ -155,6 +160,7 @@ def _submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
+    environment = _worker_environment()
     payload = {
         "tenant_id": organization_id,
         "project_id": project_response.json()["project_id"],
@@ -164,8 +170,8 @@ def _submit_local_run(
             "reference": acquired.canonical_ref,
         },
         "environment": {
-            "identity_digest": _digest(f"environment-{key}"),
-            "runner_image_digest": "sha256:" + _digest(f"runner-{key}"),
+            "identity_digest": environment.identity_digest,
+            "runner_image_digest": "sha256:" + environment.runner_image_sha256,
         },
         "policy_version": manifest.manifest_id,
         "idempotency_key": key,
@@ -1138,7 +1144,7 @@ def test_worker_revalidates_queued_state_immediately_before_execution(
     )
     authorize = governance.authorize_worker_execution
 
-    def cancel_before_authorization(claim):
+    def cancel_before_authorization(claim, **identity):
         store.transition_state(
             run_id,
             org.organization_id,
@@ -1147,7 +1153,7 @@ def test_worker_revalidates_queued_state_immediately_before_execution(
             "cancel immediately before worker authorization",
             manifest.manifest_id,
         )
-        return authorize(claim)
+        return authorize(claim, **identity)
 
     governance.authorize_worker_execution = cancel_before_authorization  # type: ignore[method-assign]
     result = run(
@@ -2041,8 +2047,9 @@ def test_dispatcher_recovers_crash_after_durable_reservation(
                 "path": source.resolve().as_posix(),
             },
             "environment": {
-                "identity_digest": _digest("durable-intake-environment"),
-                "runner_image_digest": "sha256:" + _digest("durable-intake-runner"),
+                "identity_digest": _worker_environment().identity_digest,
+                "runner_image_digest": "sha256:"
+                + _worker_environment().runner_image_sha256,
             },
             "policy_version": manifest.manifest_id,
             "idempotency_key": "durable-intake-0001",
@@ -2163,7 +2170,13 @@ def test_worker_lease_heartbeat_and_started_crash_recovery(tmp_path, manifest):
         signing_authority="platform",
         signing_key_id=signer.key_id,
     )
-    authorization = governance.authorize_worker_execution(claim)
+    authorization = governance.authorize_worker_execution(
+        claim,
+        target_identity=target.to_dict(),
+        target_identity_digest=target.identity_digest,
+        environment_identity=_worker_environment().to_dict(),
+        environment_identity_digest=_worker_environment().identity_digest,
+    )
     assert authorization.subscription_version >= 1
 
     now[0] += timedelta(seconds=3)
@@ -2397,10 +2410,10 @@ def test_concurrent_suspension_wins_before_execution_boundary(
     release_boundary = threading.Event()
     original_authorize = governance.authorize_worker_execution
 
-    def blocked_authorize(claim):
+    def blocked_authorize(claim, **identity):
         entered_boundary.set()
         assert release_boundary.wait(timeout=10)
-        return original_authorize(claim)
+        return original_authorize(claim, **identity)
 
     monkeypatch.setattr(governance, "authorize_worker_execution", blocked_authorize)
     result_holder: dict[str, dict] = {}
@@ -2459,3 +2472,504 @@ def test_subscriber_policy_and_contract_are_versioned_and_consistent():
     assert "final path" in contract["audit"]["final_request_outcomes"]
     assert policy.worker_heartbeat_interval_seconds < policy.worker_claim_lease_seconds
     assert "transactional outbox" in contract["worker_execution"]["dispatch"]
+
+
+def test_api_worker_reconciles_canonical_identities_and_rejects_digest_drift(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(
+        governance, "identity-reconciliation", plan_code="professional"
+    )
+    source = tmp_path / "identity-source"
+    source.mkdir()
+    marker = tmp_path / "identity-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    run_id, target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="identity-reconciliation-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    result = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    persisted = store.get_run(run_id, org.organization_id)
+    assert result["state"] == RunState.COMPLETED.value
+    assert result["signed"] is True
+    assert marker.exists()
+    assert json.loads(persisted["target_identity_json"]) == target.to_dict()
+    assert json.loads(persisted["environment_identity_json"]) == _worker_environment().to_dict()
+    assert store.latest_signed_verdict(run_id, org.organization_id) is not None
+
+    drift_source = tmp_path / "identity-drift-source"
+    drift_source.mkdir()
+    drift_marker = tmp_path / "identity-drift-executed"
+    (drift_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(drift_marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    drift_run_id, _ = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        drift_source,
+        key="identity-reconciliation-0002",
+        journey=[sys.executable, "journey.py"],
+    )
+    (drift_source / "post-submit-change.txt").write_text("drift\n", encoding="utf-8")
+    drift_result = run(
+        drift_run_id,
+        org.organization_id,
+        {"type": "local", "path": str(drift_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    assert drift_result["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert drift_result["detail"] == "worker_target_identity_mismatch"
+    assert not drift_marker.exists()
+    assert store.latest_signed_verdict(drift_run_id, org.organization_id) is None
+
+    environment_source = tmp_path / "environment-drift-source"
+    environment_source.mkdir()
+    environment_marker = tmp_path / "environment-drift-executed"
+    (environment_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(environment_marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    environment_project = _project(
+        client,
+        org.organization_id,
+        org.bootstrap_api_key,
+        slug="environment-drift",
+    ).json()
+    environment_acquired = acquire_target(
+        {"type": "local", "path": str(environment_source)},
+        environment_source.parent / ".unused-environment-drift",
+    )
+    environment_target = TargetIdentity(
+        tenant_id=org.organization_id,
+        target_type=environment_acquired.target_type,
+        canonical_ref=environment_acquired.canonical_ref,
+        artifact_sha256=environment_acquired.artifact_sha256,
+    )
+    environment_response = client.post(
+        "/v1/certifications",
+        headers=_headers(org.organization_id, org.bootstrap_api_key),
+        json={
+            "tenant_id": org.organization_id,
+            "project_id": environment_project["project_id"],
+            "target": {
+                "target_type": "local",
+                "identity_digest": environment_target.identity_digest,
+                "reference": environment_target.canonical_ref,
+                "path": environment_source.resolve().as_posix(),
+            },
+            "environment": {
+                "identity_digest": _digest("incorrect-worker-environment"),
+                "runner_image_digest": "sha256:" + _digest("incorrect-runner"),
+            },
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": "identity-reconciliation-0003",
+            "journey": [sys.executable, "journey.py"],
+        },
+    )
+    environment_run_id = environment_response.json()["run_id"]
+    environment_result = run(
+        environment_run_id,
+        org.organization_id,
+        {"type": "local", "path": str(environment_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    assert environment_response.status_code == 201
+    assert environment_result["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert environment_result["detail"] == "worker_environment_identity_mismatch"
+    assert not environment_marker.exists()
+    assert store.latest_signed_verdict(environment_run_id, org.organization_id) is None
+
+
+def test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalizes(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "atomic-materialization")
+    source = tmp_path / "atomic-source"
+    source.mkdir()
+    (source / "journey.py").write_text("print('atomic')\n", encoding="utf-8")
+    project = _project(
+        client,
+        org.organization_id,
+        org.bootstrap_api_key,
+        slug="atomic-project",
+    ).json()
+    acquired = acquire_target(
+        {"type": "local", "path": str(source)},
+        source.parent / ".unused-atomic-acquisition",
+    )
+    target = TargetIdentity(
+        tenant_id=org.organization_id,
+        target_type=acquired.target_type,
+        canonical_ref=acquired.canonical_ref,
+        artifact_sha256=acquired.artifact_sha256,
+    )
+    environment = _worker_environment()
+    request = SubmitRequest.model_validate(
+        {
+            "tenant_id": org.organization_id,
+            "project_id": project["project_id"],
+            "target": {
+                "target_type": "local",
+                "identity_digest": target.identity_digest,
+                "reference": target.canonical_ref,
+                "path": source.resolve().as_posix(),
+            },
+            "environment": {
+                "identity_digest": environment.identity_digest,
+                "runner_image_digest": "sha256:" + environment.runner_image_sha256,
+            },
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": "atomic-materialization-0001",
+            "journey": [sys.executable, "journey.py"],
+        }
+    )
+    principal = governance.authenticate(
+        org.bootstrap_api_key,
+        tenant_hint=org.organization_id,
+        permission=Permission.RUN_CREATE,
+        action="acceptance.atomic.reserve",
+    )
+    reservation = governance.reserve_certification_run(
+        principal,
+        project_id=str(request.project_id),
+        idempotency_key=request.idempotency_key,
+        request_digest=request.request_digest(),
+        policy_version=request.policy_version,
+        target_type=request.target.target_type,
+        target_reference=request.target.reference,
+        target_identity_digest=request.target.identity_digest,
+        dispatch_target_spec=request.target.worker_spec(),
+        journey=request.journey,
+        submit_request=request.model_dump(exclude_none=True),
+    )
+    with sqlite3.connect(store.db_path) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER fail_atomic_dispatch
+            BEFORE INSERT ON subscriber_run_dispatches
+            BEGIN SELECT RAISE(ABORT, 'simulated dispatch failure'); END
+            """
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="simulated dispatch failure"):
+        governance.materialize_reserved_run(
+            reservation,
+            run_id=request.run_id(),
+            target_type=request.target.target_type,
+            target_reference=request.target.reference,
+            target_identity_digest=request.target.identity_digest,
+            environment_identity_digest=request.environment.identity_digest,
+            environment_json=request.environment.model_dump(exclude_none=True),
+            manifest_id=manifest.manifest_id,
+            manifest_digest=manifest.digest,
+            target_spec=request.target.worker_spec(),
+            journey=request.journey,
+        )
+    with sqlite3.connect(store.db_path) as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM runs WHERE run_id = ?", (request.run_id(),)
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                """
+                SELECT state FROM subscriber_run_reservations
+                WHERE organization_id = ? AND idempotency_key = ?
+                """,
+                (org.organization_id, request.idempotency_key),
+            ).fetchone()[0]
+            == "RESERVED"
+        )
+        connection.execute("DROP TRIGGER fail_atomic_dispatch")
+
+    store.register_declared_run(
+        run_id=request.run_id(),
+        tenant_id=org.organization_id,
+        target_type=request.target.target_type,
+        target_identity_digest=request.target.identity_digest,
+        target_reference=request.target.reference,
+        project_id=request.project_id,
+        environment_identity_digest=request.environment.identity_digest,
+        environment_json=request.environment.model_dump(exclude_none=True),
+        policy_version=request.policy_version,
+        manifest_id=manifest.manifest_id,
+        manifest_digest=manifest.digest,
+    )
+    start = threading.Barrier(2)
+    outcomes: list[str] = []
+
+    def materialize() -> None:
+        start.wait()
+        try:
+            governance.materialize_reserved_run(
+                reservation,
+                run_id=request.run_id(),
+                target_type=request.target.target_type,
+                target_reference=request.target.reference,
+                target_identity_digest=request.target.identity_digest,
+                environment_identity_digest=request.environment.identity_digest,
+                environment_json=request.environment.model_dump(exclude_none=True),
+                manifest_id=manifest.manifest_id,
+                manifest_digest=manifest.digest,
+                target_spec=request.target.worker_spec(),
+                journey=request.journey,
+            )
+            outcomes.append("materialized")
+        except SubscriberError as exc:
+            outcomes.append(exc.code)
+
+    materializer = threading.Thread(target=materialize)
+    materializer.start()
+    start.wait()
+    governance.apply_billing_event(
+        organization_id=org.organization_id,
+        provider_event_id="evt-atomic-suspend",
+        event_type="subscription.suspended",
+        payload={"reason": "risk"},
+        provider_occurred_at=datetime.now(UTC) + timedelta(seconds=1),
+        provider_sequence=1,
+    )
+    materializer.join(timeout=10)
+    assert not materializer.is_alive()
+    assert outcomes[0] in {"materialized", "run_reservation_inactive"}
+    assert store.get_run(request.run_id(), org.organization_id)["state"] == "CANCELLED"
+    with sqlite3.connect(store.db_path) as connection:
+        reservation_state = connection.execute(
+            """
+            SELECT state FROM subscriber_run_reservations
+            WHERE organization_id = ? AND idempotency_key = ?
+            """,
+            (org.organization_id, request.idempotency_key),
+        ).fetchone()[0]
+        pending_dispatches = connection.execute(
+            """
+            SELECT COUNT(*) FROM subscriber_run_dispatches
+            WHERE run_id = ? AND state IN ('PENDING', 'CLAIMED')
+            """,
+            (request.run_id(),),
+        ).fetchone()[0]
+    assert reservation_state == "RELEASED"
+    assert pending_dispatches == 0
+
+
+def test_heartbeat_storage_loss_terminates_customer_process_before_signing(
+    tmp_path, manifest, monkeypatch
+):
+    policy = _policy().model_copy(
+        update={
+            "worker_claim_lease_seconds": 10,
+            "worker_heartbeat_interval_seconds": 1,
+        }
+    )
+    store, governance, client = _stack(tmp_path, manifest, policy=policy)
+    org = _provision(governance, "heartbeat-loss")
+    source = tmp_path / "heartbeat-source"
+    source.mkdir()
+    marker = tmp_path / "heartbeat-customer-completed"
+    (source / "journey.py").write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        "time.sleep(5)\n"
+        f"Path({str(marker)!r}).write_text('completed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    run_id, _ = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="heartbeat-loss-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+
+    def fail_heartbeat(_claim):
+        raise sqlite3.OperationalError("simulated heartbeat storage loss")
+
+    monkeypatch.setattr(governance, "heartbeat_worker_claim", fail_heartbeat)
+    result = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    assert result["error"] == "subscriber_execution_fenced"
+    assert result["detail"] == "worker_run_heartbeat_storage_failed"
+    assert not marker.exists()
+    assert store.latest_signed_verdict(run_id, org.organization_id) is None
+
+
+def test_expired_lease_cannot_commit_signed_completion(tmp_path, manifest, monkeypatch):
+    now = [datetime.now(UTC)]
+    db = tmp_path / "certforge.sqlite3"
+    store = EvidenceStore(db, tmp_path / "evidence")
+    governance = SubscriberGovernance(db, _policy(), PEPPER, clock=lambda: now[0])
+    client = TestClient(
+        create_app(
+            ServiceContext(
+                store,
+                manifest,
+                TrustedPublicKeyRegistry.empty(),
+                governance,
+            )
+        )
+    )
+    org = _provision(governance, "completion-expiry")
+    source = tmp_path / "completion-expiry-source"
+    source.mkdir()
+    (source / "journey.py").write_text("print('completion')\n", encoding="utf-8")
+    run_id, _ = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="completion-expiry-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    original_complete = governance.complete_worker_execution
+
+    def expire_before_completion(claim, envelope):
+        now[0] += timedelta(seconds=governance.policy.worker_claim_lease_seconds + 1)
+        return original_complete(claim, envelope)
+
+    monkeypatch.setattr(governance, "complete_worker_execution", expire_before_completion)
+    result = run(
+        run_id,
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    assert result["error"] == "subscriber_execution_fenced"
+    assert result["detail"] == "worker_run_claim_inactive"
+    assert store.latest_signed_verdict(run_id, org.organization_id) is None
+    assert governance.recover_expired_claims(org.organization_id) == 1
+    assert (
+        store.get_run(run_id, org.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value
+    )
+
+
+@pytest.mark.parametrize("deployment", ["staging", "production"])
+def test_deploy_environment_boots_and_authenticated_smoke_is_green(
+    tmp_path, deployment
+):
+    repo = Path(__file__).parents[1]
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": str(repo / "src"),
+            "ECHO_CERTFORGE_DB": str(tmp_path / f"{deployment}.sqlite3"),
+            "ECHO_CERTFORGE_EVIDENCE_ROOT": str(tmp_path / f"{deployment}-evidence"),
+            "ECHO_CERTFORGE_POLICY": str(
+                repo / "policies" / "mandatory-rules.v1.json"
+            ),
+            "ECHO_CERTFORGE_SUBSCRIBER_POLICY": str(
+                repo / "policies" / "subscriber-governance.v1.json"
+            ),
+            "ECHO_CERTFORGE_TRUSTED_KEYS": str(tmp_path / "trusted-keys"),
+            "ECHO_CERTFORGE_SUBSCRIBERS_ENABLED": "1",
+            "ECHO_CERTFORGE_API_KEY_PEPPER": (
+                f"p7-{deployment}-deploy-smoke-pepper-material-32-bytes"
+            ),
+        }
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "echo_certification_forge.app:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "warning",
+        ],
+        cwd=repo,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        healthy = False
+        for _ in range(100):
+            if process.poll() is not None:
+                break
+            try:
+                with urllib.request.urlopen(f"{base}/healthz", timeout=1) as response:
+                    healthy = response.status == 200
+                    if healthy:
+                        break
+            except OSError:
+                time.sleep(0.05)
+        output = ""
+        if process.poll() is not None and process.stdout is not None:
+            output = process.stdout.read()
+        assert healthy and process.poll() is None, output
+        smoke = subprocess.run(
+            [sys.executable, "deploy/smoke_live.py", base],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert smoke.returncode == 0, smoke.stdout + smoke.stderr
+        assert "SMOKE GREEN" in smoke.stdout
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)

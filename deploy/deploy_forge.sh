@@ -12,6 +12,7 @@ PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"
 DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-feat/certforge-r5-negative-controls}"
+ENV_FILE="${CERTFORGE_ENV_FILE:-/home/forge/.config/echo/certforge.env}"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 
 PREV_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo none)"
@@ -32,18 +33,36 @@ echo "== [3/7] runtime dirs =="
 mkdir -p var/evidence var/trusted-public-keys var/dispatch-output
 test -f policies/mandatory-rules.v1.json || { echo "!! policy manifest missing"; exit 1; }
 test -f policies/subscriber-governance.v1.json || { echo "!! subscriber policy missing"; exit 1; }
-test -f /home/forge/.config/echo/certforge.env || {
-  echo "!! /home/forge/.config/echo/certforge.env missing"; exit 1;
+test -f "$ENV_FILE" || {
+  echo "!! $ENV_FILE missing"; exit 1;
+}
+ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
+if (( (8#$ENV_MODE & 077) != 0 )); then
+  echo "!! $ENV_FILE must not be group/world accessible (mode=$ENV_MODE)"; exit 1
+fi
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
+STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
+test "${#PROD_PEPPER}" -ge 32 || {
+  echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"; exit 1;
+}
+test "${#STAGING_PEPPER}" -ge 32 || {
+  echo "!! ECHO_CERTFORGE_STAGING_API_KEY_PEPPER must be at least 32 bytes"; exit 1;
 }
 
 echo "== [4/7] staging boot on 127.0.0.1:$STAGING_PORT =="
-export ECHO_CERTFORGE_DB="$REPO_DIR/var/staging.sqlite3"
-export ECHO_CERTFORGE_EVIDENCE_ROOT="$REPO_DIR/var/staging-evidence"
-export ECHO_CERTFORGE_POLICY="$REPO_DIR/policies/mandatory-rules.v1.json"
-export ECHO_CERTFORGE_SUBSCRIBER_POLICY="$REPO_DIR/policies/subscriber-governance.v1.json"
-export ECHO_CERTFORGE_TRUSTED_KEYS="$REPO_DIR/var/trusted-public-keys"
-export ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
-export ECHO_CERTFORGE_API_KEY_PEPPER="staging-only-certforge-pepper"
+STAGING_DB="$REPO_DIR/var/staging.sqlite3"
+STAGING_EVIDENCE="$REPO_DIR/var/staging-evidence"
+ECHO_CERTFORGE_DB="$STAGING_DB" \
+ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_EVIDENCE" \
+ECHO_CERTFORGE_POLICY="$REPO_DIR/policies/mandatory-rules.v1.json" \
+ECHO_CERTFORGE_SUBSCRIBER_POLICY="$REPO_DIR/policies/subscriber-governance.v1.json" \
+ECHO_CERTFORGE_TRUSTED_KEYS="$REPO_DIR/var/trusted-public-keys" \
+ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1 \
+ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
 ./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >var/certforge_staging.log 2>&1 &
 STAGING_PID=$!
 trap 'kill $STAGING_PID 2>/dev/null || true' EXIT
@@ -52,7 +71,10 @@ for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$STAGING_PORT/healthz" >/dev
 [ "$ready" = 1 ] || { echo "!! staging never became healthy"; tail -20 var/certforge_staging.log; exit 1; }
 
 echo "== [5/7] staging live-smoke =="
-if ! ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$STAGING_PORT"; then
+if ! ECHO_CERTFORGE_DB="$STAGING_DB" \
+  ECHO_CERTFORGE_SUBSCRIBER_POLICY="$REPO_DIR/policies/subscriber-governance.v1.json" \
+  ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
+  ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$STAGING_PORT"; then
   echo "!! STAGING SMOKE RED — production untouched, aborting"; exit 1
 fi
 kill $STAGING_PID 2>/dev/null || true; trap - EXIT
@@ -74,7 +96,7 @@ Environment=ECHO_CERTFORGE_POLICY=$REPO_DIR/policies/mandatory-rules.v1.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$REPO_DIR/policies/subscriber-governance.v1.json
 Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$REPO_DIR/var/trusted-public-keys
-EnvironmentFile=/home/forge/.config/echo/certforge.env
+EnvironmentFile=$ENV_FILE
 ExecStart=$REPO_DIR/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5
@@ -100,7 +122,7 @@ Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$REPO_DIR/policies/subscriber-gover
 Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$REPO_DIR/var/trusted-public-keys
 Environment=ECHO_CERTFORGE_RUN_SIGNING_KEY=$REPO_DIR/var/run-signing-key.pem
-EnvironmentFile=/home/forge/.config/echo/certforge.env
+EnvironmentFile=$ENV_FILE
 ExecStart=$REPO_DIR/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox
 Restart=always
 RestartSec=5
@@ -119,7 +141,10 @@ ready=0
 for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && { ready=1; break; }; sleep 0.5; done
 if [ "$ready" != 1 ] \
   || ! systemctl is-active --quiet $DISPATCH_SERVICE.service \
-  || ! ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$PROD_PORT"; then
+  || ! ECHO_CERTFORGE_DB="$REPO_DIR/var/certforge.sqlite3" \
+    ECHO_CERTFORGE_SUBSCRIBER_POLICY="$REPO_DIR/policies/subscriber-governance.v1.json" \
+    ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
+    ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$PROD_PORT"; then
   echo "!! PROD RED — rolling back to $PREV_COMMIT"
   if [ "$PREV_COMMIT" != none ]; then
     git reset --hard --quiet "$PREV_COMMIT"

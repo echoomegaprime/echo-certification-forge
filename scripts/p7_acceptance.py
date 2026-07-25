@@ -24,7 +24,7 @@ from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.intake import SubmitRequest
 from echo_certification_forge.models import TargetIdentity
-from echo_certification_forge.run_worker import run
+from echo_certification_forge.run_worker import _worker_environment, run
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.subscriber import (
@@ -91,6 +91,7 @@ def submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
+    environment = _worker_environment()
     payload = {
         "tenant_id": organization_id,
         "project_id": project.json()["project_id"],
@@ -100,8 +101,8 @@ def submit_local_run(
             "reference": target.canonical_ref,
         },
         "environment": {
-            "identity_digest": digest(f"environment-{key}"),
-            "runner_image_digest": "sha256:" + digest(f"runner-{key}"),
+            "identity_digest": environment.identity_digest,
+            "runner_image_digest": "sha256:" + environment.runner_image_sha256,
         },
         "policy_version": manifest.manifest_id,
         "idempotency_key": key,
@@ -804,14 +805,20 @@ def main() -> int:
     except SubscriberError as exc:
         duplicate_claim_code = exc.code
     governance.finish_worker_claim(worker_claim, reason="acceptance_complete")
+    claim_cleanup = client.post(
+        f"/v1/certifications/{claim_run_id}/cancel",
+        headers=headers(claim_org.organization_id, claim_org.bootstrap_api_key),
+    )
     record(
         scenarios,
         "strict_worker_reservation_claim",
         direct_worker.get("error") == "subscriber_worker_claim_denied"
         and direct_worker.get("detail") == "worker_run_reservation_missing"
-        and duplicate_claim_code == "worker_run_already_claimed",
+        and duplicate_claim_code == "worker_run_already_claimed"
+        and claim_cleanup.status_code == 200,
         direct_invocation=direct_worker,
         duplicate_claim_code=duplicate_claim_code,
+        cleanup_status=claim_cleanup.status_code,
     )
 
     controlled = governance.provision_organization(
@@ -1551,8 +1558,9 @@ def main() -> int:
                 "path": intake_source.resolve().as_posix(),
             },
             "environment": {
-                "identity_digest": digest("p7-durable-intake-environment"),
-                "runner_image_digest": "sha256:" + digest("p7-durable-intake-runner"),
+                "identity_digest": _worker_environment().identity_digest,
+                "runner_image_digest": "sha256:"
+                + _worker_environment().runner_image_sha256,
             },
             "policy_version": manifest.manifest_id,
             "idempotency_key": "p7-durable-intake-0001",
@@ -1647,7 +1655,13 @@ def main() -> int:
         signing_authority="platform",
         signing_key_id=crash_signer.key_id,
     )
-    governance.authorize_worker_execution(crash_claim)
+    governance.authorize_worker_execution(
+        crash_claim,
+        target_identity=crash_target.to_dict(),
+        target_identity_digest=crash_target.identity_digest,
+        environment_identity=_worker_environment().to_dict(),
+        environment_identity_digest=_worker_environment().identity_digest,
+    )
     heartbeat_expiry = governance.heartbeat_worker_claim(crash_claim)
     with closing(sqlite3.connect(db)) as connection:
         connection.execute(
@@ -1836,11 +1850,11 @@ def main() -> int:
     boundary_release = threading.Event()
     boundary_authorize = governance.authorize_worker_execution
 
-    def wait_at_execution_boundary(claim):
+    def wait_at_execution_boundary(claim, **identity):
         boundary_entered.set()
         if not boundary_release.wait(timeout=10):
             raise RuntimeError("execution boundary synchronization failed")
-        return boundary_authorize(claim)
+        return boundary_authorize(claim, **identity)
 
     governance.authorize_worker_execution = wait_at_execution_boundary  # type: ignore[method-assign]
     boundary_result: dict[str, Any] = {}
@@ -1887,11 +1901,260 @@ def main() -> int:
         customer_code_executed=boundary_marker.exists(),
     )
 
+    identity_org = governance.provision_organization(
+        slug="p7-identity-reconciliation",
+        display_name="P7 Identity Reconciliation",
+        owner_email="owner@p7-identity-reconciliation.example",
+        owner_display_name="P7 Identity Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    identity_source = workspace / "identity-source"
+    identity_source.mkdir()
+    identity_marker = workspace / "identity-executed"
+    (identity_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(identity_marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    identity_run_id, identity_target = submit_local_run(
+        client,
+        manifest,
+        identity_org.organization_id,
+        identity_org.bootstrap_api_key,
+        identity_source,
+        key="p7-identity-reconciliation-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    identity_result = run(
+        identity_run_id,
+        identity_org.organization_id,
+        {"type": "local", "path": str(identity_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    identity_row = store.get_run(identity_run_id, identity_org.organization_id)
+    record(
+        scenarios,
+        "canonical_identity_reconciliation",
+        identity_result.get("state") == "COMPLETED"
+        and identity_result.get("signed") is True
+        and identity_marker.exists()
+        and json.loads(identity_row["target_identity_json"]) == identity_target.to_dict()
+        and json.loads(identity_row["environment_identity_json"])
+        == _worker_environment().to_dict(),
+        worker_result=identity_result,
+        target_identity=json.loads(identity_row["target_identity_json"]),
+        environment_identity=json.loads(identity_row["environment_identity_json"]),
+    )
+
+    drift_source = workspace / "identity-drift-source"
+    drift_source.mkdir()
+    drift_marker = workspace / "identity-drift-executed"
+    (drift_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(drift_marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    drift_run_id, _drift_target = submit_local_run(
+        client,
+        manifest,
+        identity_org.organization_id,
+        identity_org.bootstrap_api_key,
+        drift_source,
+        key="p7-identity-reconciliation-0002",
+        journey=[sys.executable, "journey.py"],
+    )
+    (drift_source / "post-submit-change.txt").write_text("drift\n", encoding="utf-8")
+    drift_result = run(
+        drift_run_id,
+        identity_org.organization_id,
+        {"type": "local", "path": str(drift_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    record(
+        scenarios,
+        "acquired_identity_digest_mismatch_fails_closed",
+        drift_result.get("state") == "INFRASTRUCTURE_FAILURE"
+        and drift_result.get("detail") == "worker_target_identity_mismatch"
+        and not drift_marker.exists()
+        and store.latest_signed_verdict(
+            drift_run_id, identity_org.organization_id
+        )
+        is None,
+        worker_result=drift_result,
+        customer_code_executed=drift_marker.exists(),
+    )
+
+    with closing(sqlite3.connect(db)) as connection:
+        atomicity_rows = connection.execute(
+            """
+            SELECT runs.run_id, runs.state, r.state, d.state,
+                   r.idempotency_key, runs.target_reference, d.last_error
+            FROM runs
+            LEFT JOIN subscriber_run_reservations r
+              ON r.run_id = runs.run_id AND r.organization_id = runs.tenant_id
+            LEFT JOIN subscriber_run_dispatches d
+              ON d.run_id = runs.run_id AND d.organization_id = runs.tenant_id
+            WHERE runs.project_id IS NOT NULL
+              AND runs.state = 'QUEUED'
+              AND (r.state != 'BOUND' OR d.run_id IS NULL)
+            """
+        ).fetchall()
+    record(
+        scenarios,
+        "atomic_run_reservation_outbox_invariant",
+        not atomicity_rows,
+        violations=[list(row) for row in atomicity_rows],
+    )
+
+    original_policy = governance.policy
+    governance.policy = policy.model_copy(
+        update={
+            "worker_claim_lease_seconds": 10,
+            "worker_heartbeat_interval_seconds": 1,
+        }
+    )
+    heartbeat_org = governance.provision_organization(
+        slug="p7-heartbeat-storage-loss",
+        display_name="P7 Heartbeat Storage Loss",
+        owner_email="owner@p7-heartbeat-storage-loss.example",
+        owner_display_name="P7 Heartbeat Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    heartbeat_source = workspace / "heartbeat-source"
+    heartbeat_source.mkdir()
+    heartbeat_marker = workspace / "heartbeat-completed"
+    (heartbeat_source / "journey.py").write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        "time.sleep(5)\n"
+        f"Path({str(heartbeat_marker)!r}).write_text('completed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    heartbeat_run_id, _heartbeat_target = submit_local_run(
+        client,
+        manifest,
+        heartbeat_org.organization_id,
+        heartbeat_org.bootstrap_api_key,
+        heartbeat_source,
+        key="p7-heartbeat-storage-loss-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    original_heartbeat = governance.heartbeat_worker_claim
+
+    def fail_heartbeat_storage(_claim):
+        raise sqlite3.OperationalError("simulated heartbeat storage loss")
+
+    governance.heartbeat_worker_claim = fail_heartbeat_storage  # type: ignore[method-assign]
+    heartbeat_result = run(
+        heartbeat_run_id,
+        heartbeat_org.organization_id,
+        {"type": "local", "path": str(heartbeat_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    governance.heartbeat_worker_claim = original_heartbeat  # type: ignore[method-assign]
+    record(
+        scenarios,
+        "heartbeat_storage_loss_fences_customer_process",
+        heartbeat_result.get("error") == "subscriber_execution_fenced"
+        and heartbeat_result.get("detail") == "worker_run_heartbeat_storage_failed"
+        and not heartbeat_marker.exists()
+        and store.latest_signed_verdict(
+            heartbeat_run_id, heartbeat_org.organization_id
+        )
+        is None,
+        worker_result=heartbeat_result,
+        customer_code_completed=heartbeat_marker.exists(),
+    )
+    governance.policy = original_policy
+
+    completion_now = [datetime.now(UTC)]
+    completion_governance = SubscriberGovernance(
+        db,
+        original_policy,
+        PEPPER,
+        clock=lambda: completion_now[0],
+    )
+    completion_org = completion_governance.provision_organization(
+        slug="p7-expired-completion",
+        display_name="P7 Expired Completion",
+        owner_email="owner@p7-expired-completion.example",
+        owner_display_name="P7 Completion Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    completion_source = workspace / "completion-source"
+    completion_source.mkdir()
+    (completion_source / "journey.py").write_text(
+        "print('completion')\n", encoding="utf-8"
+    )
+    completion_run_id, _completion_target = submit_local_run(
+        client,
+        manifest,
+        completion_org.organization_id,
+        completion_org.bootstrap_api_key,
+        completion_source,
+        key="p7-expired-completion-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    original_complete = completion_governance.complete_worker_execution
+
+    def expire_completion_lease(claim, envelope):
+        completion_now[0] += timedelta(
+            seconds=completion_governance.policy.worker_claim_lease_seconds + 1
+        )
+        return original_complete(claim, envelope)
+
+    completion_governance.complete_worker_execution = expire_completion_lease  # type: ignore[method-assign]
+    completion_result = run(
+        completion_run_id,
+        completion_org.organization_id,
+        {"type": "local", "path": str(completion_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=completion_governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    completion_recovered = completion_governance.recover_expired_claims(
+        completion_org.organization_id
+    )
+    record(
+        scenarios,
+        "expired_lease_cannot_commit_signed_completion",
+        completion_result.get("error") == "subscriber_execution_fenced"
+        and completion_result.get("detail") == "worker_run_claim_inactive"
+        and store.latest_signed_verdict(
+            completion_run_id, completion_org.organization_id
+        )
+        is None
+        and completion_recovered == 1
+        and store.get_run(
+            completion_run_id, completion_org.organization_id
+        )["state"]
+        == "INFRASTRUCTURE_FAILURE",
+        worker_result=completion_result,
+        recovered_claims=completion_recovered,
+    )
+
     record(
         scenarios,
         "versioned_policy_contract",
         contract.get("schema_version") == policy.schema_version
-        and contract.get("schema_version") == "1.2.1"
+        and contract.get("schema_version") == "1.2.2"
         and contract.get("contract_id") == "certforge.subscriber-governance.v1"
         and contract.get("authentication", {}).get("denied_request_audit_required")
         is True
@@ -1904,7 +2167,7 @@ def main() -> int:
     )
 
     report = {
-        "schema_version": "1.2.1",
+        "schema_version": "1.2.2",
         "phase": "P7",
         "generated_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "python": sys.version,

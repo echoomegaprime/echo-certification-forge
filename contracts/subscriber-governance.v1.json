@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2.1",
+  "schema_version": "1.2.2",
   "contract_id": "certforge.subscriber-governance.v1",
   "authentication": {
     "scheme": "Bearer",
@@ -83,17 +83,19 @@
   "worker_execution": {
     "claim_precondition": "subscriber execution requires an existing QUEUED run and matching BOUND subscriber_run_reservation",
     "claim_binding": "tenant, project, policy, target type, target reference, and target identity digest must match persisted run and reservation state",
-    "dispatch": "API intake first commits a metered reservation containing the complete validated submission, exact target, and journey, then idempotently materializes the deterministic run and transactional outbox; after any crash in that gap, the restart-safe dispatcher reconstructs and binds the same run_id before claiming only work compatible with current worker, location, signer, and authority governance",
+    "dispatch": "API intake atomically materializes the deterministic run, BOUND metered reservation, idempotency record, and exact transactional outbox in one BEGIN IMMEDIATE transaction; legacy partial intake is restart-safe and can only complete the same run_id or terminalize cleanly",
     "claim_transition": "BOUND to EXECUTING is atomic and leased before target acquisition; duplicate/direct claims fail closed",
-    "execution_boundary": "immediately before customer execution, subscription and governance are revalidated in one BEGIN IMMEDIATE transaction that moves QUEUED to ACQUIRING_TARGET and EXECUTING to STARTED with both versions",
-    "leases": "dispatcher and worker claims have expirations; active worker claims heartbeat before expiry",
+    "identity_reconciliation": "after acquisition and before customer execution, canonical acquired target and worker environment identities must exactly match their declared digests and persisted reservation binding, then replace declaration placeholders atomically",
+    "execution_boundary": "immediately before customer execution, canonical identities, subscription, and governance are revalidated in one BEGIN IMMEDIATE transaction that moves QUEUED to ACQUIRING_TARGET and EXECUTING to STARTED with both versions",
+    "leases": "dispatcher and worker claims have expirations; active worker claims heartbeat before expiry, heartbeat loss terminates active customer execution, and signing plus completion require the same active unexpired lease",
     "crash_recovery": "expired pre-start claims requeue without compensation until the bounded retry limit; exhaustion or an expired STARTED claim terminalizes as infrastructure failure, releases concurrency, fails dispatch, and receives one idempotent meter compensation",
     "entitlement_source": "SubscriberGovernance is resolved at claim and revalidated immediately before RunExecutor execution",
     "retention_source": "active subscriber plan/governance retention is revalidated immediately before RunExecutor execution and capped at the current plan maximum",
     "private_worker_only": "requires a matching ACTIVE tenant worker identity and attestation digest",
     "local_only_execution": "requires a local target and local execution location",
     "customer_managed_signing": "requires customer signing authority and the configured customer_signing_key_id",
-    "lookup_failure_mode": "fail closed without executing the target"
+    "lookup_failure_mode": "fail closed without executing or continuing the target",
+    "deploy_smoke": "staging and production smoke provision isolated organizations, projects, and API keys, authenticate every governed request with project_id, and exercise cross-tenant isolation with a second authenticated tenant"
   },
   "safe_defaults": {
     "new_plan": "developer",
