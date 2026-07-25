@@ -3,17 +3,27 @@
 Installed additively onto the existing tenant-scoped API by ``install_deployment_api``.
 Every endpoint is fail-closed: a missing tenant header, unknown artifact, or unverifiable
 certification denies. Mutation endpoints (binding, admission, outcome) additionally require
-an authenticated tenant-bound deployment credential — an HMAC signature over the exact
-request body proving possession of the tenant's deployment secret; the ``X-Tenant-ID``
-header alone never authorizes a mutation. Admission decisions are RECORDED (append-only,
+an authenticated tenant-bound deployment credential (scheme ``certforge-deploy-v2``): an
+HMAC-SHA256 signature over the tenant id, HTTP method, canonical request path (including
+any admission/run id), timestamp, a caller-unique nonce, and the SHA-256 of the exact raw
+body. Binding the method and full path into the signature means a captured signature can
+never be retargeted at a different admission, endpoint, or verb; the nonce is atomically
+consumed in the deployment ledger's SQLite store (shared across workers, persistent across
+restarts), so an EXACT byte-for-byte replay is also rejected. The ``X-Tenant-ID`` header
+alone never authorizes a mutation. Admission decisions are RECORDED (append-only,
 hash-chained) whether allowed or denied, so the deployment audit trail is complete by
 construction.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import re
+
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .canonical import parse_utc_iso, utc_now
 from .deployment import (
     PRODUCTION,
     AdmissionRequest,
@@ -24,19 +34,57 @@ from .deployment import (
 )
 from .release_hooks import (
     BUILD_EVENT,
+    MAX_CLOCK_SKEW_SECONDS,
     REGISTRY_EVENT,
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
     WebhookError,
     WebhookSecretRegistry,
     ingest_webhook,
-    verify_webhook_signature,
 )
 
 _ACTOR = "certforge.deployment_api"
 
 DEPLOY_SIGNATURE_HEADER = "X-Certforge-Deploy-Signature"
 DEPLOY_TIMESTAMP_HEADER = "X-Certforge-Deploy-Timestamp"
+DEPLOY_NONCE_HEADER = "X-Certforge-Deploy-Nonce"
+DEPLOY_SIGNATURE_SCHEME = "certforge-deploy-v2"
+# A nonce only needs to be unique within the signature freshness window, but it is kept
+# twice as long so a clock-skewed replay near the window edge still hits the used-nonce
+# rejection instead of racing the pruner.
+DEPLOY_NONCE_TTL_SECONDS = 2 * MAX_CLOCK_SKEW_SECONDS
+_NONCE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+
+
+def deployment_canonical_string(
+    tenant_id: str, method: str, path: str, timestamp: str, nonce: str, body: bytes
+) -> str:
+    """Canonical string signed by the v2 deployment credential.
+
+    Covers the authenticated tenant, the HTTP method, the full canonical request path
+    (which embeds the admission/run id being mutated), the timestamp, a unique nonce,
+    and the SHA-256 of the exact raw body bytes.
+    """
+    return "\n".join(
+        [
+            DEPLOY_SIGNATURE_SCHEME,
+            tenant_id,
+            method.upper(),
+            path,
+            timestamp,
+            nonce,
+            hashlib.sha256(body).hexdigest(),
+        ]
+    )
+
+
+def sign_deployment_request(
+    secret: str, tenant_id: str, method: str, path: str, timestamp: str, nonce: str, body: bytes
+) -> str:
+    """Produce the ``X-Certforge-Deploy-Signature`` value for a mutation request."""
+    canonical = deployment_canonical_string(tenant_id, method, path, timestamp, nonce, body)
+    mac = hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256)
+    return f"sha256={mac.hexdigest()}"
 
 
 class AdmitBody(BaseModel):
@@ -70,24 +118,47 @@ def install_deployment_api(
         return value
 
     def authorize_mutation(tenant_id: str, request: Request, body: bytes) -> None:
-        """Require the tenant-bound deployment credential for any mutation.
+        """Require the tenant-bound v2 deployment credential for any mutation.
 
-        The caller must prove possession of the tenant's deployment secret with an HMAC
-        signature over ``{timestamp}.{body}`` (same verified scheme as release webhooks).
-        Fail-closed on every path: unregistered tenant, missing/invalid headers, stale
-        timestamp, or a signature made with a different tenant's secret all yield 401.
+        The caller must prove possession of the tenant's deployment secret with an
+        HMAC-SHA256 signature over the ``certforge-deploy-v2`` canonical string
+        (tenant, method, canonical path, timestamp, unique nonce, SHA-256 of the exact
+        raw body). Fail-closed on every path — unregistered tenant, missing/invalid/stale
+        headers, a signature made with a different tenant's secret, a signature minted
+        for a different method/path/body, and any reuse of a nonce all yield 401. The
+        nonce is consumed atomically in the persistent ledger store ONLY after the
+        signature verifies, so unauthenticated callers cannot burn nonces.
         """
+        def reject(code: str) -> HTTPException:
+            return HTTPException(status_code=401, detail=code)
+
+        secret = deployment_credentials.secret_for(tenant_id)
+        if secret is None:
+            raise reject("deployment_credential_tenant_not_registered")
+        signature = request.headers.get(DEPLOY_SIGNATURE_HEADER)
+        if not signature:
+            raise reject("deployment_credential_signature_missing")
+        timestamp = request.headers.get(DEPLOY_TIMESTAMP_HEADER)
+        if not timestamp:
+            raise reject("deployment_credential_timestamp_missing")
         try:
-            verify_webhook_signature(
-                deployment_credentials,
-                tenant_id,
-                request.headers.get(DEPLOY_SIGNATURE_HEADER),
-                request.headers.get(DEPLOY_TIMESTAMP_HEADER),
-                body,
-            )
-        except WebhookError as exc:
-            code = exc.code.replace("webhook_", "deployment_credential_", 1)
-            raise HTTPException(status_code=exc.status_code, detail=code) from exc
+            sent_at = parse_utc_iso(timestamp)
+        except ValueError as exc:
+            raise reject("deployment_credential_timestamp_invalid") from exc
+        if abs((utc_now() - sent_at).total_seconds()) > MAX_CLOCK_SKEW_SECONDS:
+            raise reject("deployment_credential_timestamp_stale")
+        nonce = request.headers.get(DEPLOY_NONCE_HEADER)
+        if not nonce:
+            raise reject("deployment_credential_nonce_missing")
+        if _NONCE_PATTERN.fullmatch(nonce) is None:
+            raise reject("deployment_credential_nonce_invalid")
+        expected = sign_deployment_request(
+            secret, tenant_id, request.method, request.url.path, timestamp, nonce, body
+        )
+        if not hmac.compare_digest(expected, signature):
+            raise reject("deployment_credential_signature_invalid")
+        if not controller.ledger.consume_nonce(tenant_id, nonce, DEPLOY_NONCE_TTL_SECONDS):
+            raise reject("deployment_credential_nonce_reused")
 
     @app.post("/v1/certifications/{run_id}/bindings", status_code=201)
     async def bind_certification(

@@ -79,8 +79,21 @@ class SubmitRequest(BaseModel):
             }
         )
 
-    def run_id(self) -> str:
-        return "cert_" + sha256_json({"d": self.request_digest(), "k": self.idempotency_key})[:40]
+    def run_id(self, active_rule_manifest_digest: str) -> str:
+        """Deterministic run identity in (request, idempotency key, ACTIVE manifest digest).
+
+        Binding the server-side active mandatory-rule manifest digest into the identity
+        means a policy rollover that keeps ``manifest_id`` but changes rule CONTENT (a new
+        digest) deterministically yields a NEW recertification run instead of deduplicating
+        to a certification produced under the superseded rules.
+        """
+        return "cert_" + sha256_json(
+            {
+                "d": self.request_digest(),
+                "k": self.idempotency_key,
+                "m": active_rule_manifest_digest,
+            }
+        )[:40]
 
 
 def to_public_state(internal: str) -> str:
@@ -134,6 +147,12 @@ def submit(
     raises SubmitError(409, "idempotency_conflict") when a key is reused for a different request,
     SubmitError(403, "tenant_mismatch") when the header and body tenants disagree,
     SubmitError(422, "policy_unknown") when the requested policy is not the active manifest.
+
+    Idempotency is scoped to the ACTIVE rule-manifest content digest (server-side, never
+    caller-supplied): after a manifest rollover that keeps the manifest_id but changes the
+    rules, a replayed submission no longer deduplicates to the stale pre-rollover run — it
+    deterministically creates a new recertification run under the new rules, while replays
+    under the SAME manifest digest still deduplicate exactly as before.
     """
     if request.tenant_id != tenant_header:
         raise SubmitError(403, "tenant_mismatch")
@@ -152,15 +171,24 @@ def submit(
         if expected != request.target.identity_digest:
             raise SubmitError(422, "target_commitment_mismatch")
 
-    request_digest = request.request_digest()
-    existing = store.find_idempotent(request.tenant_id, request.idempotency_key)
+    # Run/request identity binds the server-side ACTIVE manifest digest (blocker: a manifest
+    # content rollover under an unchanged manifest_id must never dedupe to a stale run).
+    request_digest = sha256_json(
+        {
+            "request": request.request_digest(),
+            "active_rule_manifest_digest": manifest.digest,
+        }
+    )
+    scoped_key = f"{request.idempotency_key}@{manifest.digest[:16]}"
+    existing = store.find_idempotent(request.tenant_id, scoped_key)
     if existing is not None:
         if existing["request_digest"] != request_digest:
             raise SubmitError(409, "idempotency_conflict")
         row = store.get_run(existing["run_id"], request.tenant_id)
         return 200, project_run(store, row)
 
-    run_id = request.run_id()  # deterministic in (request_digest, key) -> concurrent dupes collide here
+    # deterministic in (request_digest, key, active manifest digest) -> concurrent dupes collide here
+    run_id = request.run_id(manifest.digest)
     environment_json = request.environment.model_dump(exclude_none=True)
     try:
         store.register_declared_run(
@@ -189,6 +217,6 @@ def submit(
         reason="submitted",
         workflow_version="t4.p1",
     )
-    store.bind_idempotent(request.tenant_id, request.idempotency_key, request_digest, run_id)
+    store.bind_idempotent(request.tenant_id, scoped_key, request_digest, run_id)
     row = store.get_run(run_id, request.tenant_id)
     return 201, project_run(store, row)

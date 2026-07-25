@@ -18,6 +18,12 @@ subprocess (scripts/deployment_admission_hook.py):
   A9  with the forge DOWN the hook fails CLOSED (exit 3) — no forge, no deployment
   A10 a mutation without a deployment credential signature is 401 (tenant header alone
       is NOT authorization)
+  A11 an EXACT byte-for-byte replay of a previously accepted signed mutation is rejected
+      401 (persistent atomic nonce consumption — replay protection)
+
+All deployment outcomes (staging acceptance, production success, failure, rollback) are
+recorded through the REAL pipeline integration — the hook's ``outcome`` subcommand — so
+staging provably unlocks production via the supplied integration, not via raw test HTTP.
 
 Writes artifacts/p6_acceptance.json (+ .summary.json). Exit 0 only if every check passed.
 """
@@ -26,12 +32,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,8 +51,10 @@ import uvicorn  # noqa: E402
 
 from echo_certification_forge.canonical import to_utc_iso, utc_now  # noqa: E402
 from echo_certification_forge.deployment_service import (  # noqa: E402
+    DEPLOY_NONCE_HEADER,
     DEPLOY_SIGNATURE_HEADER,
     DEPLOY_TIMESTAMP_HEADER,
+    sign_deployment_request,
 )
 from echo_certification_forge.evidence import EvidenceStore  # noqa: E402
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement  # noqa: E402
@@ -94,8 +104,12 @@ def http(method: str, url: str, body: dict | bytes | None = None, headers: dict 
         data = body
     if sign:
         ts = to_utc_iso(utc_now())
+        nonce = secrets.token_hex(16)
         all_headers[DEPLOY_TIMESTAMP_HEADER] = ts
-        all_headers[DEPLOY_SIGNATURE_HEADER] = sign_webhook(DEPLOY_SECRET, ts, data or b"")
+        all_headers[DEPLOY_NONCE_HEADER] = nonce
+        all_headers[DEPLOY_SIGNATURE_HEADER] = sign_deployment_request(
+            DEPLOY_SECRET, TENANT, method, urllib.parse.urlsplit(url).path, ts, nonce, data or b""
+        )
     request = urllib.request.Request(url, data=data, method=method, headers=all_headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -108,7 +122,7 @@ def run_hook(base_url: str, artifact: str, env: str, env_digest: str, rule_diges
              deployment_id: str) -> tuple[int, str]:
     proc = subprocess.run(
         [
-            sys.executable, str(HOOK),
+            sys.executable, str(HOOK), "admit",
             "--forge-url", base_url,
             "--tenant", TENANT,
             "--artifact-digest", artifact,
@@ -119,6 +133,30 @@ def run_hook(base_url: str, artifact: str, env: str, env_digest: str, rule_diges
             "--requested-by", "p6.acceptance",
             "--timeout", "15",
         ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET},
+    )
+    return proc.returncode, proc.stdout.strip()
+
+
+def run_hook_outcome(base_url: str, admission_id: str, status: str, detail: str,
+                     rollback_to: str | None = None) -> tuple[int, str]:
+    """Record a REAL deployment outcome through the supplied pipeline integration."""
+    command = [
+        sys.executable, str(HOOK), "outcome",
+        "--forge-url", base_url,
+        "--tenant", TENANT,
+        "--admission-id", admission_id,
+        "--status", status,
+        "--detail", detail,
+        "--timeout", "15",
+    ]
+    if rollback_to:
+        command += ["--rollback-to", rollback_to]
+    proc = subprocess.run(
+        command,
         capture_output=True,
         text=True,
         timeout=60,
@@ -253,7 +291,9 @@ def main() -> int:
             check("A4", "production before staging acceptance fails (staging-first)",
                   code == 2 and "staging_acceptance_missing" in out, {"exit": code, "stdout": out})
 
-            # A3 — valid unexpired READY artifact under the required policy passes
+            # A3 — valid unexpired READY artifact under the required policy passes; the
+            # staging SUCCESS is recorded through the REAL pipeline integration (hook
+            # outcome subcommand), which is what unlocks production.
             code, out = run_hook(base, f"sha256:{v1.artifact_sha256}", "staging",
                                  env_digest, rule_digest, "deploy-a3-stg")
             staging_ok = code == 0
@@ -262,60 +302,47 @@ def main() -> int:
             production_ok = False
             prod_admission: str | None = None
             if staging_ok:
-                status, _ = http(
-                    "POST",
-                    f"{base}/v1/deployments/admissions/{staging_admission}/outcome",
-                    {"status": "SUCCEEDED", "detail": "staging smoke green"},
-                    sign=True,
-                )
-                outcome_ok = status == 201
+                outcome_code, outcome_out = run_hook_outcome(
+                    base, staging_admission, "SUCCEEDED", "staging smoke green")
+                outcome_ok = (outcome_code == 0
+                              and json.loads(outcome_out).get("recorded") is True)
                 code, out = run_hook(base, v1.artifact_sha256, "production",
                                      env_digest, rule_digest, "deploy-a3-prd")
                 production_ok = code == 0
                 prod_admission = json.loads(out)["admission_id"] if production_ok else None
-            check("A3", "valid unexpired READY artifact passes staging->production via hook",
+            check("A3", "READY artifact passes staging->production, outcomes via pipeline hook",
                   staging_ok and outcome_ok and production_ok,
-                  {"staging_exit0": staging_ok, "outcome_201": outcome_ok,
+                  {"staging_exit0": staging_ok, "outcome_recorded": outcome_ok,
                    "production_exit0": production_ok})
 
-            # A6 — failed v2 production deployment yields rollback evidence to v1
+            # A6 — failed v2 production deployment yields rollback evidence to v1; every
+            # outcome (success, failure, rollback) is recorded through the pipeline hook.
             if prod_admission is None:
                 raise RuntimeError("A3 did not produce a production admission; cannot continue")
-            status, _ = http(
-                "POST",
-                f"{base}/v1/deployments/admissions/{prod_admission}/outcome",
-                {"status": "SUCCEEDED", "detail": "v1 live in production"},
-                sign=True,
-            )
+            run_hook_outcome(base, prod_admission, "SUCCEEDED", "v1 live in production")
             code, out = run_hook(base, v2.artifact_sha256, "staging",
                                  env_digest, rule_digest, "deploy-a6-stg")
             v2_staging = json.loads(out)["admission_id"]
-            http("POST", f"{base}/v1/deployments/admissions/{v2_staging}/outcome",
-                 {"status": "SUCCEEDED", "detail": "v2 staging green"}, sign=True)
+            run_hook_outcome(base, v2_staging, "SUCCEEDED", "v2 staging green")
             code, out = run_hook(base, v2.artifact_sha256, "production",
                                  env_digest, rule_digest, "deploy-a6-prd")
             v2_production = json.loads(out)["admission_id"]
-            status, failure = http(
-                "POST",
-                f"{base}/v1/deployments/admissions/{v2_production}/outcome",
-                {"status": "FAILED", "detail": "v2 production smoke red"},
-                sign=True,
-            )
+            failure_code, failure_out = run_hook_outcome(
+                base, v2_production, "FAILED", "v2 production smoke red")
+            failure = json.loads(failure_out) if failure_out else {}
             candidate = (failure.get("payload") or {}).get("rollback_candidate") or {}
             status, rollback = http("GET", f"{base}/v1/deployments/rollback-target")
             target_info = rollback.get("rollback_target") or {}
-            status, rolled = http(
-                "POST",
-                f"{base}/v1/deployments/admissions/{v2_production}/outcome",
-                {"status": "ROLLED_BACK", "detail": "restored v1",
-                 "rollback_to": v1.artifact_sha256},
-                sign=True,
-            )
+            rolled_code, rolled_out = run_hook_outcome(
+                base, v2_production, "ROLLED_BACK", "restored v1",
+                rollback_to=v1.artifact_sha256)
+            rolled = json.loads(rolled_out) if rolled_out else {}
             check("A6", "failed production deployment produces rollback evidence to last-known-good",
-                  candidate.get("artifact_sha256") == v1.artifact_sha256
+                  failure_code == 0
+                  and candidate.get("artifact_sha256") == v1.artifact_sha256
                   and target_info.get("artifact_sha256") == v1.artifact_sha256
-                  and status == 201
-                  and rolled["payload"]["rollback_to"] == v1.artifact_sha256,
+                  and rolled_code == 0
+                  and (rolled.get("payload") or {}).get("rollback_to") == v1.artifact_sha256,
                   {"failure_candidate": candidate, "rollback_target": target_info,
                    "rolled_back": rolled.get("payload")})
 
@@ -383,6 +410,33 @@ def main() -> int:
                   status_unsigned == 401
                   and unsigned_body.get("detail") == "deployment_credential_signature_missing",
                   {"status": status_unsigned, "body": unsigned_body})
+
+            # A11 — an EXACT byte-for-byte replay of an accepted signed mutation is rejected
+            replay_body = json.dumps({
+                "artifact_sha256": digest("replay-check"),
+                "deployment_environment": "staging",
+                "environment_identity_digest": env_digest,
+                "rule_manifest_digest": rule_digest,
+                "deployment_id": "deploy-a11",
+                "requested_by": "p6.acceptance",
+            }).encode("utf-8")
+            replay_ts = to_utc_iso(utc_now())
+            replay_nonce = secrets.token_hex(16)
+            replay_headers = {
+                DEPLOY_TIMESTAMP_HEADER: replay_ts,
+                DEPLOY_NONCE_HEADER: replay_nonce,
+                DEPLOY_SIGNATURE_HEADER: sign_deployment_request(
+                    DEPLOY_SECRET, TENANT, "POST", "/v1/deployments/admissions",
+                    replay_ts, replay_nonce, replay_body),
+            }
+            first_status, _ = http("POST", f"{base}/v1/deployments/admissions",
+                                   replay_body, replay_headers)
+            replay_status, replay_response = http("POST", f"{base}/v1/deployments/admissions",
+                                                  replay_body, replay_headers)
+            check("A11", "exact replay of a signed mutation is rejected (nonce consumed)",
+                  first_status == 200 and replay_status == 401
+                  and replay_response.get("detail") == "deployment_credential_nonce_reused",
+                  {"first": first_status, "replay": replay_status, "body": replay_response})
         finally:
             server.should_exit = True
             thread.join(timeout=10)

@@ -575,3 +575,42 @@ def test_policy_rollover_rejects_stale_caller_supplied_manifest_digest(
     decision = rolled.admit(active, ACTOR)
     assert decision.allowed is False
     assert "rule_manifest_mismatch" in decision.reasons
+
+
+def test_nonce_consumption_is_atomic_and_persistent_across_instances(tmp_path):
+    """Replay protection survives worker restarts: a nonce consumed by one ledger
+    instance is rejected by ANOTHER instance over the same database, and concurrent
+    consumers agree on exactly one winner."""
+    path = tmp_path / "deployments.sqlite3"
+    first = DeploymentLedger(path)
+    assert first.consume_nonce(TENANT, "nonce-persistence-0001", ttl_seconds=600) is True
+    # same instance replay
+    assert first.consume_nonce(TENANT, "nonce-persistence-0001", ttl_seconds=600) is False
+    # a NEW instance (simulated restart / second worker) still sees it consumed
+    second = DeploymentLedger(path)
+    assert second.consume_nonce(TENANT, "nonce-persistence-0001", ttl_seconds=600) is False
+    # nonces are tenant-scoped: another tenant may use the same nonce value
+    assert second.consume_nonce("tenant-beta", "nonce-persistence-0001", ttl_seconds=600) is True
+
+    # concurrent consumption of ONE fresh nonce across instances -> exactly one winner
+    ledgers = [DeploymentLedger(path) for _ in range(4)]
+    results: list[bool] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(len(ledgers))
+
+    def consume(ledger: DeploymentLedger) -> None:
+        barrier.wait()
+        outcome = ledger.consume_nonce(TENANT, "nonce-concurrent-0001", ttl_seconds=600)
+        with lock:
+            results.append(outcome)
+
+    threads = [threading.Thread(target=consume, args=(ledger,)) for ledger in ledgers]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert sorted(results) == [False, False, False, True]
+
+    # an EXPIRED nonce can be pruned and reused (TTL window bounds the replay cache)
+    assert first.consume_nonce(TENANT, "nonce-expiring-0001", ttl_seconds=-1) is True
+    assert first.consume_nonce(TENANT, "nonce-expiring-0001", ttl_seconds=-1) is True

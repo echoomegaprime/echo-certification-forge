@@ -22,6 +22,7 @@ import secrets
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Iterator
@@ -189,9 +190,63 @@ class DeploymentLedger:
         CREATE TRIGGER IF NOT EXISTS no_delete_deployment_records
             BEFORE DELETE ON deployment_records
         BEGIN SELECT RAISE(ABORT, 'deployment_records are append-only'); END;
+        -- Deployment-credential replay protection. Lives in the SAME SQLite file as the
+        -- ledger so nonce consumption is shared by every worker process and survives
+        -- restarts. Deliberately NOT append-only: expired nonces are pruned.
+        CREATE TABLE IF NOT EXISTS deployment_credential_nonces (
+            tenant_id TEXT NOT NULL,
+            nonce TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, nonce)
+        );
         """
         with self._connection() as connection:
             connection.executescript(schema)
+
+    def consume_nonce(self, tenant_id: str, nonce: str, ttl_seconds: float) -> bool:
+        """Atomically consume a deployment-credential nonce; return False on replay.
+
+        The INSERT under ``BEGIN IMMEDIATE`` is the atomic first-use claim: two racing
+        requests presenting the same ``(tenant_id, nonce)`` cannot both win — the loser
+        hits the primary key and the request is rejected. Persistence in the ledger's
+        SQLite file makes the rejection hold across workers and service restarts for at
+        least ``ttl_seconds`` (which must exceed the signature timestamp window, so an
+        expired-then-pruned nonce can no longer be replayed anyway). Expired rows are
+        pruned opportunistically inside the same transaction.
+        """
+        require_identifier(tenant_id, "tenant_id")
+        now = utc_now()
+        connection = self._connect()
+        try:
+            connection.isolation_level = None
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    "DELETE FROM deployment_credential_nonces WHERE expires_at < ?",
+                    (to_utc_iso(now),),
+                )
+                try:
+                    connection.execute(
+                        "INSERT INTO deployment_credential_nonces"
+                        " (tenant_id, nonce, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                        (
+                            tenant_id,
+                            nonce,
+                            to_utc_iso(now + timedelta(seconds=ttl_seconds)),
+                            to_utc_iso(now),
+                        ),
+                    )
+                except sqlite3.IntegrityError:
+                    connection.execute("COMMIT")
+                    return False
+                connection.execute("COMMIT")
+                return True
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+        finally:
+            connection.close()
 
     def append(
         self,

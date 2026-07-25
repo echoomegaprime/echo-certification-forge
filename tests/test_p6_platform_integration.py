@@ -9,7 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import secrets as _secrets
+import shutil
+import socket
+import subprocess
 import sys
+import threading
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -18,8 +25,10 @@ from fastapi.testclient import TestClient
 
 from echo_certification_forge.canonical import to_utc_iso, utc_now
 from echo_certification_forge.deployment_service import (
+    DEPLOY_NONCE_HEADER,
     DEPLOY_SIGNATURE_HEADER,
     DEPLOY_TIMESTAMP_HEADER,
+    sign_deployment_request,
 )
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
 from echo_certification_forge.models import EnvironmentIdentity, RunState, TargetIdentity
@@ -114,24 +123,50 @@ def _admit_body(
 
 
 def _deploy_headers(
+    method: str,
+    path: str,
     body: bytes = b"",
     secret: str = DEPLOY_SECRET,
     tenant: str = TENANT,
     timestamp: str | None = None,
+    nonce: str | None = None,
+    sign_method: str | None = None,
+    sign_path: str | None = None,
+    sign_tenant: str | None = None,
+    sign_body: bytes | None = None,
+    omit_nonce: bool = False,
 ) -> dict:
-    """Deployment-credential HMAC headers over the EXACT request body bytes."""
+    """v2 deployment-credential headers binding tenant, method, path, nonce and body.
+
+    The ``sign_*`` overrides let negative tests sign a DIFFERENT canonical string
+    than the request actually sent (cross-path retarget, altered method, ...).
+    """
     ts = timestamp or to_utc_iso(utc_now())
-    return {
+    used_nonce = nonce or _secrets.token_hex(16)
+    headers = {
         "X-Tenant-ID": tenant,
         DEPLOY_TIMESTAMP_HEADER: ts,
-        DEPLOY_SIGNATURE_HEADER: sign_webhook(secret, ts, body),
+        DEPLOY_SIGNATURE_HEADER: sign_deployment_request(
+            secret,
+            sign_tenant if sign_tenant is not None else tenant,
+            sign_method if sign_method is not None else method,
+            sign_path if sign_path is not None else path,
+            ts,
+            used_nonce,
+            sign_body if sign_body is not None else body,
+        ),
         "Content-Type": "application/json",
     }
+    if not omit_nonce:
+        headers[DEPLOY_NONCE_HEADER] = used_nonce
+    return headers
 
 
 def _post_signed(client, url: str, body: dict | None = None, **header_kwargs):
     raw = b"" if body is None else json.dumps(body).encode("utf-8")
-    return client.post(url, content=raw or None, headers=_deploy_headers(raw, **header_kwargs))
+    return client.post(
+        url, content=raw or None, headers=_deploy_headers("POST", url, raw, **header_kwargs)
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -221,7 +256,9 @@ def test_http_admission_requires_tenant_and_is_fail_closed(client, environment, 
 
     # properly signed but uncertified -> recorded fail-closed denial
     response = client.post(
-        "/v1/deployments/admissions", content=raw, headers=_deploy_headers(raw)
+        "/v1/deployments/admissions",
+        content=raw,
+        headers=_deploy_headers("POST", "/v1/deployments/admissions", raw),
     )
     assert response.status_code == 200
     decision = response.json()
@@ -230,44 +267,41 @@ def test_http_admission_requires_tenant_and_is_fail_closed(client, environment, 
 
 
 def test_http_mutations_require_deployment_credentials(client, environment, manifest):
-    """Blocker 1 negatives: every mutation demands a tenant-bound HMAC credential."""
+    """Blocker 1 negatives: every mutation demands a tenant-bound v2 HMAC credential."""
+    url = "/v1/deployments/admissions"
     body = _admit_body(_digest("cred-check"), "staging", environment, manifest, "deploy-c1")
     raw = json.dumps(body).encode("utf-8")
 
     # wrong secret -> 401
-    response = client.post(
-        "/v1/deployments/admissions",
-        content=raw,
-        headers=_deploy_headers(raw, secret="wrong-deploy-secret"),
-    )
+    response = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw, secret="wrong-deploy-secret"))
     assert response.status_code == 401
     assert response.json()["detail"] == "deployment_credential_signature_invalid"
 
     # ANOTHER tenant's valid credential cannot authorize THIS tenant's mutation
-    response = client.post(
-        "/v1/deployments/admissions",
-        content=raw,
-        headers=_deploy_headers(raw, secret=OTHER_DEPLOY_SECRET),
-    )
+    response = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw, secret=OTHER_DEPLOY_SECRET))
     assert response.status_code == 401
     assert response.json()["detail"] == "deployment_credential_signature_invalid"
 
     # stale timestamp -> 401
     stale = to_utc_iso(utc_now() - timedelta(seconds=3600))
-    response = client.post(
-        "/v1/deployments/admissions", content=raw, headers=_deploy_headers(raw, timestamp=stale)
-    )
+    response = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw, timestamp=stale))
     assert response.status_code == 401
     assert response.json()["detail"] == "deployment_credential_timestamp_stale"
 
     # tenant with no registered deployment credential -> 401
-    response = client.post(
-        "/v1/deployments/admissions",
-        content=raw,
-        headers=_deploy_headers(raw, tenant="tenant-gamma"),
-    )
+    response = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw, tenant="tenant-gamma"))
     assert response.status_code == 401
     assert response.json()["detail"] == "deployment_credential_tenant_not_registered"
+
+    # missing nonce header -> 401 (v2 signatures REQUIRE a unique nonce)
+    response = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw, omit_nonce=True))
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_nonce_missing"
+
+    # malformed nonce -> 401
+    response = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw, nonce="short"))
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_nonce_invalid"
 
     # unsigned binding mutation -> 401
     response = client.post(
@@ -284,6 +318,68 @@ def test_http_mutations_require_deployment_credentials(client, environment, mani
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "deployment_credential_signature_missing"
+
+
+def test_http_mutation_signature_binds_method_path_tenant_body(client, environment, manifest):
+    """The v2 canonical string covers method, path, tenant and body; altering ANY
+    component after signing invalidates the signature (no cross-path retargeting)."""
+    url = "/v1/deployments/admissions"
+    body = _admit_body(_digest("bind-check"), "staging", environment, manifest, "deploy-b1")
+    raw = json.dumps(body).encode("utf-8")
+
+    # cross-path retarget: signature minted for the outcome path cannot authorize admission
+    response = client.post(
+        url,
+        content=raw,
+        headers=_deploy_headers(
+            "POST", url, raw, sign_path="/v1/deployments/admissions/dep-a/outcome"
+        ),
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_invalid"
+
+    # altered method in the canonical string -> invalid
+    response = client.post(
+        url, content=raw, headers=_deploy_headers("POST", url, raw, sign_method="PUT")
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_invalid"
+
+    # tenant mismatch between canonical string and X-Tenant-ID header -> invalid
+    response = client.post(
+        url, content=raw, headers=_deploy_headers("POST", url, raw, sign_tenant=OTHER_TENANT)
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_invalid"
+
+    # body altered after signing -> invalid
+    tampered = _admit_body(_digest("bind-check"), "production", environment, manifest, "deploy-b1")
+    tampered_raw = json.dumps(tampered).encode("utf-8")
+    response = client.post(
+        url, content=tampered_raw, headers=_deploy_headers("POST", url, raw, sign_body=raw)
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_invalid"
+
+
+def test_http_mutation_exact_replay_rejected(client, environment, manifest):
+    """An EXACT byte-for-byte replay of an accepted signed mutation is rejected:
+    the nonce is consumed atomically on first use."""
+    url = "/v1/deployments/admissions"
+    body = _admit_body(_digest("replay-check"), "staging", environment, manifest, "deploy-r1")
+    raw = json.dumps(body).encode("utf-8")
+    headers = _deploy_headers("POST", url, raw)
+
+    first = client.post(url, content=raw, headers=headers)
+    assert first.status_code == 200  # fail-closed denial is still an accepted request
+
+    replay = client.post(url, content=raw, headers=headers)
+    assert replay.status_code == 401
+    assert replay.json()["detail"] == "deployment_credential_nonce_reused"
+
+    # a fresh nonce (new signature) from the same caller works again
+    fresh = client.post(url, content=raw, headers=_deploy_headers("POST", url, raw))
+    assert fresh.status_code == 200
 
 
 def test_http_binding_refuses_unsigned_run_and_foreign_tenant(
@@ -632,3 +728,199 @@ def test_run_worker_executes_webhook_declared_run_end_to_end(
     )
     assert outcome["error"] == "target_reconciliation_failed"
     assert "target_declared_artifact_mismatch" in outcome["detail"]
+
+
+# --------------------------------------------------------------------------------------
+# Policy rollover — run identity binds the server-side ACTIVE manifest digest
+# --------------------------------------------------------------------------------------
+
+
+def test_policy_rollover_creates_new_recertification_run(store, manifest, signer, tmp_path):
+    """A manifest rollover that keeps manifest_id but changes rule CONTENT (new digest)
+    must NOT deduplicate a replayed submission to the stale pre-rollover run — it must
+    deterministically create a NEW recertification run, while replays under the SAME
+    digest still deduplicate."""
+    import dataclasses
+
+    trusted = TrustedPublicKeyRegistry.empty()
+    trusted.add_pem(signer.public_key_pem)
+
+    def make_client(active_manifest) -> TestClient:
+        return TestClient(
+            create_app(
+                ServiceContext(
+                    store=store,
+                    manifest=active_manifest,
+                    trusted_keys=trusted,
+                    deployment_ledger_path=tmp_path / "deployments.sqlite3",
+                    webhook_secrets=WebhookSecretRegistry(secrets={TENANT: SECRET}),
+                    deployment_credentials=WebhookSecretRegistry(
+                        secrets={TENANT: DEPLOY_SECRET}
+                    ),
+                )
+            )
+        )
+
+    body = {
+        "tenant_id": TENANT,
+        "target": {
+            "target_type": "git",
+            "identity_digest": _digest("rollover-target"),
+            "reference": "https://github.com/example/project@abc123",
+        },
+        "environment": {
+            "identity_digest": _digest("rollover-env"),
+            "runner_image_digest": "sha256:" + _digest("rollover-runner"),
+        },
+        "policy_version": manifest.manifest_id,
+        "idempotency_key": "key-rollover-0001",
+    }
+    headers = {"X-Tenant-ID": TENANT}
+
+    old_client = make_client(manifest)
+    first = old_client.post("/v1/certifications", json=body, headers=headers)
+    assert first.status_code == 201
+    original_run = first.json()["run_id"]
+
+    # same manifest digest -> replay still deduplicates
+    replay = old_client.post("/v1/certifications", json=body, headers=headers)
+    assert replay.status_code == 200
+    assert replay.json()["run_id"] == original_run
+
+    # content rollover: SAME manifest_id, NEW server-side digest
+    rolled_manifest = dataclasses.replace(
+        manifest, digest=_digest("rolled-over-manifest-content")
+    )
+    assert rolled_manifest.manifest_id == manifest.manifest_id
+    new_client = make_client(rolled_manifest)
+
+    # identical request + identical idempotency key -> a NEW recertification run
+    recert = new_client.post("/v1/certifications", json=body, headers=headers)
+    assert recert.status_code == 201, recert.text
+    recert_run = recert.json()["run_id"]
+    assert recert_run != original_run
+    assert recert.json()["release_verdict"] == "NOT_READY"  # default-deny at intake
+
+    # replays under the NEW digest deduplicate to the NEW run (deterministic)
+    again = new_client.post("/v1/certifications", json=body, headers=headers)
+    assert again.status_code == 200
+    assert again.json()["run_id"] == recert_run
+
+    # both runs exist: the stale one was never silently reused as the new certification
+    run_ids = {row["run_id"] for row in store.list_runs(TENANT)}
+    assert {original_run, recert_run} <= run_ids
+
+
+# --------------------------------------------------------------------------------------
+# deploy/enforce_admission.sh — outcome recording through the supplied integration
+# --------------------------------------------------------------------------------------
+
+_GIT_BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
+
+
+def _bash_executable() -> str | None:
+    if os.name == "nt":
+        return str(_GIT_BASH) if _GIT_BASH.exists() else None
+    return shutil.which("bash")
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+@pytest.mark.skipif(_bash_executable() is None, reason="no usable bash for the .sh integration")
+def test_enforce_admission_sh_records_real_outcomes_end_to_end(
+    context, certified_target, environment, manifest
+):
+    """The supplied pipeline integration closes the loop by itself: enforce_admission.sh
+    obtains the admission, runs the REAL deploy command, and records the REAL outcome —
+    a staging success recorded by the script is what unlocks production, and a failing
+    deploy exits nonzero with a FAILED outcome in the audit ledger."""
+    import urllib.request
+
+    import uvicorn
+
+    app = create_app(context)
+    client = TestClient(app)
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
+    assert response.status_code == 201
+
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{base}/healthz", timeout=2) as live:
+                if live.status == 200:
+                    break
+        except OSError:
+            time.sleep(0.2)
+    else:
+        raise RuntimeError("live service never became healthy")
+
+    bash = _bash_executable()
+    script = str(Path(__file__).parents[1] / "deploy" / "enforce_admission.sh").replace("\\", "/")
+    base_env = {
+        **os.environ,
+        "CERTFORGE_URL": base,
+        "CERTFORGE_TENANT": TENANT,
+        "CERTFORGE_ARTIFACT_DIGEST": certified_target.artifact_sha256,
+        "CERTFORGE_ENV_IDENTITY_DIGEST": environment.identity_digest,
+        "CERTFORGE_RULE_MANIFEST_DIGEST": manifest.digest,
+        "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET,
+        "CERTFORGE_PYTHON": sys.executable.replace("\\", "/"),
+    }
+
+    def run_wrapper(deploy_env: str, deployment_id: str, *deploy_cmd: str):
+        return subprocess.run(
+            [bash, script, *deploy_cmd],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**base_env, "CERTFORGE_ENVIRONMENT": deploy_env,
+                 "CERTFORGE_DEPLOYMENT_ID": deployment_id},
+        )
+
+    try:
+        # production FIRST is denied (exit 2) and no deploy command runs
+        proc = run_wrapper("production", "deploy-sh-early", "true")
+        assert proc.returncode == 2, proc.stdout + proc.stderr
+        assert "staging_acceptance_missing" in proc.stdout
+
+        # a missing deploy command is fail-closed BEFORE any admission is minted
+        proc = run_wrapper("staging", "deploy-sh-noargs")
+        assert proc.returncode == 3
+        assert "no deploy command supplied" in proc.stderr
+
+        # staging deploy through the wrapper succeeds and records SUCCEEDED
+        staging_proc = run_wrapper("staging", "deploy-sh-stg", "true")
+        assert staging_proc.returncode == 0, staging_proc.stdout + staging_proc.stderr
+        assert "DEPLOYMENT SUCCEEDED" in staging_proc.stdout
+        assert '"recorded": true' in staging_proc.stdout
+        assert '"status": "SUCCEEDED"' in staging_proc.stdout
+
+        # production is admissible ONLY because the wrapper recorded staging success
+        prod_proc = run_wrapper("production", "deploy-sh-prd", "true")
+        assert prod_proc.returncode == 0, prod_proc.stdout + prod_proc.stderr
+        assert '"status": "SUCCEEDED"' in prod_proc.stdout
+
+        # a FAILING production deploy exits with the deploy status and records FAILED
+        fail_proc = run_wrapper("production", "deploy-sh-fail", "false")
+        assert fail_proc.returncode == 1, fail_proc.stdout + fail_proc.stderr
+        assert "recording FAILED outcome" in fail_proc.stderr
+        assert '"status": "FAILED"' in fail_proc.stdout
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+
+    audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
+    assert audit["chain_valid"] is True
+    outcomes = [row for row in audit["records"] if row["record_type"] == "OUTCOME"]
+    # staging SUCCEEDED + production SUCCEEDED + production FAILED, all via the script
+    assert len(outcomes) == 3
+    assert all(row["admission_id"] for row in outcomes)
