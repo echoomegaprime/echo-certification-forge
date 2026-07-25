@@ -20,6 +20,7 @@ from echo_certification_forge.adapter_execution import (
 )
 from echo_certification_forge.canonical import canonical_json, sha256_bytes
 from echo_certification_forge.family_r5 import CHALLENGE_HEADER, HttpResult
+from echo_certification_forge.family_r5 import execute as execute_r5
 from echo_certification_forge.p5_qualification import (
     EXPECTED_EVAL_ROWS,
     QualificationArtifactDigests,
@@ -30,6 +31,8 @@ from echo_certification_forge.p5_qualification import (
     TrustedRoutingKey,
     run_qualification,
 )
+from test_family_r5 import FakeFamilyTransport as FakeR5Transport
+from test_family_r5 import expected as expected_r5
 
 ROOT = Path(__file__).resolve().parents[1]
 GS_EVAL = ROOT / "artifacts" / "p5" / "corpora" / "gs343_p5_v1" / "eval.jsonl"
@@ -315,60 +318,38 @@ def _candidate_sources_from_report(
     report: Mapping[str, Any],
     transport: FakeQualificationTransport,
 ) -> tuple[AdapterEvidenceSource, AdapterEvidenceSource]:
-    checkpoint = {
-        row["key"]: row
-        for row in _jsonl(Path(report["response_receipts"]["path"]))
-    }
     sources: list[AdapterEvidenceSource] = []
-    for adapter, model in (
-        ("gs343", GS_CANDIDATE),
-        ("r2d2", R2_CANDIDATE),
+    for adapter, model, wrong_model, digest, wrong_digest in (
+        (
+            "gs343",
+            GS_CANDIDATE,
+            R2_CANDIDATE,
+            _artifact_digest(GS_CANDIDATE),
+            _artifact_digest(R2_CANDIDATE),
+        ),
+        (
+            "r2d2",
+            R2_CANDIDATE,
+            GS_CANDIDATE,
+            _artifact_digest(R2_CANDIDATE),
+            _artifact_digest(GS_CANDIDATE),
+        ),
     ):
-        row = next(
-            item
-            for item in checkpoint.values()
-            if item["adapter"] == adapter and item["role"] == "candidate"
-        )
         evidence = tmp_path / f"{adapter}-r5"
-        evidence.mkdir(parents=True)
-        (evidence / "r5-report.json").write_bytes(
-            (
-                json.dumps(
-                    {
-                        "r5_gate": "PASS",
-                        "run_outcome": "COMPLETE",
-                        "expected_identity": {"target_model": model},
-                        "forge_verification_bundle": {
-                            "public_key_pem": transport.public_key_pem,
-                            "attested_key_id": transport.key_id,
-                        },
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8")
+        r5_transport = FakeR5Transport(
+            private_key=transport.private_key,
+            target=model,
+            wrong=wrong_model,
+            target_digest=digest,
+            wrong_digest=wrong_digest,
+            maturity="STABLE",
         )
-        (evidence / "positive-target.json").write_bytes(
-            (
-                json.dumps(
-                    {"status_code": 200, "body": row["response_body"]},
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8")
+        r5_report = execute_r5(
+            expected_r5(r5_transport),
+            transport=r5_transport,
+            evidence_directory=evidence,
         )
-        (evidence / "evidence-manifest.json").write_bytes(
-            (
-                json.dumps(
-                    {"entries": [], "merkle_root": sha256_bytes(b"")},
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8")
-        )
+        assert r5_report["r5_gate"] == "PASS"
         sources.append(
             AdapterEvidenceSource(
                 adapter,
@@ -715,6 +696,10 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
             "p5-qualifier-e2e",
             "--tenant-id",
             "echo-sovereign",
+            "--adapter-registry-id",
+            "p5-e2e-registry",
+            "--adapter-policy-id",
+            "p5-e2e-policy",
             "--qualification-report",
             str(report["report_path"]),
             "--gs343-r5-evidence",

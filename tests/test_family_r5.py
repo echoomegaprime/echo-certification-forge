@@ -27,9 +27,19 @@ class FakeFamilyTransport:
     tamper_error_signature: bool = False
     attestation_server_digest: str = SERVER_DIGEST
     private_key: Ed25519PrivateKey = field(default_factory=Ed25519PrivateKey.generate)
-    loaded: list[str] = field(default_factory=lambda: [TARGET, WRONG])
+    target: str = TARGET
+    wrong: str = WRONG
+    target_digest: str = TARGET_DIGEST
+    wrong_digest: str = WRONG_DIGEST
+    maturity: str = "CONFORMANCE_PENDING"
+    loaded: list[str] = field(default_factory=list)
     lease_token: str | None = None
     fault_target: str | None = None
+    request_counter: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.loaded:
+            self.loaded = [self.target, self.wrong]
 
     @property
     def public_key_pem(self) -> str:
@@ -67,8 +77,8 @@ class FakeFamilyTransport:
                     "drain_requested": False,
                     "lease_id": "lease-1" if self.lease_token else None,
                     "ttl_remaining_seconds": 60 if self.lease_token else 0,
-                    "unloaded": [TARGET] if TARGET not in self.loaded else [],
-                    "fault_targets": [TARGET] if self.fault_target else [],
+                    "unloaded": [self.target] if self.target not in self.loaded else [],
+                    "fault_targets": [self.target] if self.fault_target else [],
                 },
             })
         if method == "GET" and path == "/v1/routing/attestation":
@@ -78,7 +88,7 @@ class FakeFamilyTransport:
                 "public_key_pem": self.public_key_pem,
                 "registry_snapshot_digest": REGISTRY_DIGEST,
                 "registry_revision": REGISTRY_REVISION,
-                "requested_models": [TARGET, WRONG],
+                "requested_models": [self.target, self.wrong],
                 "server_build_digest": self.attestation_server_digest,
                 "base_model_id": "base",
                 "base_model_revision": BASE_REVISION,
@@ -94,11 +104,18 @@ class FakeFamilyTransport:
             })
         if method == "POST" and path == "/admin/adapter-routing/fault/wrong-active":
             self._require_lease(headers)
-            assert body == {"target_adapter_id": TARGET, "wrong_adapter_id": WRONG}
-            self.fault_target = WRONG
+            assert body == {
+                "target_adapter_id": self.target,
+                "wrong_adapter_id": self.wrong,
+            }
+            self.fault_target = self.wrong
             self.lease_token = None
             return self._result(200, {
-                "armed": {"target_adapter_id": TARGET, "wrong_adapter_id": WRONG, "armed": True},
+                "armed": {
+                    "target_adapter_id": self.target,
+                    "wrong_adapter_id": self.wrong,
+                    "armed": True,
+                },
                 "released": {
                     "released": True,
                     "lease_id": "lease-1",
@@ -106,15 +123,15 @@ class FakeFamilyTransport:
                     "unloaded_preserved": False,
                 },
             })
-        if method == "POST" and path == f"/admin/adapters/{TARGET}/unload":
+        if method == "POST" and path == f"/admin/adapters/{self.target}/unload":
             self._require_lease(headers)
-            self.loaded.remove(TARGET)
-            return self._result(200, {"adapter_id": TARGET, "loaded": False})
+            self.loaded.remove(self.target)
+            return self._result(200, {"adapter_id": self.target, "loaded": False})
         if method == "POST" and path == "/admin/adapter-routing/release":
             self._require_lease(headers)
             preserve_unloaded = body.get("preserve_unloaded") is True
-            if not preserve_unloaded and TARGET not in self.loaded:
-                self.loaded.append(TARGET)
+            if not preserve_unloaded and self.target not in self.loaded:
+                self.loaded.append(self.target)
             self.lease_token = None
             if not body.get("preserve_faults"):
                 self.fault_target = None
@@ -125,19 +142,20 @@ class FakeFamilyTransport:
                 "unloaded_preserved": preserve_unloaded,
             })
         if method == "POST" and path == "/v1/chat/completions":
+            self.request_counter += 1
             challenge = headers["x-echo-routing-challenge"]
             model = body["model"]
-            if model == TARGET and TARGET not in self.loaded:
+            if model == self.target and self.target not in self.loaded:
                 receipt = self._failure_receipt(
-                    body, challenge, "ADAPTER_NOT_ACTIVE", None, [WRONG]
+                    body, challenge, "ADAPTER_NOT_ACTIVE", None, [self.wrong]
                 )
-                self.loaded.append(TARGET)
+                self.loaded.append(self.target)
                 return self._result(503, {
                     "error_code": "ADAPTER_NOT_ACTIVE",
                     "message": "adapter not active",
                     "routing_receipt": receipt,
                 })
-            if model == TARGET and self.fault_target:
+            if model == self.target and self.fault_target:
                 selected = self.fault_target
                 self.fault_target = None
                 receipt = self._failure_receipt(
@@ -149,7 +167,9 @@ class FakeFamilyTransport:
                     "routing_receipt": receipt,
                 })
             content = f"positive-{model}"
-            digest = TARGET_DIGEST if model == TARGET else WRONG_DIGEST
+            digest = (
+                self.target_digest if model == self.target else self.wrong_digest
+            )
             receipt = self._positive_receipt(body, challenge, model, digest, content)
             return self._result(200, {
                 "model": model,
@@ -170,7 +190,7 @@ class FakeFamilyTransport:
     def _common(self, body: Mapping[str, Any], challenge: str, model: str) -> dict[str, Any]:
         return {
             "schema": "echo.family-routing-receipt/v1",
-            "request_id": "request-1",
+            "request_id": f"request-{self.request_counter}",
             "challenge_nonce": challenge,
             "request_sha256": sha256_bytes(canonical_json(dict(body)).encode()),
             "requested_model": model,
@@ -198,7 +218,7 @@ class FakeFamilyTransport:
             "selected_adapter_id": model,
             "selected_adapter_digest": digest,
             "adapter_version": "v-test",
-            "maturity_state": "CONFORMANCE_PENDING",
+            "maturity_state": self.maturity,
             "persona_enabled": True,
             "routing_mode": "lora_adapter",
             "adapter_applied": True,
@@ -219,10 +239,10 @@ class FakeFamilyTransport:
         selected: str | None,
         active: list[str],
     ) -> dict[str, Any]:
-        payload = self._common(body, challenge, TARGET)
+        payload = self._common(body, challenge, self.target)
         payload.update({
             "requested_persona": "gs343",
-            "registry_adapter_id": TARGET,
+            "registry_adapter_id": self.target,
             "selected_adapter_id": selected,
             "selected_adapter_digest": None,
             "adapter_version": "v-test",
@@ -262,8 +282,10 @@ def expected(transport: FakeFamilyTransport) -> ExpectedIdentity:
         signature_key_id=transport.key_id,
         base_model_digest=BASE_DIGEST,
         base_model_revision=BASE_REVISION,
-        target_adapter_digest=TARGET_DIGEST,
-        wrong_adapter_digest=WRONG_DIGEST,
+        target_adapter_digest=transport.target_digest,
+        wrong_adapter_digest=transport.wrong_digest,
+        target_model=transport.target,
+        wrong_model=transport.wrong,
     )
 
 
@@ -275,7 +297,7 @@ def test_r5_controls_pass_and_restore() -> None:
     assert report["release_verdict"] == "NOT_READY"
     assert report["deployment_authorized"] is False
     assert report["completion_marker"] == "[R5 COMPLETE]"
-    assert transport.loaded == [WRONG, TARGET]
+    assert transport.loaded == [transport.wrong, transport.target]
     assert transport.lease_token is None
     assert transport.fault_target is None
 
@@ -287,7 +309,7 @@ def test_wrong_server_identity_blocks_before_mutation() -> None:
     assert report["run_outcome"] == "INCONCLUSIVE"
     assert "server_build_digest mismatch" in report["blocker"]
     assert transport.lease_token is None
-    assert transport.loaded == [TARGET, WRONG]
+    assert transport.loaded == [transport.target, transport.wrong]
 
 
 def test_tampered_negative_receipt_blocks_and_leaves_clean_state() -> None:
@@ -297,7 +319,7 @@ def test_tampered_negative_receipt_blocks_and_leaves_clean_state() -> None:
     assert "signature is invalid" in report["blocker"]
     assert transport.lease_token is None
     assert transport.fault_target is None
-    assert TARGET in transport.loaded
+    assert transport.target in transport.loaded
 
 
 def test_evidence_manifest_redacts_lease_token(tmp_path: Path) -> None:

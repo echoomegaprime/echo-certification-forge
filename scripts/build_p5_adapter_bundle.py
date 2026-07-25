@@ -11,26 +11,33 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from echo_certification_forge.adapter_execution import (
+    AdapterBundleTrustBinding,
     AdapterEvidenceSource,
     build_acceptance_report,
     build_records_from_evidence,
     default_p5_policy,
     external_trust_pins_digest,
+    policy_to_json,
+    r5_trust_pins_digest,
     load_json,
     sign_adapter_bundle,
     write_adapter_execution_artifacts,
 )
+from echo_certification_forge.canonical import sha256_json
 from echo_certification_forge.p5_qualification import (
     QualificationArtifactDigests,
     QualificationEvidenceTrustPins,
     TrustedRoutingKey,
 )
+from echo_certification_forge.runner import RunnerEphemeralIdentity
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--tenant-id", required=True)
+    parser.add_argument("--adapter-registry-id", required=True)
+    parser.add_argument("--adapter-policy-id", required=True)
     parser.add_argument("--qualification-report", required=True, type=Path)
     parser.add_argument("--gs343-r5-evidence", required=True, type=Path)
     parser.add_argument("--r2d2-r5-evidence", required=True, type=Path)
@@ -109,7 +116,26 @@ def main() -> int:
         qualification_trust_pins=qualification_trust_pins,
     )
     policy = default_p5_policy(records)
-    signed = sign_adapter_bundle(records, run_id=args.run_id, tenant_id=args.tenant_id)
+    runner_identity = RunnerEphemeralIdentity.generate()
+    trust_binding = AdapterBundleTrustBinding(
+        registry_id=args.adapter_registry_id,
+        runner_key_id=runner_identity.key_id,
+        policy_id=args.adapter_policy_id,
+        policy_sha256=sha256_json(policy_to_json(policy)),
+        qualification_trust_pins_sha256=qualification_trust_pins.digest,
+        r5_trust_pins_sha256=r5_trust_pins_digest(sources),
+        external_trust_pins_sha256=external_trust_pins_digest(
+            qualification_trust_pins,
+            sources,
+        ),
+    )
+    signed = sign_adapter_bundle(
+        records,
+        run_id=args.run_id,
+        tenant_id=args.tenant_id,
+        trust_binding=trust_binding,
+        runner_identity=runner_identity,
+    )
     report = build_acceptance_report(
         signed.response,
         signed.runner_public_key_pem,
@@ -117,10 +143,7 @@ def main() -> int:
         tenant_id=args.tenant_id,
         policy=policy,
         expected_adapter_set_sha256=signed.adapter_set_sha256,
-        external_trust_pins_sha256=external_trust_pins_digest(
-            qualification_trust_pins,
-            sources,
-        ),
+        trust_binding=trust_binding,
     )
     write_adapter_execution_artifacts(
         args.output_directory,

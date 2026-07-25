@@ -20,9 +20,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .acquisition import AcquisitionError, acquire_target
 from .adapter_policy import AdapterAcceptancePolicy, load_adapter_acceptance_policy
+from .adapter_registry import load_trusted_adapter_registry
+from .adapter_execution import policy_to_json
 from .adapter_transport import parse_verified_adapter_bundle
 from .adapters import AdapterExecutionRecord, adapter_set_digest
-from .canonical import sha256_bytes
+from .canonical import sha256_bytes, sha256_json
 from .evidence import EvidenceStore
 from .executor import RetentionPolicy, RunExecutor, StaticEntitlement
 from .models import EnvironmentIdentity, RunOutcome, RunState, TargetIdentity
@@ -155,23 +157,25 @@ def run(
 def _load_adapter_inputs(
     *,
     response_path: Path,
-    public_key_path: Path,
     policy_path: Path,
+    registry_path: Path,
     run_id: str,
     tenant: str,
-    allowed_runner_id: str,
 ) -> tuple[tuple[AdapterExecutionRecord, ...], AdapterAcceptancePolicy]:
     try:
+        registry = load_trusted_adapter_registry(registry_path)
         response = RunnerResponse.model_validate_json(response_path.read_text(encoding="utf-8"))
-        public_key_pem = public_key_path.read_text(encoding="ascii")
         records = parse_verified_adapter_bundle(
             response,
-            public_key_pem,
+            registry.runner_public_key_pem,
             expected_run_id=run_id,
             expected_tenant_id=tenant,
-            allowed_runner_ids=(allowed_runner_id,),
+            allowed_runner_ids=(registry.runner_id,),
+            expected_trust_roots=registry.trust_roots,
         )
         policy = load_adapter_acceptance_policy(policy_path)
+        if sha256_json(policy_to_json(policy)) != registry.policy_sha256:
+            raise ValueError("adapter policy differs from independent registry")
     except (OSError, TypeError, ValueError) as exc:
         raise ValueError(f"adapter_input_rejected:{type(exc).__name__}:{exc}") from exc
     return records, policy
@@ -224,11 +228,15 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("ECHO_CERTFORGE_SANDBOX_DOCKER", "docker"),
     )
     parser.add_argument("--adapter-response", type=Path, default=None)
-    parser.add_argument("--adapter-runner-public-key", type=Path, default=None)
     parser.add_argument("--adapter-policy", type=Path, default=None)
     parser.add_argument(
-        "--adapter-runner-id",
-        default=os.environ.get("ECHO_CERTFORGE_ADAPTER_RUNNER_ID", "anvil-adapter-runner"),
+        "--adapter-registry",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_ADAPTER_REGISTRY"])
+            if os.environ.get("ECHO_CERTFORGE_ADAPTER_REGISTRY")
+            else None
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -247,8 +255,8 @@ def main(argv: list[str] | None = None) -> int:
 
     adapter_paths = (
         args.adapter_response,
-        args.adapter_runner_public_key,
         args.adapter_policy,
+        args.adapter_registry,
     )
     supplied_count = sum(path is not None for path in adapter_paths)
     if supplied_count not in (0, 3):
@@ -258,8 +266,8 @@ def main(argv: list[str] | None = None) -> int:
                     "error": "adapter_input_incomplete",
                     "required": [
                         "--adapter-response",
-                        "--adapter-runner-public-key",
                         "--adapter-policy",
+                        "--adapter-registry",
                     ],
                 }
             )
@@ -272,11 +280,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             adapter_records, adapter_policy = _load_adapter_inputs(
                 response_path=args.adapter_response,
-                public_key_path=args.adapter_runner_public_key,
                 policy_path=args.adapter_policy,
+                registry_path=args.adapter_registry,
                 run_id=args.run_id,
                 tenant=args.tenant,
-                allowed_runner_id=args.adapter_runner_id,
             )
         except ValueError as exc:
             print(json.dumps({"error": "adapter_input_rejected", "detail": str(exc)}))

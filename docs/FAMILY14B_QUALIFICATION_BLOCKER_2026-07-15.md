@@ -59,6 +59,8 @@ Bundle construction does not trust the qualification summary. It verifies the co
 
 `scripts/build_p5_adapter_bundle.py` additionally requires operator-supplied qualification and R5 Ed25519 public-key/key-id pins plus all four artifact SHA-256 pins. These inputs must come from the independent release trust store, not from the qualification/R5 package. Their aggregate digest is recorded in the adapter acceptance report; self-keyed packages and cross-family alias/digest reuse are rejected.
 
+The run worker loads an independent trusted adapter registry from `--adapter-registry` or `ECHO_CERTFORGE_ADAPTER_REGISTRY`; it never trusts a public key or policy shipped beside the bundle. The registry pins the runner key, policy ID/digest, and qualification/R5 trust-root digests, all of which are signed into the bundle payload. Production bundle construction accepts only complete `echo.certification-forge.p5-qualification/v1` evidence. Each R5 source must be the canonical full-run package with the complete Merkle-bound manifest, positive probes, wrong-active and unloaded negative controls, full-mode verification bundle, and every signed receipt.
+
 ## Discovery note
 
 Repository-required live discovery was attempted before implementation. The Arcanum search capability was unavailable in the live registry, and `echo.functions.search` returned a gateway timeout/502 after 30 seconds. The implementation therefore reuses the repository's direct-HTTP and local-scoring design from the prior `scripts/qualify_family_adapters.py`, the strict held-out schema/validation helpers in `src/echo_certification_forge/p5_corpus.py`, and the Ed25519 routing-receipt verification contract in `src/echo_certification_forge/family_r5.py`.

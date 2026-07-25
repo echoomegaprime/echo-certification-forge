@@ -24,6 +24,25 @@ SCHEMA = "echo.certification-forge.family-r5-negative-controls/v1"
 RECEIPT_SCHEMA = "echo.family-routing-receipt/v1"
 LEASE_HEADER = "x-echo-maintenance-lease"
 CHALLENGE_HEADER = "x-echo-routing-challenge"
+FULL_EVIDENCE_NAMES = frozenset(
+    {
+        "adapter-unload.json",
+        "attestation.json",
+        "final-health.json",
+        "initial-health.json",
+        "positive-target.json",
+        "positive-wrong.json",
+        "r5-report.json",
+        "unloaded-lease.json",
+        "unloaded-release.json",
+        "unloaded-response.json",
+        "unloaded-restored-health.json",
+        "wrong-active-arm.json",
+        "wrong-active-lease.json",
+        "wrong-active-response.json",
+        "wrong-active-restored-health.json",
+    }
+)
 
 
 class R5Error(RuntimeError):
@@ -472,6 +491,415 @@ def _public_key(pem: str) -> Ed25519PublicKey:
 def _key_id(key: Ed25519PublicKey) -> str:
     raw = key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     return f"ed25519:{sha256_bytes(raw)[:32]}"
+
+
+def _load_evidence_json(directory: Path, name: str) -> dict[str, Any]:
+    path = directory / name
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise R5Error(f"invalid R5 evidence {name}: {error}") from error
+    if not isinstance(value, dict):
+        raise R5Error(f"R5 evidence {name} must be an object")
+    return value
+
+
+def _verify_evidence_manifest(directory: Path) -> dict[str, Any]:
+    manifest = _load_evidence_json(directory, "evidence-manifest.json")
+    if manifest.get("schema") != "echo.certification-forge.evidence-manifest/v1":
+        raise R5Error("R5 evidence manifest schema is invalid")
+    entries = manifest.get("entries")
+    if not isinstance(entries, list) or len(entries) != len(FULL_EVIDENCE_NAMES):
+        raise R5Error("R5 full evidence manifest has the wrong entry count")
+    names: set[str] = set()
+    leaves: list[str] = []
+    for ordinal, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            raise R5Error("R5 evidence manifest entry must be an object")
+        name = entry.get("name")
+        if (
+            not isinstance(name, str)
+            or Path(name).name != name
+            or name in names
+            or entry.get("ordinal") != ordinal
+        ):
+            raise R5Error("R5 evidence manifest name or ordinal is invalid")
+        path = directory / name
+        try:
+            content = path.read_bytes()
+        except OSError as error:
+            raise R5Error(f"R5 evidence manifest file is missing: {name}") from error
+        digest = sha256_bytes(content)
+        if entry.get("sha256") != digest or entry.get("size_bytes") != len(content):
+            raise R5Error(f"R5 evidence manifest binding failed for {name}")
+        names.add(name)
+        leaves.append(digest)
+    if names != FULL_EVIDENCE_NAMES:
+        raise R5Error("R5 evidence manifest is not the canonical full-run file set")
+    if manifest.get("merkle_root") != merkle_root(leaves):
+        raise R5Error("R5 evidence manifest Merkle root is invalid")
+    disk_json = {
+        path.name
+        for path in directory.glob("*.json")
+        if path.name != "evidence-manifest.json"
+    }
+    if disk_json != FULL_EVIDENCE_NAMES:
+        raise R5Error("R5 evidence directory contains missing or unexpected JSON files")
+    return manifest
+
+
+def _verify_signed_receipt(
+    receipt: Any,
+    *,
+    key: Ed25519PublicKey,
+    key_id: str,
+) -> dict[str, Any]:
+    if not isinstance(receipt, dict):
+        raise R5Error("R5 response lacks a routing receipt")
+    payload = receipt.get("payload")
+    signature = receipt.get("signature_b64")
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(signature, str)
+        or receipt.get("key_id") != key_id
+        or payload.get("signature_key_id") != key_id
+    ):
+        raise R5Error("R5 routing receipt structure or key is invalid")
+    try:
+        key.verify(
+            base64.b64decode(signature, validate=True),
+            canonical_json(payload).encode("utf-8"),
+        )
+    except (InvalidSignature, ValueError, TypeError) as error:
+        raise R5Error("R5 routing receipt signature is invalid") from error
+    return payload
+
+
+def _verify_completion_receipt(
+    evidence: Mapping[str, Any],
+    *,
+    key: Ed25519PublicKey,
+    key_id: str,
+    model: str,
+    adapter_digest: str,
+    identity: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if evidence.get("status_code") != 200:
+        raise R5Error(f"R5 positive evidence for {model} is not HTTP 200")
+    body = evidence.get("body")
+    if not isinstance(body, dict):
+        raise R5Error(f"R5 positive evidence for {model} lacks a response body")
+    payload = _verify_signed_receipt(
+        body.get("routing_receipt"),
+        key=key,
+        key_id=key_id,
+    )
+    content = _content(body)
+    required = {
+        "schema": RECEIPT_SCHEMA,
+        "requested_model": model,
+        "registry_adapter_id": model,
+        "selected_adapter_id": model,
+        "selected_adapter_digest": adapter_digest,
+        "adapter_applied": True,
+        "persona_applied": True,
+        "fallback_used": False,
+        "routing_mode": "lora_adapter",
+        "server_build_digest": identity["server_build_digest"],
+        "registry_snapshot_digest": identity["registry_snapshot_digest"],
+        "registry_revision": identity["registry_revision"],
+        "base_model_digest": identity["base_model_digest"],
+        "base_model_revision": identity["base_model_revision"],
+        "response_sha256": sha256_bytes(content.encode("utf-8")),
+        "response_size_bytes": len(content.encode("utf-8")),
+    }
+    _fields(payload, required, f"positive receipt {model}")
+    challenge = payload.get("challenge_nonce")
+    if not isinstance(challenge, str) or not challenge.startswith(
+        f"certforge-r5-positive-{model}-"
+    ):
+        raise R5Error(f"R5 positive receipt challenge is invalid for {model}")
+    return payload, body["routing_receipt"]
+
+
+def _verify_negative_receipt(
+    evidence: Mapping[str, Any],
+    *,
+    key: Ed25519PublicKey,
+    key_id: str,
+    target_model: str,
+    wrong_model: str,
+    identity: Mapping[str, Any],
+    control: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if control == "wrong_active_adapter":
+        status, code, selected = 409, "ADAPTER_IDENTITY_MISMATCH", wrong_model
+        challenge_prefix = "certforge-r5-wrong-active-"
+    else:
+        status, code, selected = 503, "ADAPTER_NOT_ACTIVE", None
+        challenge_prefix = "certforge-r5-unloaded-"
+    if evidence.get("status_code") != status:
+        raise R5Error(f"R5 {control} evidence has the wrong HTTP status")
+    body = evidence.get("body")
+    if not isinstance(body, dict) or body.get("error_code") != code:
+        raise R5Error(f"R5 {control} evidence has the wrong error code")
+    payload = _verify_signed_receipt(
+        body.get("routing_receipt"),
+        key=key,
+        key_id=key_id,
+    )
+    _failure(payload, code)
+    required = {
+        "schema": RECEIPT_SCHEMA,
+        "requested_model": target_model,
+        "registry_adapter_id": target_model,
+        "selected_adapter_id": selected,
+        "server_build_digest": identity["server_build_digest"],
+        "registry_snapshot_digest": identity["registry_snapshot_digest"],
+        "registry_revision": identity["registry_revision"],
+        "base_model_digest": identity["base_model_digest"],
+        "base_model_revision": identity["base_model_revision"],
+    }
+    _fields(payload, required, f"negative receipt {control}")
+    challenge = payload.get("challenge_nonce")
+    if not isinstance(challenge, str) or not challenge.startswith(challenge_prefix):
+        raise R5Error(f"R5 {control} receipt challenge is invalid")
+    return payload, body["routing_receipt"]
+
+
+def verify_full_r5_evidence(
+    directory: Path,
+    *,
+    trusted_public_key_pem: str,
+    trusted_key_id: str,
+    target_model: str,
+    target_adapter_digest: str,
+    wrong_model: str,
+    wrong_adapter_digest: str,
+) -> dict[str, Any]:
+    """Verify the complete canonical R5 full-run evidence package."""
+    require_sha256(target_adapter_digest, "target_adapter_digest")
+    require_sha256(wrong_adapter_digest, "wrong_adapter_digest")
+    if target_model == wrong_model or target_adapter_digest == wrong_adapter_digest:
+        raise R5Error("R5 target and wrong identities must differ")
+    key = _public_key(trusted_public_key_pem)
+    if _key_id(key) != trusted_key_id:
+        raise R5Error("R5 trusted key id does not match its public key")
+    manifest = _verify_evidence_manifest(directory)
+    report = _load_evidence_json(directory, "r5-report.json")
+    if (
+        report.get("schema") != SCHEMA
+        or report.get("run_outcome") != "COMPLETE"
+        or report.get("r5_gate") != "PASS"
+        or report.get("completion_marker") != "[R5 COMPLETE]"
+        or report.get("blocker") is not None
+        or report.get("deployment_authorized") is not False
+    ):
+        raise R5Error("R5 report is not a completed full-run PASS")
+    expected = report.get("expected_identity")
+    if not isinstance(expected, dict):
+        raise R5Error("R5 report lacks expected identity")
+    required_identity = {
+        "target_model": target_model,
+        "wrong_model": wrong_model,
+        "target_adapter_digest": target_adapter_digest,
+        "wrong_adapter_digest": wrong_adapter_digest,
+        "signature_key_id": trusted_key_id,
+    }
+    _fields(expected, required_identity, "R5 expected identity")
+    for field in (
+        "server_build_digest",
+        "registry_snapshot_digest",
+        "base_model_digest",
+    ):
+        require_sha256(str(expected.get(field)), field)
+    for field in ("registry_revision", "base_model_revision"):
+        if not isinstance(expected.get(field), str) or not expected[field]:
+            raise R5Error(f"R5 expected identity lacks {field}")
+
+    bundle = report.get("forge_verification_bundle")
+    if not isinstance(bundle, dict) or bundle.get("mode") != "full":
+        raise R5Error("R5 forge verification bundle is not full mode")
+    if (
+        bundle.get("public_key_pem") != trusted_public_key_pem
+        or bundle.get("attested_key_id") != trusted_key_id
+    ):
+        raise R5Error("R5 forge bundle differs from the external trusted key")
+    bundle_identity = {
+        "attested_server_build_digest": expected["server_build_digest"],
+        "attested_registry_snapshot_digest": expected["registry_snapshot_digest"],
+        "attested_registry_revision": expected["registry_revision"],
+        "attested_base_model_digest": expected["base_model_digest"],
+        "attested_base_model_revision": expected["base_model_revision"],
+    }
+    _fields(bundle, bundle_identity, "R5 forge bundle")
+
+    attestation = _load_evidence_json(directory, "attestation.json")
+    _fields(
+        attestation,
+        {
+            "receipt_schema": RECEIPT_SCHEMA,
+            "key_id": trusted_key_id,
+            "public_key_pem": trusted_public_key_pem,
+            "server_build_digest": expected["server_build_digest"],
+            "registry_snapshot_digest": expected["registry_snapshot_digest"],
+            "registry_revision": expected["registry_revision"],
+            "base_model_digest": expected["base_model_digest"],
+            "base_model_revision": expected["base_model_revision"],
+        },
+        "R5 attestation",
+    )
+    requested_models = attestation.get("requested_models")
+    if not isinstance(requested_models, list) or not {
+        target_model,
+        wrong_model,
+    }.issubset(set(requested_models)):
+        raise R5Error("R5 attestation does not cover both models")
+
+    for name in (
+        "initial-health.json",
+        "wrong-active-restored-health.json",
+        "unloaded-restored-health.json",
+        "final-health.json",
+    ):
+        health = _load_evidence_json(directory, name)
+        _clean(health, target_model, wrong_model)
+    wrong_active_arm = _load_evidence_json(directory, "wrong-active-arm.json")
+    if wrong_active_arm.get("status_code") != 200 or not isinstance(
+        wrong_active_arm.get("body"), dict
+    ):
+        raise R5Error("R5 wrong-active arm response is invalid")
+    wrong_active_arm = wrong_active_arm["body"]
+    if (
+        wrong_active_arm.get("armed")
+        != {
+            "target_adapter_id": target_model,
+            "wrong_adapter_id": wrong_model,
+            "armed": True,
+        }
+        or wrong_active_arm.get("released", {}).get("released") is not True
+        or wrong_active_arm.get("released", {}).get("fault_preserved") is not True
+    ):
+        raise R5Error("R5 wrong-active control was not canonically armed and released")
+    adapter_unload = _load_evidence_json(directory, "adapter-unload.json")
+    if adapter_unload.get("status_code") != 200 or not isinstance(
+        adapter_unload.get("body"), dict
+    ):
+        raise R5Error("R5 unload response is invalid")
+    adapter_unload = adapter_unload["body"]
+    if adapter_unload != {"adapter_id": target_model, "loaded": False}:
+        raise R5Error("R5 unload control does not bind the target adapter")
+    unloaded_release = _load_evidence_json(directory, "unloaded-release.json")
+    if unloaded_release.get("status_code") != 200 or not isinstance(
+        unloaded_release.get("body"), dict
+    ):
+        raise R5Error("R5 unloaded release response is invalid")
+    unloaded_release = unloaded_release["body"]
+    if (
+        unloaded_release.get("released") is not True
+        or unloaded_release.get("unloaded_preserved") is not True
+        or unloaded_release.get("fault_preserved") is not False
+    ):
+        raise R5Error("R5 unloaded control was not canonically preserved")
+
+    target_payload, target_receipt = _verify_completion_receipt(
+        _load_evidence_json(directory, "positive-target.json"),
+        key=key,
+        key_id=trusted_key_id,
+        model=target_model,
+        adapter_digest=target_adapter_digest,
+        identity=expected,
+    )
+    wrong_payload, _ = _verify_completion_receipt(
+        _load_evidence_json(directory, "positive-wrong.json"),
+        key=key,
+        key_id=trusted_key_id,
+        model=wrong_model,
+        adapter_digest=wrong_adapter_digest,
+        identity=expected,
+    )
+    wrong_active_payload, wrong_active_receipt = _verify_negative_receipt(
+        _load_evidence_json(directory, "wrong-active-response.json"),
+        key=key,
+        key_id=trusted_key_id,
+        target_model=target_model,
+        wrong_model=wrong_model,
+        identity=expected,
+        control="wrong_active_adapter",
+    )
+    unloaded_payload, unloaded_receipt = _verify_negative_receipt(
+        _load_evidence_json(directory, "unloaded-response.json"),
+        key=key,
+        key_id=trusted_key_id,
+        target_model=target_model,
+        wrong_model=wrong_model,
+        identity=expected,
+        control="unloaded_adapter",
+    )
+    request_ids = [
+        target_payload.get("request_id"),
+        wrong_payload.get("request_id"),
+        wrong_active_payload.get("request_id"),
+        unloaded_payload.get("request_id"),
+    ]
+    challenges = [
+        target_payload.get("challenge_nonce"),
+        wrong_payload.get("challenge_nonce"),
+        wrong_active_payload.get("challenge_nonce"),
+        unloaded_payload.get("challenge_nonce"),
+    ]
+    if (
+        any(not isinstance(item, str) or not item for item in request_ids + challenges)
+        or len(set(request_ids)) != 4
+        or len(set(challenges)) != 4
+    ):
+        raise R5Error("R5 evidence reuses or omits request identity")
+
+    controls = report.get("controls")
+    expected_controls = {
+        "wrong_active_adapter": (409, "ADAPTER_IDENTITY_MISMATCH"),
+        "unloaded_adapter": (503, "ADAPTER_NOT_ACTIVE"),
+    }
+    if not isinstance(controls, list) or len(controls) != 2:
+        raise R5Error("R5 report must contain exactly two negative controls")
+    observed_controls: dict[str, tuple[Any, Any]] = {}
+    for control in controls:
+        if not isinstance(control, dict) or control.get("passed") is not True:
+            raise R5Error("R5 report contains a failed negative control")
+        observed_controls[str(control.get("control"))] = (
+            control.get("http_status"),
+            control.get("error_code"),
+        )
+        if control.get("receipt_key_id") != trusted_key_id:
+            raise R5Error("R5 control receipt key id mismatch")
+    if observed_controls != expected_controls:
+        raise R5Error("R5 report negative controls are incomplete or incorrect")
+
+    bundle_receipts = bundle.get("receipts")
+    if not isinstance(bundle_receipts, list) or len(bundle_receipts) != 2:
+        raise R5Error("R5 forge bundle must contain exactly two control receipts")
+    expected_receipts = {
+        "wrong_active_adapter": wrong_active_receipt,
+        "unloaded_adapter": unloaded_receipt,
+    }
+    for entry in bundle_receipts:
+        if not isinstance(entry, dict):
+            raise R5Error("R5 forge bundle receipt entry is invalid")
+        control = entry.get("control")
+        receipt = expected_receipts.get(str(control))
+        if receipt is None or entry != {
+            "control": control,
+            "key_id": receipt.get("key_id"),
+            "payload": receipt.get("payload"),
+            "signature_b64": receipt.get("signature_b64"),
+        }:
+            raise R5Error("R5 forge bundle receipt does not match evidence")
+    return {
+        "report": report,
+        "manifest": manifest,
+        "target_receipt": target_receipt,
+        "target_payload": target_payload,
+    }
 
 
 def _failure(payload: Mapping[str, Any], code: str) -> None:

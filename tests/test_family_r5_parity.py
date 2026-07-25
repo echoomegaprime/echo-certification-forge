@@ -8,9 +8,9 @@ while the package copy silently fell behind — which is exactly the drift class
 R5 itself exists to catch. These tests make that divergence loud:
 
 * every top-level function/class the two files share must be AST-identical,
-* the ONLY allowed structural delta is the operator inlining the four
-  ``canonical``/``evidence`` helpers it cannot import when deployed standalone
-  (and those inlined helpers must stay behaviorally equal to the package ones),
+* allowed structural deltas are the operator's four inlined deployment helpers
+  plus package-only post-run evidence verifiers (the operator must not verify
+  or bless its own output),
 * the argparse surface must parse identically on both,
 * a preflight-mode ``execute`` must emit byte-identical reports (including the
   ``forge_verification_bundle`` shape) from both modules.
@@ -41,6 +41,16 @@ OP_PATH = _ROOT / "scripts" / "family_r5_operator.py"
 #: structural difference between the two copies.
 INLINED_HELPERS = frozenset(
     {"canonical_json", "sha256_bytes", "require_sha256", "merkle_root"}
+)
+PACKAGE_ONLY_VERIFIERS = frozenset(
+    {
+        "_load_evidence_json",
+        "_verify_evidence_manifest",
+        "_verify_signed_receipt",
+        "_verify_completion_receipt",
+        "_verify_negative_receipt",
+        "verify_full_r5_evidence",
+    }
 )
 
 
@@ -73,7 +83,7 @@ def test_only_sanctioned_structural_delta_between_the_two_copies() -> None:
     assert set(op_defs) - set(pkg_defs) == set(INLINED_HELPERS), (
         "operator defines names the package copy lacks (package fell behind)"
     )
-    assert set(pkg_defs) - set(op_defs) == set(), (
+    assert set(pkg_defs) - set(op_defs) == set(PACKAGE_ONLY_VERIFIERS), (
         "package defines names the deployed operator lacks (operator fell behind)"
     )
 
