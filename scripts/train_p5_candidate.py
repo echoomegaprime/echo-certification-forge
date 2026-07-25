@@ -34,6 +34,7 @@ RECIPE = {
     "quantization": "4bit-nf4-double-quant",
     "save_steps": 50,
     "trainable_dtype": "bfloat16",
+    "truncation_side": "right",
 }
 
 
@@ -118,6 +119,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=range(512, RECIPE["max_length"] + 1, 64),
         help="Token ceiling; lower in 64-token steps when activation memory requires it.",
     )
+    parser.add_argument(
+        "--truncation-side",
+        choices=("left", "right"),
+        default=RECIPE["truncation_side"],
+        help="Left truncation preserves complete assistant targets under a reduced ceiling.",
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
         "--lock-file",
@@ -163,7 +170,11 @@ def _write_evidence(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    run_recipe = {**RECIPE, "max_length": args.max_length}
+    run_recipe = {
+        **RECIPE,
+        "max_length": args.max_length,
+        "truncation_side": args.truncation_side,
+    }
     rows = load_training_rows(args.train_jsonl)
     if args.output_dir.exists():
         raise TrainingInputError(f"final output already exists: {args.output_dir}")
@@ -203,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
+    tokenizer.truncation_side = run_recipe["truncation_side"]
 
     quantization = BitsAndBytesConfig(
         load_in_4bit=True,
