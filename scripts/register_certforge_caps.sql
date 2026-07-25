@@ -1,10 +1,14 @@
--- Register the 11 Echo Desktop operator-facing echo.certforge.* SDK capabilities as
+-- Register the 11 safe-core and 5 hardened-administration Echo Desktop
+-- operator-facing echo.certforge.* SDK capabilities as
 -- handler_kind='http' proxies to the live
 -- echo-certforge.service on FORGE :8309. Idempotent (ON CONFLICT DO UPDATE).
 --
 -- Tenant model: the SDK gate is the sovereign control plane, so every gate invocation operates as
 -- one canonical tenant. static_headers injects X-Tenant-ID='echo-sovereign' on the tenant-scoped
--- caps (the service is tenant-scoped via that header). Path params ({run_id}) resolve via
+-- safe-core caps (the service is tenant-scoped via that header). Administrative caps resolve
+-- the subscriber owner key server-side from Vault through sdk_invoke.py's vault: header
+-- convention; the credential is never stored in this registry or returned to the caller.
+-- Path params ({run_id}) resolve via
 -- args_mode='path' in routers/sdk_invoke.py::_dispatch_router. Health carries no tenant.
 --
 -- health_status starts 'unknown' — registration does NOT prove health. Each cap is flipped to
@@ -82,7 +86,37 @@ VALUES
    'Certification Forge: evaluate a release/deploy gate — exact-identity, signature, evidence, and lifecycle checks. Elevated (tier 2).',
    'http', 'http://127.0.0.1:8309/v1/release-gates/evaluate', 'POST', 'json_body', 'forge',
    '{"type":"object","required":["run_id","target_identity_digest","environment_identity_digest","rule_manifest_digest"],"properties":{"run_id":{"type":"string"},"target_identity_digest":{"type":"string"},"environment_identity_digest":{"type":"string"},"rule_manifest_digest":{"type":"string"}}}'::jsonb,
-   'certforge.deploy_gate', 2, '{"X-Tenant-ID":"echo-sovereign"}'::jsonb, 30, 'active', 'unknown')
+   'certforge.deploy_gate', 2, '{"X-Tenant-ID":"echo-sovereign"}'::jsonb, 30, 'active', 'unknown'),
+
+  ('echo.certforge.admin.audit',
+   'Certification Forge administration: read the tenant-scoped immutable subscriber audit log. Subscriber credentials are resolved only inside the SDK gate.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/audit', 'GET', 'query', 'forge',
+   '{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":500}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.read', 1, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.legal_hold_create',
+   'Certification Forge administration: create an audited legal hold for one owned run or the tenant. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/legal-holds', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["hold_id","reason"],"properties":{"hold_id":{"type":"string","minLength":1,"maxLength":128},"run_id":{"type":["string","null"],"minLength":1,"maxLength":128},"reason":{"type":"string","minLength":1,"maxLength":2048}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.legal_hold_release',
+   'Certification Forge administration: release one tenant-owned legal hold. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/legal-holds/{hold_id}', 'DELETE', 'path', 'forge',
+   '{"type":"object","required":["hold_id"],"properties":{"hold_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.lifecycle',
+   'Certification Forge administration: append an immutable revocation, invalidation, expiry, or supersession event to an owned verdict. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/lifecycle', 'POST', 'path', 'forge',
+   '{"type":"object","required":["run_id","event_type","reason"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128},"event_type":{"type":"string","enum":["REVOKED","INVALIDATED","SUPERSEDED"]},"reason":{"type":"string","minLength":1,"maxLength":2048},"replacement_run_id":{"type":["string","null"],"minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.publish',
+   'Certification Forge administration: publish public-only verification material for a current production-ready verdict. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/publish', 'POST', 'path', 'forge',
+   '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown')
 
 ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description,

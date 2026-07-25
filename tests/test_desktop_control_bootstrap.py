@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -79,3 +80,10 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
     monkeypatch.setattr(subject, "_vault_has_service", lambda *_args: True)
     with pytest.raises(RuntimeError, match="partial provisioning state"):
         subject.provision(args)
+
+
+def test_admin_cap_registration_uses_vault_references_not_literal_credentials():
+    sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
+    assert sql.count("echo.certforge.admin.") == 5
+    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 5
+    assert "ecf_" not in sql
