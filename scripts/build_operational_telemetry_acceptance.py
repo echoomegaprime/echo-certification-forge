@@ -72,7 +72,7 @@ def main() -> int:
         credential_id=f"heartbeat-credential-{suffix}",
         run_id=f"cert-worker-heartbeat-{suffix}",
         tenant_id=args.tenant,
-        runner_id="hammer-live-acceptance-runner",
+        runner_id=f"hammer-live-acceptance-runner-{suffix}",
         runner_public_key_pem=runner.public_key_pem,
         scopes=(RunnerCommand.HEARTBEAT.value,),
         issued_at=timestamp,
