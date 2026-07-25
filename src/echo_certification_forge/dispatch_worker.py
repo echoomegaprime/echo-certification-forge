@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .canonical import sha256_json
 from .evidence import EvidenceStore
 from .intake import SubmitRequest
 from .policy import RuleManifest
@@ -100,9 +99,7 @@ def dispatch_once(
             {
                 "adapter_records": records,
                 "adapter_policy": adapter_policy,
-                "adapter_bundle_response_sha256": sha256_json(
-                    rebound.model_dump(mode="json")
-                ),
+                "adapter_bundle_response": rebound,
             }
         )
     try:

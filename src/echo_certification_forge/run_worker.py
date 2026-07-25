@@ -162,7 +162,6 @@ def run(
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
     adapter_bundle_response: RunnerResponse | None = None,
-    adapter_bundle_response_sha256: str | None = None,
     worker_id: str | None = None,
     worker_attestation_sha256: str | None = None,
     execution_location: str = "local",
@@ -344,16 +343,7 @@ def run(
         if adapter_response_content is not None
         else None
     )
-    if (
-        computed_adapter_response_sha256 is not None
-        and adapter_bundle_response_sha256 is not None
-        and computed_adapter_response_sha256 != adapter_bundle_response_sha256
-    ):
-        raise ValueError("adapter bundle response digest mismatch")
-    effective_adapter_response_sha256 = (
-        computed_adapter_response_sha256 or adapter_bundle_response_sha256
-    )
-    environment = _worker_environment(adapter_digest, effective_adapter_response_sha256)
+    environment = _worker_environment(adapter_digest, computed_adapter_response_sha256)
     if subscribers is not None:
         if existing is None or existing["state"] != RunState.QUEUED.value:
             if claim is not None:
@@ -423,14 +413,26 @@ def run(
                 "detail": str(exc),
             }
     if adapter_response_content is not None:
-        store.append_artifact(
-            run_id,
-            tenant,
-            "adapter-bundle-response",
-            adapter_response_content,
-            "application/json",
-            "run-worker",
+        artifact_id = "adapter-response-" + sha256_bytes(run_id.encode("utf-8"))[:32]
+        existing_artifact = next(
+            (
+                artifact
+                for artifact in store.list_evidence(run_id, tenant)
+                if artifact["artifact_id"] == artifact_id
+            ),
+            None,
         )
+        if existing_artifact is None:
+            store.append_artifact(
+                run_id,
+                tenant,
+                artifact_id,
+                adapter_response_content,
+                "application/json",
+                "run-worker",
+            )
+        elif existing_artifact["sha256"] != computed_adapter_response_sha256:
+            raise ValueError("persisted adapter bundle response digest mismatch")
 
     executor = RunExecutor(store, manifest, signer)
     journey_runner = None
@@ -555,7 +557,7 @@ def run(
         "target_identity_digest": target.identity_digest,
         "environment_identity_digest": environment.identity_digest,
         "adapter_set_sha256": environment.adapter_set_sha256,
-        "adapter_bundle_response_sha256": effective_adapter_response_sha256,
+        "adapter_bundle_response_sha256": computed_adapter_response_sha256,
         "signer_public_key_id": signer.key_id,
         "journey_isolation": "docker" if sandbox_effective is not None else "none",
     }

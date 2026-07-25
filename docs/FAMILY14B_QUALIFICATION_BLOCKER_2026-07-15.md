@@ -31,7 +31,7 @@ A checkpointed base-model batch received HTTP 503 for both selected probes. Thos
 
 ## Implemented qualification harness
 
-`scripts/qualify_family_adapters.py` now runs the production P5 candidate-versus-incumbent gate against the unchanged 240-row GS343 and R2D2 held-out eval ledgers. It uses one direct HTTP completion per model and row, checkpoints every cryptographically verified response receipt, re-verifies checkpoints on resume, scores locally, and blocks unless each candidate passes its hard gates and reaches at least `1.05 * incumbent composite`.
+`scripts/qualify_family_adapters.py` now runs the production P5 candidate-versus-incumbent gate against the unchanged 240-row GS343 and R2D2 held-out eval ledgers: 960 response rows across the four candidate/incumbent model-role aliases. It uses one direct HTTP completion per model and row, checkpoints every cryptographically verified response receipt, re-verifies checkpoints on resume, scores locally, and blocks unless each candidate passes its hard gates and reaches at least `1.05 * incumbent composite`.
 
 Routing is proven from the Family server's Ed25519 routing receipt bound to the exact request, challenge, response content, adapter digest, and a pinned public attestation. Requested/echoed model names are not accepted as proof. The harness never changes aliases or service configuration and always leaves the whole-product `release_verdict` at `NOT_READY`.
 

@@ -694,10 +694,34 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     adapter_artifact = next(
         item
         for item in store.list_evidence(run_id, "echo-sovereign")
-        if item["artifact_id"] == "adapter-bundle-response"
+        if item["artifact_id"]
+        == "adapter-response-" + sha256_bytes(run_id.encode("utf-8"))[:32]
     )
     assert adapter_artifact["sha256"] == result["adapter_bundle_response_sha256"]
     assert store.verify_evidence(run_id, "echo-sovereign").valid is True
+
+    second_run_id = "production-router-worker-e2e-second"
+    second_args = production_worker_args(
+        run_id=second_run_id,
+        tenant="echo-sovereign",
+        target={"type": "local", "path": str(target)},
+        journey=None,
+        policy_id="certforge.release-strict.v2",
+        adapter_response=artifacts / "adapter-bundle-response.json",
+        adapter_policy=artifacts / "adapter-policy.json",
+        adapter_registry=registry,
+        adapter_runner_signing_key=adapter_key_path,
+    )
+    assert run_worker_main(second_args) == 0
+    second_result = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    second_artifact = next(
+        item
+        for item in store.list_evidence(second_run_id, "echo-sovereign")
+        if item["source_component"] == "run-worker"
+    )
+    assert second_artifact["sha256"] == second_result["adapter_bundle_response_sha256"]
+    assert second_artifact["artifact_id"] != adapter_artifact["artifact_id"]
+    assert store.verify_evidence(second_run_id, "echo-sovereign").valid is True
 
 
 def test_production_worker_rejects_v1_manifest_without_adapters(
