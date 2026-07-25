@@ -1,0 +1,146 @@
+{
+  "phase": "P6",
+  "title": "deployment enforcement and platform integration \u2014 live local acceptance",
+  "generated_at": "2026-07-25T12:22:11.021287Z",
+  "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
+  "passed": true,
+  "checks": [
+    {
+      "id": "A1",
+      "description": "uncertified artifact production deployment fails via hook",
+      "passed": true,
+      "detail": {
+        "exit": 2,
+        "stdout": "{\"admission_id\": \"dep-47af02078656670139904511536b1e7c\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"75535a715d8cde0dc8029b4afe5406f3e7fb213fbc6ad26bd45b23478220ee1a\", \"created_at\": \"2026-07-25T12:22:05.253942Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"rollback_candidate\": null, \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+      }
+    },
+    {
+      "id": "A0",
+      "description": "certifications bind to exact artifact digests over live HTTP",
+      "passed": true,
+      "detail": {
+        "v1": true,
+        "v2": true
+      }
+    },
+    {
+      "id": "A2",
+      "description": "different digest from certified artifact fails via hook",
+      "passed": true,
+      "detail": {
+        "exit": 2,
+        "stdout": "{\"admission_id\": \"dep-254b405066a1edf8fb05cd62c8c169e0\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"57c88748a7a5bb1ec0e08a1ad78610424ea15a3fb32a60df571ca264a0b9a7cc\", \"created_at\": \"2026-07-25T12:22:05.557661Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"rollback_candidate\": null, \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+      }
+    },
+    {
+      "id": "A4",
+      "description": "production before staging acceptance fails (staging-first)",
+      "passed": true,
+      "detail": {
+        "exit": 2,
+        "stdout": "{\"admission_id\": \"dep-26ed576b4323514839e13df3b1409ee8\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"3462722ac7caf2d517d33181c6dcc376aba422ed1e0913512c1b5e7e676aba7d\", \"created_at\": \"2026-07-25T12:22:05.858830Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"rollback_candidate\": null, \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+      }
+    },
+    {
+      "id": "A3",
+      "description": "READY artifact passes staging->production, outcomes via pipeline hook",
+      "passed": true,
+      "detail": {
+        "staging_exit0": true,
+        "outcome_recorded": true,
+        "production_exit0": true
+      }
+    },
+    {
+      "id": "A6",
+      "description": "failed production deployment produces rollback evidence to last-known-good",
+      "passed": true,
+      "detail": {
+        "failure_candidate": {
+          "admission_id": "dep-1df6b6cd52ee114d28f274780ab913bd",
+          "admitted_at": "2026-07-25T12:22:06.700087Z",
+          "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
+          "deployment_id": "deploy-a3-prd",
+          "run_id": "cert-p6-v1"
+        },
+        "rollback_target": {
+          "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
+          "run_id": "cert-p6-v1",
+          "admission_id": "dep-1df6b6cd52ee114d28f274780ab913bd",
+          "deployment_id": "deploy-a3-prd",
+          "admitted_at": "2026-07-25T12:22:06.700087Z"
+        },
+        "rolled_back": {
+          "admission_id": "dep-76c59462f51f0566a1ffbb99e05b7b41",
+          "artifact_sha256": "6cf9eb2e75fbaf4037393188b98be82a05499dcfc0c45a6eeeb840bd7f775c20",
+          "deployment_environment": "production",
+          "detail": "restored v1",
+          "operation_id": null,
+          "rollback_to": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
+          "status": "ROLLED_BACK"
+        }
+      }
+    },
+    {
+      "id": "A5",
+      "description": "revoked certification is denied afterwards (fail-closed lifecycle)",
+      "passed": true,
+      "detail": {
+        "exit": 2,
+        "stdout": "{\"admission_id\": \"dep-f70f20b3335eb459f6b2ffad51b67acd\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"c2272d8263b416ac5cb0ce381ea863f07414d43c8f075266e93503d51d39d631\", \"created_at\": \"2026-07-25T12:22:08.471502Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"rollback_candidate\": null, \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+      }
+    },
+    {
+      "id": "A7",
+      "description": "append-only deployment audit chain verifies with full decision history",
+      "passed": true,
+      "detail": {
+        "chain_valid": true,
+        "admissions": 8,
+        "outcomes": 5
+      }
+    },
+    {
+      "id": "A8",
+      "description": "signed webhook creates run, replay deduplicates, bad signature is 401",
+      "passed": true,
+      "detail": {
+        "first": 201,
+        "replay": 200,
+        "bad_signature": 401
+      }
+    },
+    {
+      "id": "A10",
+      "description": "unsigned mutation with tenant header only is rejected 401",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "detail": "deployment_credential_signature_missing"
+        }
+      }
+    },
+    {
+      "id": "A11",
+      "description": "exact replay of a signed mutation is rejected (nonce consumed)",
+      "passed": true,
+      "detail": {
+        "first": 200,
+        "replay": 401,
+        "body": {
+          "detail": "deployment_credential_nonce_reused"
+        }
+      }
+    },
+    {
+      "id": "A9",
+      "description": "forge unreachable -> hook fails closed (exit 3), deployment blocked",
+      "passed": true,
+      "detail": {
+        "exit": 3,
+        "stdout": "{\"allowed\": false, \"error\": \"admission_unavailable: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>\"}"
+      }
+    }
+  ]
+}

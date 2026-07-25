@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .canonical import sha256_json
 from .evidence import EvidenceStore
-from .models import ReleaseVerdict, RunState
+from .models import ReleaseVerdict, RunState, declared_target_identity_digest
 from .policy import RuleManifest
 
 # Internal fine-grained RunState -> coarse public state (contracts/schemas/certification-run.v1.json).
@@ -45,6 +45,11 @@ class SubmitTarget(BaseModel):
     target_type: str = Field(pattern=r"^(git|archive|container|package|deployment|mcp|sdk|cli)$")
     identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     reference: str = Field(min_length=1, max_length=2048)
+    # Optional DECLARED artifact commitment (platform webhooks): binds the run to the exact
+    # immutable artifact digest BEFORE acquisition so the run can later be reconciled to its
+    # acquired identity and become deployable. Without it, a declared run never reconciles.
+    artifact_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_commit: str | None = Field(default=None, min_length=7, max_length=64)
 
 
 class SubmitEnvironment(BaseModel):
@@ -66,14 +71,29 @@ class SubmitRequest(BaseModel):
         return sha256_json(
             {
                 "tenant_id": self.tenant_id,
-                "target": self.target.model_dump(),
+                # exclude_none keeps legacy 3-field target digests stable while making a
+                # declared artifact commitment part of the request's semantic identity.
+                "target": self.target.model_dump(exclude_none=True),
                 "environment": self.environment.model_dump(),
                 "policy_version": self.policy_version,
             }
         )
 
-    def run_id(self) -> str:
-        return "cert_" + sha256_json({"d": self.request_digest(), "k": self.idempotency_key})[:40]
+    def run_id(self, active_rule_manifest_digest: str) -> str:
+        """Deterministic run identity in (request, idempotency key, ACTIVE manifest digest).
+
+        Binding the server-side active mandatory-rule manifest digest into the identity
+        means a policy rollover that keeps ``manifest_id`` but changes rule CONTENT (a new
+        digest) deterministically yields a NEW recertification run instead of deduplicating
+        to a certification produced under the superseded rules.
+        """
+        return "cert_" + sha256_json(
+            {
+                "d": self.request_digest(),
+                "k": self.idempotency_key,
+                "m": active_rule_manifest_digest,
+            }
+        )[:40]
 
 
 def to_public_state(internal: str) -> str:
@@ -127,21 +147,48 @@ def submit(
     raises SubmitError(409, "idempotency_conflict") when a key is reused for a different request,
     SubmitError(403, "tenant_mismatch") when the header and body tenants disagree,
     SubmitError(422, "policy_unknown") when the requested policy is not the active manifest.
+
+    Idempotency is scoped to the ACTIVE rule-manifest content digest (server-side, never
+    caller-supplied): after a manifest rollover that keeps the manifest_id but changes the
+    rules, a replayed submission no longer deduplicates to the stale pre-rollover run — it
+    deterministically creates a new recertification run under the new rules, while replays
+    under the SAME manifest digest still deduplicate exactly as before.
     """
     if request.tenant_id != tenant_header:
         raise SubmitError(403, "tenant_mismatch")
     if request.policy_version != manifest.manifest_id:
         raise SubmitError(422, "policy_unknown")
+    if request.target.artifact_sha256 is not None:
+        # A declared artifact commitment must be self-consistent with the declared identity
+        # digest, or the run could never reconcile to any acquired identity (fail-closed).
+        expected = declared_target_identity_digest(
+            request.tenant_id,
+            request.target.target_type,
+            request.target.artifact_sha256,
+            request.target.source_commit,
+            request.target.reference,
+        )
+        if expected != request.target.identity_digest:
+            raise SubmitError(422, "target_commitment_mismatch")
 
-    request_digest = request.request_digest()
-    existing = store.find_idempotent(request.tenant_id, request.idempotency_key)
+    # Run/request identity binds the server-side ACTIVE manifest digest (blocker: a manifest
+    # content rollover under an unchanged manifest_id must never dedupe to a stale run).
+    request_digest = sha256_json(
+        {
+            "request": request.request_digest(),
+            "active_rule_manifest_digest": manifest.digest,
+        }
+    )
+    scoped_key = f"{request.idempotency_key}@{manifest.digest[:16]}"
+    existing = store.find_idempotent(request.tenant_id, scoped_key)
     if existing is not None:
         if existing["request_digest"] != request_digest:
             raise SubmitError(409, "idempotency_conflict")
         row = store.get_run(existing["run_id"], request.tenant_id)
         return 200, project_run(store, row)
 
-    run_id = request.run_id()  # deterministic in (request_digest, key) -> concurrent dupes collide here
+    # deterministic in (request_digest, key, active manifest digest) -> concurrent dupes collide here
+    run_id = request.run_id(manifest.digest)
     environment_json = request.environment.model_dump(exclude_none=True)
     try:
         store.register_declared_run(
@@ -155,6 +202,8 @@ def submit(
             policy_version=request.policy_version,
             manifest_id=manifest.manifest_id,
             manifest_digest=manifest.digest,
+            declared_artifact_sha256=request.target.artifact_sha256,
+            declared_source_commit=request.target.source_commit,
         )
     except sqlite3.IntegrityError:
         # A concurrent submit of the same (request, key) already created this run — return it as a
@@ -168,6 +217,6 @@ def submit(
         reason="submitted",
         workflow_version="t4.p1",
     )
-    store.bind_idempotent(request.tenant_id, request.idempotency_key, request_digest, run_id)
+    store.bind_idempotent(request.tenant_id, scoped_key, request_digest, run_id)
     row = store.get_run(run_id, request.tenant_id)
     return 201, project_run(store, row)

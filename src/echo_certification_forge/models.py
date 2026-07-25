@@ -118,6 +118,29 @@ class EnvironmentIdentity:
         return sha256_json(self.to_dict())
 
 
+def declared_target_identity_digest(
+    tenant_id: str,
+    target_type: str,
+    artifact_sha256: str | None,
+    source_commit: str | None,
+    reference: str,
+) -> str:
+    """Canonical digest of a DECLARED (pre-acquisition) target commitment.
+
+    Shared by webhook intake (which computes the commitment), submit-time verification,
+    and reconciliation (which re-verifies the commitment before binding a declared run
+    to its acquired exact ``TargetIdentity``)."""
+    return sha256_json(
+        {
+            "tenant_id": tenant_id,
+            "target_type": target_type,
+            "artifact_sha256": artifact_sha256,
+            "source_commit": source_commit,
+            "reference": reference,
+        }
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RuleResult:
     rule_id: str
