@@ -120,10 +120,18 @@ class PlanDefinition(BaseModel):
         return self
 
 
+@dataclass(frozen=True, slots=True)
+class PendingSubscriberIntake:
+    reservation: RunReservation
+    request: dict[str, Any]
+    target_spec: dict[str, Any]
+    journey: list[str] | None
+
+
 class SubscriberPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = Field(pattern=r"^1\.1\.0$")
+    schema_version: str = Field(pattern=r"^1\.2\.1$")
     policy_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     api_key_max_ttl_days: int = Field(ge=1, le=3650)
     api_key_secret_bytes: int = Field(ge=24, le=64)
@@ -131,6 +139,10 @@ class SubscriberPolicy(BaseModel):
     rate_limit_scope: str = Field(pattern=r"^api_key_global$")
     audit_denied_requests: bool
     reservation_ttl_seconds: int = Field(ge=30, le=86_400)
+    worker_claim_lease_seconds: int = Field(ge=5, le=3600)
+    worker_heartbeat_interval_seconds: int = Field(ge=1, le=1200)
+    dispatch_claim_lease_seconds: int = Field(ge=5, le=3600)
+    max_dispatch_attempts: int = Field(ge=1, le=100)
     plans: tuple[PlanDefinition, ...] = Field(min_length=1)
     role_permissions: dict[MemberRole, frozenset[Permission]]
     past_due_read_permissions: frozenset[Permission]
@@ -144,6 +156,8 @@ class SubscriberPolicy(BaseModel):
             raise ValueError("OWNER permissions are required")
         if set(self.role_permissions[MemberRole.OWNER]) != set(Permission):
             raise ValueError("OWNER must hold every subscriber permission")
+        if self.worker_heartbeat_interval_seconds * 2 >= self.worker_claim_lease_seconds:
+            raise ValueError("worker heartbeat interval must be less than half the claim lease")
         return self
 
     @classmethod
@@ -201,6 +215,27 @@ class WorkerRunClaim:
     target_reference: str
     target_identity_digest: str
     retention_days: int
+    claim_token: str
+    lease_expires_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerExecutionAuthorization:
+    retention_days: int
+    governance_version: int
+    subscription_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriberDispatch:
+    run_id: str
+    organization_id: str
+    idempotency_key: str
+    target_spec: dict[str, Any]
+    journey: list[str] | None
+    claim_token: str
+    lease_expires_at: str
+    attempts: int
 
 
 class SubscriberGovernance:
@@ -296,6 +331,7 @@ class SubscriberGovernance:
             last_provider_sequence INTEGER,
             last_provider_event_id TEXT,
             cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+            version INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -371,18 +407,45 @@ class SubscriberGovernance:
             target_type TEXT,
             target_reference TEXT,
             target_identity_digest TEXT,
+            dispatch_target_json TEXT,
+            dispatch_journey_json TEXT,
+            submit_request_json TEXT,
             state TEXT NOT NULL,
             worker_id TEXT,
             worker_attestation_sha256 TEXT,
             execution_location TEXT,
             signing_authority TEXT,
             signing_key_id TEXT,
+            claim_token TEXT,
+            lease_expires_at TEXT,
+            last_heartbeat_at TEXT,
+            execution_started_at TEXT,
+            governance_version INTEGER,
+            subscription_version INTEGER,
             consumed_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (organization_id, idempotency_key),
             UNIQUE (run_id)
         );
+        CREATE TABLE IF NOT EXISTS subscriber_run_dispatches (
+            run_id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            target_json TEXT NOT NULL,
+            journey_json TEXT,
+            state TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            claim_token TEXT,
+            lease_owner TEXT,
+            lease_expires_at TEXT,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (organization_id, idempotency_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscriber_dispatch_ready
+            ON subscriber_run_dispatches(state, created_at);
         CREATE TABLE IF NOT EXISTS subscriber_governance (
             organization_id TEXT PRIMARY KEY REFERENCES subscriber_organizations(organization_id),
             config_json TEXT NOT NULL,
@@ -505,6 +568,7 @@ class SubscriberGovernance:
                 ("last_provider_occurred_at", "TEXT"),
                 ("last_provider_sequence", "INTEGER"),
                 ("last_provider_event_id", "TEXT"),
+                ("version", "INTEGER NOT NULL DEFAULT 1"),
             ):
                 if column_name not in subscription_columns:
                     connection.execute(
@@ -619,11 +683,20 @@ class SubscriberGovernance:
                 ("target_type", "TEXT"),
                 ("target_reference", "TEXT"),
                 ("target_identity_digest", "TEXT"),
+                ("dispatch_target_json", "TEXT"),
+                ("dispatch_journey_json", "TEXT"),
+                ("submit_request_json", "TEXT"),
                 ("worker_id", "TEXT"),
                 ("worker_attestation_sha256", "TEXT"),
                 ("execution_location", "TEXT"),
                 ("signing_authority", "TEXT"),
                 ("signing_key_id", "TEXT"),
+                ("claim_token", "TEXT"),
+                ("lease_expires_at", "TEXT"),
+                ("last_heartbeat_at", "TEXT"),
+                ("execution_started_at", "TEXT"),
+                ("governance_version", "INTEGER"),
+                ("subscription_version", "INTEGER"),
                 ("consumed_at", "TEXT"),
             ):
                 if column_name not in reservation_columns:
@@ -1891,6 +1964,89 @@ class SubscriberGovernance:
             },
         )
 
+    def _revoke_nonstarted_runs(
+        self,
+        connection: sqlite3.Connection,
+        organization_id: str,
+        now: str,
+        reason: str,
+    ) -> int:
+        rows = connection.execute(
+            """
+            SELECT idempotency_key, run_id
+            FROM subscriber_run_reservations
+            WHERE organization_id = ?
+              AND execution_started_at IS NULL
+              AND state IN ('RESERVED', 'BOUND', 'EXECUTING')
+            """,
+            (organization_id,),
+        ).fetchall()
+        cancelled_runs = 0
+        for row in rows:
+            run_id = row["run_id"]
+            if run_id is not None:
+                run = connection.execute(
+                    "SELECT state FROM runs WHERE run_id = ? AND tenant_id = ?",
+                    (run_id, organization_id),
+                ).fetchone()
+                if run is not None and str(run["state"]) == "QUEUED":
+                    self._transition_run_with_connection(
+                        connection,
+                        str(run_id),
+                        organization_id,
+                        "QUEUED",
+                        "CANCELLED",
+                        "billing-provider",
+                        reason,
+                        "p7.subscriber",
+                        now,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE runs SET run_outcome = 'CANCELLED', updated_at = ?
+                        WHERE run_id = ? AND tenant_id = ?
+                        """,
+                        (now, run_id, organization_id),
+                    )
+                    cancelled_runs += 1
+                connection.execute(
+                    """
+                    UPDATE subscriber_run_dispatches
+                    SET state = 'CANCELLED', claim_token = NULL, lease_owner = NULL,
+                        lease_expires_at = NULL, last_error = ?, updated_at = ?
+                    WHERE run_id = ? AND organization_id = ?
+                      AND state IN ('PENDING', 'CLAIMED')
+                    """,
+                    (reason, now, run_id, organization_id),
+                )
+            connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET state = 'RELEASED', claim_token = NULL, lease_expires_at = NULL,
+                    last_heartbeat_at = NULL, updated_at = ?
+                WHERE organization_id = ? AND idempotency_key = ?
+                  AND execution_started_at IS NULL
+                  AND state IN ('RESERVED', 'BOUND', 'EXECUTING')
+                """,
+                (now, organization_id, row["idempotency_key"]),
+            )
+        if rows:
+            self._append_audit(
+                connection,
+                organization_id=organization_id,
+                actor_ref="billing-provider",
+                action="certification.revoke_nonstarted",
+                resource_type="subscription",
+                resource_id=organization_id,
+                outcome="allowed",
+                details={
+                    "reason": reason,
+                    "reservations_released": len(rows),
+                    "runs_cancelled": cancelled_runs,
+                },
+            )
+        return len(rows)
+
     def apply_billing_event(
         self,
         *,
@@ -1917,6 +2073,7 @@ class SubscriberGovernance:
             "subscription.activated": OrganizationStatus.ACTIVE,
             "subscription.renewed": OrganizationStatus.ACTIVE,
             "subscription.plan_changed": OrganizationStatus.ACTIVE,
+            "subscription.reactivated": OrganizationStatus.ACTIVE,
             "payment.failed": OrganizationStatus.PAST_DUE,
             "subscription.suspended": OrganizationStatus.SUSPENDED,
             "subscription.cancelled": OrganizationStatus.CANCELLED,
@@ -1927,6 +2084,7 @@ class SubscriberGovernance:
             "subscription.activated",
             "subscription.renewed",
             "subscription.plan_changed",
+            "subscription.reactivated",
         }
         if event_type == "subscription.plan_changed" and plan_code is None:
             raise SubscriberError(422, "billing_plan_required")
@@ -2061,6 +2219,8 @@ class SubscriberGovernance:
                     },
                 )
             else:
+                if event_type in {"subscription.renewed", "subscription.plan_changed"}:
+                    target = current
                 allowed = {
                     OrganizationStatus.TRIALING: {
                         OrganizationStatus.ACTIVE,
@@ -2120,7 +2280,8 @@ class SubscriberGovernance:
                             current_period_start = ?, current_period_end = ?,
                             last_provider_occurred_at = ?,
                             last_provider_sequence = ?,
-                            last_provider_event_id = ?, updated_at = ?
+                            last_provider_event_id = ?, version = version + 1,
+                            updated_at = ?
                         WHERE organization_id = ?
                         """,
                         (
@@ -2142,7 +2303,8 @@ class SubscriberGovernance:
                         SET status = ?, plan_code = COALESCE(?, plan_code),
                             last_provider_occurred_at = ?,
                             last_provider_sequence = ?,
-                            last_provider_event_id = ?, updated_at = ?
+                            last_provider_event_id = ?, version = version + 1,
+                            updated_at = ?
                         WHERE organization_id = ?
                         """,
                         (
@@ -2161,6 +2323,17 @@ class SubscriberGovernance:
                         organization_id,
                         self.policy.plan(plan_code),
                         now,
+                    )
+                if target in {
+                    OrganizationStatus.PAST_DUE,
+                    OrganizationStatus.SUSPENDED,
+                    OrganizationStatus.CANCELLED,
+                }:
+                    self._revoke_nonstarted_runs(
+                        connection,
+                        organization_id,
+                        now,
+                        f"subscription_{target.value.lower()}",
                     )
                 self._append_audit(
                     connection,
@@ -2554,6 +2727,232 @@ class SubscriberGovernance:
             raise SubscriberError(503, "billing_period_invalid")
         return to_utc_iso(parsed_start), to_utc_iso(parsed_end)
 
+    def _transition_run_with_connection(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+        organization_id: str,
+        expected_state: str,
+        next_state: str,
+        actor: str,
+        reason: str,
+        workflow_version: str,
+        now: str,
+    ) -> None:
+        cursor = connection.execute(
+            """
+            UPDATE runs SET state = ?, updated_at = ?
+            WHERE run_id = ? AND tenant_id = ? AND state = ?
+            """,
+            (next_state, now, run_id, organization_id, expected_state),
+        )
+        if cursor.rowcount != 1:
+            raise SubscriberError(409, "worker_run_state_changed")
+        connection.execute(
+            """
+            INSERT INTO state_events(
+                run_id, tenant_id, prior_state, next_state, actor,
+                reason, workflow_version, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                organization_id,
+                expected_state,
+                next_state,
+                actor,
+                reason,
+                workflow_version,
+                now,
+            ),
+        )
+
+    def _compensate_crash_meter(
+        self,
+        connection: sqlite3.Connection,
+        organization_id: str,
+        idempotency_key: str,
+        run_id: str,
+        occurred_at: str,
+        *,
+        key_prefix: str = "claim-crash",
+        reason: str = "expired_worker_claim_after_execution_start",
+    ) -> None:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO subscriber_usage_events(
+                organization_id, meter, quantity, idempotency_key,
+                metadata_json, occurred_at
+            ) VALUES (?, 'certification_runs', -1, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                f"{key_prefix}:{idempotency_key}",
+                canonical_json(
+                    {
+                        "reason": reason,
+                        "run_id": run_id,
+                    }
+                ),
+                occurred_at,
+            ),
+        )
+
+    def _recover_expired_claims(
+        self,
+        connection: sqlite3.Connection,
+        organization_id: str | None,
+        now: datetime,
+    ) -> int:
+        now_text = to_utc_iso(now)
+        parameters: list[Any] = [now_text]
+        organization_filter = ""
+        if organization_id is not None:
+            organization_filter = "AND r.organization_id = ?"
+            parameters.append(organization_id)
+        rows = connection.execute(
+            f"""
+            SELECT r.organization_id, r.idempotency_key, r.run_id, r.state,
+                   runs.state AS run_state,
+                   COALESCE(
+                       (
+                           SELECT u.occurred_at
+                           FROM subscriber_usage_events u
+                           WHERE u.organization_id = r.organization_id
+                             AND u.meter = 'certification_runs'
+                             AND u.idempotency_key = r.idempotency_key
+                             AND u.quantity > 0
+                           LIMIT 1
+                       ),
+                       r.created_at
+                   ) AS metered_at
+            FROM subscriber_run_reservations AS r
+            JOIN runs
+              ON runs.run_id = r.run_id
+             AND runs.tenant_id = r.organization_id
+            WHERE r.state IN ('EXECUTING', 'STARTED')
+              AND r.lease_expires_at IS NOT NULL
+              AND r.lease_expires_at <= ?
+              {organization_filter}
+            ORDER BY r.created_at, r.idempotency_key
+            """,
+            tuple(parameters),
+        ).fetchall()
+        for row in rows:
+            run_state = str(row["run_state"])
+            row_organization = str(row["organization_id"])
+            idempotency_key = str(row["idempotency_key"])
+            run_id = str(row["run_id"])
+            if row["state"] == "EXECUTING" and run_state == "QUEUED":
+                connection.execute(
+                    """
+                    UPDATE subscriber_run_reservations
+                    SET state = 'BOUND', worker_id = NULL,
+                        worker_attestation_sha256 = NULL,
+                        execution_location = NULL, signing_authority = NULL,
+                        signing_key_id = NULL, claim_token = NULL,
+                        lease_expires_at = NULL, last_heartbeat_at = NULL,
+                        consumed_at = NULL, updated_at = ?
+                    WHERE organization_id = ? AND idempotency_key = ?
+                      AND state = 'EXECUTING'
+                    """,
+                    (now_text, row_organization, idempotency_key),
+                )
+                connection.execute(
+                    """
+                    UPDATE subscriber_run_dispatches
+                    SET state = 'PENDING', claim_token = NULL,
+                        lease_owner = NULL, lease_expires_at = NULL,
+                        last_error = 'expired_pre_start_claim_requeued',
+                        updated_at = ?
+                    WHERE run_id = ? AND state = 'CLAIMED'
+                    """,
+                    (now_text, run_id),
+                )
+                outcome = "requeued"
+                compensated = False
+            else:
+                if run_state not in _TERMINAL_RUN_STATES:
+                    self._transition_run_with_connection(
+                        connection,
+                        run_id,
+                        row_organization,
+                        run_state,
+                        "INFRASTRUCTURE_FAILURE",
+                        "certforge.claim-recovery",
+                        "worker_claim_lease_expired",
+                        "p7.subscriber",
+                        now_text,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE runs SET run_outcome = 'INFRA_FAILED', updated_at = ?
+                        WHERE run_id = ? AND tenant_id = ?
+                        """,
+                        (now_text, run_id, row_organization),
+                    )
+                    run_state = "INFRASTRUCTURE_FAILURE"
+                connection.execute(
+                    """
+                    UPDATE subscriber_run_reservations
+                    SET state = 'RELEASED', claim_token = NULL,
+                        lease_expires_at = NULL, updated_at = ?
+                    WHERE organization_id = ? AND idempotency_key = ?
+                      AND state IN ('EXECUTING', 'STARTED')
+                    """,
+                    (now_text, row_organization, idempotency_key),
+                )
+                dispatch_state = "COMPLETE" if run_state == "COMPLETED" else "FAILED"
+                connection.execute(
+                    """
+                    UPDATE subscriber_run_dispatches
+                    SET state = ?, claim_token = NULL, lease_owner = NULL,
+                        lease_expires_at = NULL, last_error = ?,
+                        updated_at = ?
+                    WHERE run_id = ? AND state IN ('PENDING', 'CLAIMED')
+                    """,
+                    (
+                        dispatch_state,
+                        None if dispatch_state == "COMPLETE" else "worker_claim_lease_expired",
+                        now_text,
+                        run_id,
+                    ),
+                )
+                compensated = run_state != "COMPLETED"
+                if compensated:
+                    self._compensate_crash_meter(
+                        connection,
+                        row_organization,
+                        idempotency_key,
+                        run_id,
+                        str(row["metered_at"]),
+                    )
+                outcome = "terminalized"
+            self._append_audit(
+                connection,
+                organization_id=row_organization,
+                actor_ref="certforge.claim-recovery",
+                action="certification.worker_claim_recovered",
+                resource_type="certification",
+                resource_id=run_id,
+                outcome="allowed",
+                details={
+                    "recovery": outcome,
+                    "prior_claim_state": str(row["state"]),
+                    "run_state": run_state,
+                    "meter_compensated": compensated,
+                },
+            )
+        return len(rows)
+
+    def recover_expired_claims(self, organization_id: str | None = None) -> int:
+        if organization_id is not None:
+            require_identifier(organization_id, "organization_id")
+        with self._connection(immediate=True) as connection:
+            return self._recover_expired_claims(
+                connection, organization_id, self._now()
+            )
+
     def _reconcile_run_reservations(
         self, connection: sqlite3.Connection, organization_id: str, now: str
     ) -> None:
@@ -2641,7 +3040,7 @@ class SubscriberGovernance:
             f"""
             UPDATE subscriber_run_reservations
             SET state = 'RELEASED', updated_at = ?
-            WHERE organization_id = ? AND state IN ('BOUND', 'EXECUTING') AND run_id IN (
+            WHERE organization_id = ? AND state IN ('BOUND', 'EXECUTING', 'STARTED') AND run_id IN (
                 SELECT run_id FROM runs WHERE tenant_id = ? AND state IN ({",".join("?" for _ in _TERMINAL_RUN_STATES)})
             )
             """,
@@ -2659,6 +3058,9 @@ class SubscriberGovernance:
         target_type: str | None = None,
         target_reference: str | None = None,
         target_identity_digest: str | None = None,
+        dispatch_target_spec: Mapping[str, Any] | None = None,
+        journey: list[str] | None = None,
+        submit_request: Mapping[str, Any] | None = None,
     ) -> RunReservation:
         self.require(principal, Permission.RUN_CREATE)
         self.get_project(principal, project_id, required_status="ACTIVE")
@@ -2668,6 +3070,21 @@ class SubscriberGovernance:
             raise ValueError("target_reference is required")
         if target_identity_digest is not None:
             require_sha256(target_identity_digest, "target_identity_digest")
+        dispatch_target_json = (
+            canonical_json(dict(dispatch_target_spec))
+            if dispatch_target_spec is not None
+            else None
+        )
+        dispatch_journey_json = (
+            canonical_json(journey) if journey is not None else None
+        )
+        submit_request_json = (
+            canonical_json(dict(submit_request)) if submit_request is not None else None
+        )
+        if (dispatch_target_json is None) != (submit_request_json is None):
+            raise ValueError(
+                "dispatch_target_spec and submit_request must be supplied together"
+            )
         now = self._now()
         now_text = to_utc_iso(now)
         with self._connection(immediate=True) as connection:
@@ -2696,7 +3113,8 @@ class SubscriberGovernance:
             existing = connection.execute(
                 """
                 SELECT request_digest, state, project_id, policy_version, target_type,
-                       target_reference, target_identity_digest
+                       target_reference, target_identity_digest,
+                       dispatch_target_json, dispatch_journey_json, submit_request_json
                 FROM subscriber_run_reservations
                 WHERE organization_id = ? AND idempotency_key = ?
                 """,
@@ -2721,6 +3139,18 @@ class SubscriberGovernance:
                 )
                 if all(item is not None for item in expected_binding) and actual_binding != expected_binding:
                     raise SubscriberError(409, "run_reservation_binding_conflict")
+                expected_dispatch = (
+                    dispatch_target_json,
+                    dispatch_journey_json,
+                    submit_request_json,
+                )
+                actual_dispatch = (
+                    existing["dispatch_target_json"],
+                    existing["dispatch_journey_json"],
+                    existing["submit_request_json"],
+                )
+                if dispatch_target_json is not None and actual_dispatch != expected_dispatch:
+                    raise SubscriberError(409, "run_dispatch_binding_conflict")
                 return RunReservation(
                     principal.organization_id,
                     idempotency_key,
@@ -2746,7 +3176,7 @@ class SubscriberGovernance:
                 connection.execute(
                     """
                     SELECT COUNT(*) FROM subscriber_run_reservations
-                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND', 'EXECUTING')
+                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND', 'EXECUTING', 'STARTED')
                     """,
                     (principal.organization_id,),
                 ).fetchone()[0]
@@ -2770,8 +3200,10 @@ class SubscriberGovernance:
                 INSERT INTO subscriber_run_reservations(
                     organization_id, idempotency_key, request_digest,
                     project_id, policy_version, target_type, target_reference,
-                    target_identity_digest, state, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)
+                    target_identity_digest, dispatch_target_json,
+                    dispatch_journey_json, submit_request_json,
+                    state, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)
                 """,
                 (
                     principal.organization_id,
@@ -2782,6 +3214,9 @@ class SubscriberGovernance:
                     target_type,
                     target_reference,
                     target_identity_digest,
+                    dispatch_target_json,
+                    dispatch_journey_json,
+                    submit_request_json,
                     now_text,
                     now_text,
                 ),
@@ -2822,8 +3257,72 @@ class SubscriberGovernance:
                 target_identity_digest,
             )
 
-    def bind_run(self, reservation: RunReservation, run_id: str) -> None:
+    def pending_intake_requests(self, limit: int = 100) -> list[PendingSubscriberIntake]:
+        if limit <= 0 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT organization_id, idempotency_key, request_digest,
+                       project_id, policy_version, target_type, target_reference,
+                       target_identity_digest, dispatch_target_json,
+                       dispatch_journey_json, submit_request_json
+                FROM subscriber_run_reservations
+                WHERE state = 'RESERVED'
+                  AND dispatch_target_json IS NOT NULL
+                  AND submit_request_json IS NOT NULL
+                ORDER BY created_at, idempotency_key
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        pending: list[PendingSubscriberIntake] = []
+        for row in rows:
+            try:
+                target_spec = json.loads(str(row["dispatch_target_json"]))
+                request = json.loads(str(row["submit_request_json"]))
+                journey = (
+                    json.loads(str(row["dispatch_journey_json"]))
+                    if row["dispatch_journey_json"] is not None
+                    else None
+                )
+            except json.JSONDecodeError as exc:
+                raise SubscriberError(503, "pending_intake_invalid") from exc
+            if not isinstance(target_spec, dict) or not isinstance(request, dict):
+                raise SubscriberError(503, "pending_intake_invalid")
+            if journey is not None and not isinstance(journey, list):
+                raise SubscriberError(503, "pending_intake_invalid")
+            pending.append(
+                PendingSubscriberIntake(
+                    reservation=RunReservation(
+                        organization_id=str(row["organization_id"]),
+                        idempotency_key=str(row["idempotency_key"]),
+                        request_digest=str(row["request_digest"]),
+                        created=False,
+                        project_id=str(row["project_id"]),
+                        policy_version=str(row["policy_version"]),
+                        target_type=str(row["target_type"]),
+                        target_reference=str(row["target_reference"]),
+                        target_identity_digest=str(row["target_identity_digest"]),
+                    ),
+                    request=request,
+                    target_spec=target_spec,
+                    journey=journey,
+                )
+            )
+        return pending
+
+    def bind_run(
+        self,
+        reservation: RunReservation,
+        run_id: str,
+        *,
+        target_spec: Mapping[str, Any],
+        journey: list[str] | None,
+    ) -> None:
         require_identifier(run_id, "run_id")
+        target_json = canonical_json(dict(target_spec))
+        journey_json = canonical_json(journey) if journey is not None else None
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
             binding = connection.execute(
@@ -2884,8 +3383,38 @@ class SubscriberGovernance:
                 raise SubscriberError(409, "run_reservation_binding_conflict")
             if (
                 binding["run_id"] == run_id
-                and binding["state"] in {"BOUND", "EXECUTING", "RELEASED"}
+                and binding["state"] in {"BOUND", "EXECUTING", "STARTED", "RELEASED"}
             ):
+                dispatch = connection.execute(
+                    """
+                    SELECT target_json, journey_json
+                    FROM subscriber_run_dispatches WHERE run_id = ?
+                    """,
+                    (run_id,),
+                ).fetchone()
+                if dispatch is None and binding["state"] == "BOUND":
+                    connection.execute(
+                        """
+                        INSERT INTO subscriber_run_dispatches(
+                            run_id, organization_id, idempotency_key,
+                            target_json, journey_json, state, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                        """,
+                        (
+                            run_id,
+                            reservation.organization_id,
+                            reservation.idempotency_key,
+                            target_json,
+                            journey_json,
+                            now,
+                            now,
+                        ),
+                    )
+                elif dispatch is not None and (
+                    dispatch["target_json"] != target_json
+                    or dispatch["journey_json"] != journey_json
+                ):
+                    raise SubscriberError(409, "run_dispatch_binding_conflict")
                 return
             expected = (
                 reservation.organization_id,
@@ -2923,6 +3452,23 @@ class SubscriberGovernance:
             )
             if cursor.rowcount != 1:
                 raise SubscriberError(409, "run_reservation_conflict")
+            connection.execute(
+                """
+                INSERT INTO subscriber_run_dispatches(
+                    run_id, organization_id, idempotency_key,
+                    target_json, journey_json, state, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                """,
+                (
+                    run_id,
+                    reservation.organization_id,
+                    reservation.idempotency_key,
+                    target_json,
+                    journey_json,
+                    now,
+                    now,
+                ),
+            )
             self._append_audit(
                 connection,
                 organization_id=reservation.organization_id,
@@ -2932,6 +3478,379 @@ class SubscriberGovernance:
                 resource_id=run_id,
                 outcome="allowed",
             )
+
+    def _recover_expired_dispatches(
+        self, connection: sqlite3.Connection, now: datetime
+    ) -> int:
+        now_text = to_utc_iso(now)
+        terminalized = connection.execute(
+            """
+            UPDATE subscriber_run_dispatches
+            SET state = CASE
+                    WHEN (
+                        SELECT state FROM runs
+                        WHERE runs.run_id = subscriber_run_dispatches.run_id
+                          AND runs.tenant_id =
+                              subscriber_run_dispatches.organization_id
+                    ) = 'COMPLETED'
+                    THEN 'COMPLETE'
+                    ELSE 'FAILED'
+                END,
+                claim_token = NULL, lease_owner = NULL, lease_expires_at = NULL,
+                last_error = CASE
+                    WHEN (
+                        SELECT state FROM runs
+                        WHERE runs.run_id = subscriber_run_dispatches.run_id
+                          AND runs.tenant_id =
+                              subscriber_run_dispatches.organization_id
+                    ) = 'COMPLETED'
+                    THEN NULL
+                    ELSE 'worker_terminal_state'
+                END,
+                updated_at = ?
+            WHERE state = 'CLAIMED'
+              AND lease_expires_at IS NOT NULL
+              AND lease_expires_at <= ?
+              AND EXISTS (
+                  SELECT 1 FROM runs
+                  WHERE runs.run_id = subscriber_run_dispatches.run_id
+                    AND runs.tenant_id =
+                        subscriber_run_dispatches.organization_id
+                    AND runs.state IN (
+                        'COMPLETED', 'CANCELLED', 'INFRASTRUCTURE_FAILURE'
+                    )
+              )
+            """,
+            (now_text, now_text),
+        ).rowcount
+        rows = connection.execute(
+            """
+            SELECT d.run_id, d.organization_id, d.idempotency_key, d.attempts,
+                   COALESCE(
+                       (
+                           SELECT u.occurred_at
+                           FROM subscriber_usage_events u
+                           WHERE u.organization_id = d.organization_id
+                             AND u.meter = 'certification_runs'
+                             AND u.idempotency_key = d.idempotency_key
+                             AND u.quantity > 0
+                           LIMIT 1
+                       ),
+                       d.created_at
+                   ) AS metered_at
+            FROM subscriber_run_dispatches AS d
+            JOIN subscriber_run_reservations AS r
+              ON r.run_id = d.run_id
+             AND r.organization_id = d.organization_id
+            JOIN runs
+              ON runs.run_id = d.run_id
+             AND runs.tenant_id = d.organization_id
+            WHERE d.state = 'CLAIMED'
+              AND d.lease_expires_at IS NOT NULL
+              AND d.lease_expires_at <= ?
+              AND r.state = 'BOUND'
+              AND runs.state = 'QUEUED'
+            """,
+            (now_text,),
+        ).fetchall()
+        for row in rows:
+            if int(row["attempts"]) >= self.policy.max_dispatch_attempts:
+                self._transition_run_with_connection(
+                    connection,
+                    str(row["run_id"]),
+                    str(row["organization_id"]),
+                    "QUEUED",
+                    "INFRASTRUCTURE_FAILURE",
+                    "certforge.dispatch-recovery",
+                    "dispatch_attempts_exhausted",
+                    "p7.subscriber",
+                    now_text,
+                )
+                connection.execute(
+                    """
+                    UPDATE runs SET run_outcome = 'INFRA_FAILED', updated_at = ?
+                    WHERE run_id = ? AND tenant_id = ?
+                    """,
+                    (now_text, row["run_id"], row["organization_id"]),
+                )
+                connection.execute(
+                    """
+                    UPDATE subscriber_run_reservations
+                    SET state = 'RELEASED', updated_at = ?
+                    WHERE run_id = ? AND organization_id = ? AND state = 'BOUND'
+                    """,
+                    (now_text, row["run_id"], row["organization_id"]),
+                )
+                self._compensate_crash_meter(
+                    connection,
+                    str(row["organization_id"]),
+                    str(row["idempotency_key"]),
+                    str(row["run_id"]),
+                    str(row["metered_at"]),
+                    key_prefix="dispatch-crash",
+                    reason="dispatch_attempts_exhausted_before_execution_start",
+                )
+                next_state = "FAILED"
+                error = "dispatch_attempts_exhausted"
+            else:
+                next_state = "PENDING"
+                error = "dispatch_lease_expired"
+            connection.execute(
+                """
+                UPDATE subscriber_run_dispatches
+                SET state = ?, claim_token = NULL, lease_owner = NULL,
+                    lease_expires_at = NULL, last_error = ?, updated_at = ?
+                WHERE run_id = ? AND state = 'CLAIMED'
+                """,
+                (next_state, error, now_text, row["run_id"]),
+            )
+            self._append_audit(
+                connection,
+                organization_id=str(row["organization_id"]),
+                actor_ref="certforge.dispatch-recovery",
+                action="certification.dispatch_recovered",
+                resource_type="certification",
+                resource_id=str(row["run_id"]),
+                outcome="allowed",
+                details={
+                    "recovery": next_state.lower(),
+                    "attempts": int(row["attempts"]),
+                    "meter_compensated": next_state == "FAILED",
+                },
+            )
+        return terminalized + len(rows)
+
+    def claim_dispatch(
+        self,
+        dispatcher_id: str,
+        *,
+        run_id: str | None = None,
+        organization_id: str | None = None,
+        worker_id: str | None = None,
+        worker_attestation_sha256: str | None = None,
+        execution_location: str = "local",
+        signing_authority: str = "platform",
+        signing_key_id: str | None = None,
+    ) -> SubscriberDispatch | None:
+        require_identifier(dispatcher_id, "dispatcher_id")
+        if run_id is not None:
+            require_identifier(run_id, "run_id")
+        if organization_id is not None:
+            require_identifier(organization_id, "organization_id")
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        lease_expires_at = to_utc_iso(
+            now_value + timedelta(seconds=self.policy.dispatch_claim_lease_seconds)
+        )
+        claim_token = secrets.token_urlsafe(24)
+        with self._connection(immediate=True) as connection:
+            self._recover_expired_claims(connection, organization_id, now_value)
+            self._recover_expired_dispatches(connection, now_value)
+            filters = ["d.state = 'PENDING'", "r.state = 'BOUND'", "runs.state = 'QUEUED'"]
+            parameters: list[Any] = []
+            if run_id is not None:
+                filters.append("d.run_id = ?")
+                parameters.append(run_id)
+            if organization_id is not None:
+                filters.append("d.organization_id = ?")
+                parameters.append(organization_id)
+            rows = connection.execute(
+                f"""
+                SELECT d.run_id, d.organization_id, d.idempotency_key,
+                       d.target_json, d.journey_json, d.attempts
+                FROM subscriber_run_dispatches AS d
+                JOIN subscriber_run_reservations AS r
+                  ON r.run_id = d.run_id
+                 AND r.organization_id = d.organization_id
+                JOIN runs
+                  ON runs.run_id = d.run_id
+                 AND runs.tenant_id = d.organization_id
+                WHERE {' AND '.join(filters)}
+                ORDER BY d.created_at, d.run_id
+                """,
+                tuple(parameters),
+            ).fetchall()
+            row = None
+            for candidate in rows:
+                if signing_key_id is not None:
+                    target_spec = json.loads(str(candidate["target_json"]))
+                    try:
+                        self._resolve_worker_governance(
+                            connection,
+                            str(candidate["organization_id"]),
+                            target_type=str(target_spec.get("type", "")),
+                            worker_id=worker_id,
+                            worker_attestation_sha256=worker_attestation_sha256,
+                            execution_location=execution_location,
+                            signing_authority=signing_authority,
+                            signing_key_id=signing_key_id,
+                        )
+                    except (SubscriberError, TypeError, ValueError):
+                        continue
+                row = candidate
+                break
+            if row is None:
+                return None
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_dispatches
+                SET state = 'CLAIMED', attempts = attempts + 1,
+                    claim_token = ?, lease_owner = ?, lease_expires_at = ?,
+                    last_error = NULL, updated_at = ?
+                WHERE run_id = ? AND state = 'PENDING'
+                """,
+                (
+                    claim_token,
+                    dispatcher_id,
+                    lease_expires_at,
+                    now,
+                    row["run_id"],
+                ),
+            )
+            if cursor.rowcount != 1:
+                return None
+            self._append_audit(
+                connection,
+                organization_id=str(row["organization_id"]),
+                actor_ref=dispatcher_id,
+                action="certification.dispatch_claim",
+                resource_type="certification",
+                resource_id=str(row["run_id"]),
+                outcome="allowed",
+                details={"lease_expires_at": lease_expires_at},
+            )
+            journey = (
+                json.loads(str(row["journey_json"]))
+                if row["journey_json"] is not None
+                else None
+            )
+            return SubscriberDispatch(
+                run_id=str(row["run_id"]),
+                organization_id=str(row["organization_id"]),
+                idempotency_key=str(row["idempotency_key"]),
+                target_spec=json.loads(str(row["target_json"])),
+                journey=journey,
+                claim_token=claim_token,
+                lease_expires_at=lease_expires_at,
+                attempts=int(row["attempts"]) + 1,
+            )
+
+    def finish_dispatch(
+        self,
+        dispatch: SubscriberDispatch,
+        *,
+        error: str | None = None,
+    ) -> str:
+        if error is not None and not error.strip():
+            raise ValueError("dispatch error must not be empty")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            row = connection.execute(
+                """
+                SELECT d.state, d.attempts, d.idempotency_key,
+                       runs.state AS run_state, r.state AS reservation_state,
+                       COALESCE(
+                           (
+                               SELECT u.occurred_at
+                               FROM subscriber_usage_events u
+                               WHERE u.organization_id = d.organization_id
+                                 AND u.meter = 'certification_runs'
+                                 AND u.idempotency_key = d.idempotency_key
+                                 AND u.quantity > 0
+                               LIMIT 1
+                           ),
+                           d.created_at
+                       ) AS metered_at
+                FROM subscriber_run_dispatches AS d
+                JOIN runs
+                  ON runs.run_id = d.run_id
+                 AND runs.tenant_id = d.organization_id
+                JOIN subscriber_run_reservations AS r
+                  ON r.run_id = d.run_id
+                 AND r.organization_id = d.organization_id
+                WHERE d.run_id = ? AND d.organization_id = ?
+                  AND d.claim_token = ?
+                """,
+                (
+                    dispatch.run_id,
+                    dispatch.organization_id,
+                    dispatch.claim_token,
+                ),
+            ).fetchone()
+            if row is None:
+                raise SubscriberError(409, "dispatch_claim_inactive")
+            run_state = str(row["run_state"])
+            if run_state == "COMPLETED":
+                state = "COMPLETE"
+            elif run_state in {"CANCELLED", "INFRASTRUCTURE_FAILURE"}:
+                state = "FAILED"
+            elif error is not None and row["reservation_state"] == "RELEASED":
+                self._transition_run_with_connection(
+                    connection,
+                    dispatch.run_id,
+                    dispatch.organization_id,
+                    run_state,
+                    "INFRASTRUCTURE_FAILURE",
+                    "certforge.dispatcher",
+                    "worker_exception_after_claim_release",
+                    "p7.subscriber",
+                    now,
+                )
+                connection.execute(
+                    """
+                    UPDATE runs SET run_outcome = 'INFRA_FAILED', updated_at = ?
+                    WHERE run_id = ? AND tenant_id = ?
+                    """,
+                    (now, dispatch.run_id, dispatch.organization_id),
+                )
+                self._compensate_crash_meter(
+                    connection,
+                    dispatch.organization_id,
+                    str(row["idempotency_key"]),
+                    dispatch.run_id,
+                    str(row["metered_at"]),
+                    key_prefix="dispatch-worker-error",
+                    reason="worker_exception_after_claim_release",
+                )
+                state = "FAILED"
+            elif error is not None and int(row["attempts"]) < self.policy.max_dispatch_attempts:
+                state = "PENDING"
+            else:
+                state = "FAILED"
+            connection.execute(
+                """
+                UPDATE subscriber_run_dispatches
+                SET state = ?, claim_token = NULL, lease_owner = NULL,
+                    lease_expires_at = NULL, last_error = ?, updated_at = ?
+                WHERE run_id = ? AND organization_id = ? AND claim_token = ?
+                """,
+                (
+                    state,
+                    error,
+                    now,
+                    dispatch.run_id,
+                    dispatch.organization_id,
+                    dispatch.claim_token,
+                ),
+            )
+            return state
+
+    def dispatch_status(self, run_id: str, organization_id: str) -> dict[str, Any]:
+        require_identifier(run_id, "run_id")
+        require_identifier(organization_id, "organization_id")
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT run_id, organization_id, state, attempts, lease_owner,
+                       lease_expires_at, last_error, created_at, updated_at
+                FROM subscriber_run_dispatches
+                WHERE run_id = ? AND organization_id = ?
+                """,
+                (run_id, organization_id),
+            ).fetchone()
+        if row is None:
+            raise SubscriberError(404, "dispatch_not_found")
+        return dict(row)
 
     def _resolve_worker_governance(
         self,
@@ -2944,7 +3863,7 @@ class SubscriberGovernance:
         execution_location: str,
         signing_authority: str,
         signing_key_id: str,
-    ) -> int:
+    ) -> WorkerExecutionAuthorization:
         plan, subscription = self._plan_for_org(connection, organization_id)
         status = OrganizationStatus(str(subscription["organization_status"]))
         if status not in {OrganizationStatus.TRIALING, OrganizationStatus.ACTIVE}:
@@ -2954,7 +3873,7 @@ class SubscriberGovernance:
         if not parse_utc_iso(period_start) <= now < parse_utc_iso(period_end):
             raise SubscriberError(403, "subscription_period_inactive")
         row = connection.execute(
-            "SELECT config_json FROM subscriber_governance WHERE organization_id = ?",
+            "SELECT config_json, version FROM subscriber_governance WHERE organization_id = ?",
             (organization_id,),
         ).fetchone()
         if row is None:
@@ -3014,7 +3933,11 @@ class SubscriberGovernance:
                 raise SubscriberError(403, "customer_signing_authority_required")
         elif signing_authority != "platform":
             raise SubscriberError(403, "platform_signing_authority_required")
-        return retention_days
+        return WorkerExecutionAuthorization(
+            retention_days=retention_days,
+            governance_version=int(row["version"]),
+            subscription_version=int(subscription["version"]),
+        )
 
     def claim_worker_run(
         self,
@@ -3036,8 +3959,14 @@ class SubscriberGovernance:
         require_identifier(target_type, "target_type")
         if not target_reference.strip():
             raise ValueError("target_reference is required")
-        now = to_utc_iso(self._now())
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        claim_token = secrets.token_urlsafe(24)
+        lease_expires_at = to_utc_iso(
+            now_value + timedelta(seconds=self.policy.worker_claim_lease_seconds)
+        )
         with self._connection(immediate=True) as connection:
+            self._recover_expired_claims(connection, organization_id, now_value)
             binding = connection.execute(
                 """
                 SELECT r.idempotency_key, r.request_digest, r.project_id,
@@ -3093,7 +4022,7 @@ class SubscriberGovernance:
                 or binding["target_reference"] != target_reference
             ):
                 raise SubscriberError(409, "worker_target_binding_conflict")
-            retention_days = self._resolve_worker_governance(
+            authorization = self._resolve_worker_governance(
                 connection,
                 organization_id,
                 target_type=target_type,
@@ -3109,7 +4038,8 @@ class SubscriberGovernance:
                 SET state = 'EXECUTING', worker_id = ?,
                     worker_attestation_sha256 = ?, execution_location = ?,
                     signing_authority = ?, signing_key_id = ?,
-                    consumed_at = ?, updated_at = ?
+                    claim_token = ?, lease_expires_at = ?,
+                    last_heartbeat_at = ?, consumed_at = ?, updated_at = ?
                 WHERE organization_id = ? AND run_id = ? AND state = 'BOUND'
                 """,
                 (
@@ -3120,6 +4050,9 @@ class SubscriberGovernance:
                     execution_location,
                     signing_authority,
                     signing_key_id,
+                    claim_token,
+                    lease_expires_at,
+                    now,
                     now,
                     now,
                     organization_id,
@@ -3139,6 +4072,7 @@ class SubscriberGovernance:
                 details={
                     "execution_location": execution_location,
                     "signing_authority": signing_authority,
+                    "lease_expires_at": lease_expires_at,
                 },
             )
             return WorkerRunClaim(
@@ -3150,17 +4084,27 @@ class SubscriberGovernance:
                 target_type=str(binding["target_type"]),
                 target_reference=str(binding["target_reference"]),
                 target_identity_digest=str(binding["target_identity_digest"]),
-                retention_days=retention_days,
+                retention_days=authorization.retention_days,
+                claim_token=claim_token,
+                lease_expires_at=lease_expires_at,
             )
 
-    def authorize_worker_execution(self, claim: WorkerRunClaim) -> int:
+    def authorize_worker_execution(
+        self, claim: WorkerRunClaim
+    ) -> WorkerExecutionAuthorization:
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        lease_expires_at = to_utc_iso(
+            now_value + timedelta(seconds=self.policy.worker_claim_lease_seconds)
+        )
         with self._connection(immediate=True) as connection:
             reservation = connection.execute(
                 """
                 SELECT r.target_type, r.worker_id, r.worker_attestation_sha256,
                        r.execution_location, r.signing_authority, r.signing_key_id,
                        r.state, r.project_id, r.policy_version, r.target_reference,
-                       r.target_identity_digest, runs.state AS run_state,
+                       r.target_identity_digest, r.claim_token, r.lease_expires_at,
+                       runs.state AS run_state,
                        runs.project_id AS run_project_id,
                        runs.policy_version AS run_policy_version,
                        json_extract(
@@ -3180,6 +4124,18 @@ class SubscriberGovernance:
             ).fetchone()
             if reservation is None or reservation["state"] != "EXECUTING":
                 raise SubscriberError(409, "worker_run_claim_inactive")
+            if (
+                reservation["claim_token"] is None
+                or not hmac.compare_digest(
+                    str(reservation["claim_token"]), claim.claim_token
+                )
+            ):
+                raise SubscriberError(409, "worker_run_claim_token_invalid")
+            if (
+                reservation["lease_expires_at"] is None
+                or parse_utc_iso(str(reservation["lease_expires_at"])) <= now_value
+            ):
+                raise SubscriberError(409, "worker_run_claim_expired")
             if reservation["run_state"] != "QUEUED":
                 raise SubscriberError(409, "worker_run_not_queued")
             if (
@@ -3192,7 +4148,7 @@ class SubscriberGovernance:
                 != reservation["run_target_identity_digest"]
             ):
                 raise SubscriberError(409, "worker_run_binding_changed")
-            return self._resolve_worker_governance(
+            authorization = self._resolve_worker_governance(
                 connection,
                 claim.organization_id,
                 target_type=str(reservation["target_type"]),
@@ -3202,6 +4158,86 @@ class SubscriberGovernance:
                 signing_authority=str(reservation["signing_authority"]),
                 signing_key_id=str(reservation["signing_key_id"]),
             )
+            self._transition_run_with_connection(
+                connection,
+                claim.run_id,
+                claim.organization_id,
+                "QUEUED",
+                "ACQUIRING_TARGET",
+                "certforge.run-worker",
+                "subscriber_execution_started",
+                "p7.subscriber",
+                now,
+            )
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET state = 'STARTED', execution_started_at = ?,
+                    governance_version = ?, subscription_version = ?,
+                    lease_expires_at = ?, last_heartbeat_at = ?, updated_at = ?
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                  AND state = 'EXECUTING' AND claim_token = ?
+                """,
+                (
+                    now,
+                    authorization.governance_version,
+                    authorization.subscription_version,
+                    lease_expires_at,
+                    now,
+                    now,
+                    claim.organization_id,
+                    claim.run_id,
+                    claim.idempotency_key,
+                    claim.claim_token,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_run_claim_inactive")
+            self._append_audit(
+                connection,
+                organization_id=claim.organization_id,
+                actor_ref="certforge.run-worker",
+                action="certification.execution_start",
+                resource_type="certification",
+                resource_id=claim.run_id,
+                outcome="allowed",
+                details={
+                    "governance_version": authorization.governance_version,
+                    "subscription_version": authorization.subscription_version,
+                    "lease_expires_at": lease_expires_at,
+                },
+            )
+            return authorization
+
+    def heartbeat_worker_claim(self, claim: WorkerRunClaim) -> str:
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        lease_expires_at = to_utc_iso(
+            now_value + timedelta(seconds=self.policy.worker_claim_lease_seconds)
+        )
+        with self._connection(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET lease_expires_at = ?, last_heartbeat_at = ?, updated_at = ?
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                  AND claim_token = ? AND state IN ('EXECUTING', 'STARTED')
+                  AND lease_expires_at > ?
+                """,
+                (
+                    lease_expires_at,
+                    now,
+                    now,
+                    claim.organization_id,
+                    claim.run_id,
+                    claim.idempotency_key,
+                    claim.claim_token,
+                    now,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_run_claim_inactive")
+        return lease_expires_at
 
     def finish_worker_claim(self, claim: WorkerRunClaim, *, reason: str) -> None:
         require_identifier(reason, "reason")
@@ -3210,18 +4246,49 @@ class SubscriberGovernance:
             cursor = connection.execute(
                 """
                 UPDATE subscriber_run_reservations
-                SET state = 'RELEASED', updated_at = ?
+                SET state = 'RELEASED', claim_token = NULL,
+                    lease_expires_at = NULL, updated_at = ?
                 WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
-                  AND state = 'EXECUTING'
+                  AND claim_token = ? AND state IN ('EXECUTING', 'STARTED')
                 """,
                 (
                     now,
                     claim.organization_id,
                     claim.run_id,
                     claim.idempotency_key,
+                    claim.claim_token,
                 ),
             )
             if cursor.rowcount == 1:
+                run = connection.execute(
+                    """
+                    SELECT state FROM runs
+                    WHERE run_id = ? AND tenant_id = ?
+                    """,
+                    (claim.run_id, claim.organization_id),
+                ).fetchone()
+                if run is not None and str(run["state"]) in _TERMINAL_RUN_STATES:
+                    dispatch_state = (
+                        "COMPLETE" if str(run["state"]) == "COMPLETED" else "FAILED"
+                    )
+                    connection.execute(
+                        """
+                        UPDATE subscriber_run_dispatches
+                        SET state = ?, claim_token = NULL, lease_owner = NULL,
+                            lease_expires_at = NULL, last_error = ?, updated_at = ?
+                        WHERE run_id = ? AND organization_id = ?
+                          AND state IN ('PENDING', 'CLAIMED')
+                        """,
+                        (
+                            dispatch_state,
+                            None
+                            if dispatch_state == "COMPLETE"
+                            else f"worker_terminal:{run['state']}",
+                            now,
+                            claim.run_id,
+                            claim.organization_id,
+                        ),
+                    )
                 self._append_audit(
                     connection,
                     organization_id=claim.organization_id,
@@ -3309,7 +4376,7 @@ class SubscriberGovernance:
                 connection.execute(
                     """
                     SELECT COUNT(*) FROM subscriber_run_reservations
-                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND', 'EXECUTING')
+                    WHERE organization_id = ? AND state IN ('RESERVED', 'BOUND', 'EXECUTING', 'STARTED')
                     """,
                     (principal.organization_id,),
                 ).fetchone()[0]

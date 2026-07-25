@@ -10,6 +10,7 @@ cd "$REPO_DIR"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"
+DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-feat/certforge-r5-negative-controls}"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 
@@ -28,20 +29,27 @@ echo "== [2/7] venv + install =="
 echo "   installed"
 
 echo "== [3/7] runtime dirs =="
-mkdir -p var/evidence var/trusted-public-keys
+mkdir -p var/evidence var/trusted-public-keys var/dispatch-output
 test -f policies/mandatory-rules.v1.json || { echo "!! policy manifest missing"; exit 1; }
+test -f policies/subscriber-governance.v1.json || { echo "!! subscriber policy missing"; exit 1; }
+test -f /home/forge/.config/echo/certforge.env || {
+  echo "!! /home/forge/.config/echo/certforge.env missing"; exit 1;
+}
 
 echo "== [4/7] staging boot on 127.0.0.1:$STAGING_PORT =="
 export ECHO_CERTFORGE_DB="$REPO_DIR/var/staging.sqlite3"
 export ECHO_CERTFORGE_EVIDENCE_ROOT="$REPO_DIR/var/staging-evidence"
 export ECHO_CERTFORGE_POLICY="$REPO_DIR/policies/mandatory-rules.v1.json"
+export ECHO_CERTFORGE_SUBSCRIBER_POLICY="$REPO_DIR/policies/subscriber-governance.v1.json"
 export ECHO_CERTFORGE_TRUSTED_KEYS="$REPO_DIR/var/trusted-public-keys"
-./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >/tmp/certforge_staging.log 2>&1 &
+export ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
+export ECHO_CERTFORGE_API_KEY_PEPPER="staging-only-certforge-pepper"
+./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >var/certforge_staging.log 2>&1 &
 STAGING_PID=$!
 trap 'kill $STAGING_PID 2>/dev/null || true' EXIT
 ready=0
 for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$STAGING_PORT/healthz" >/dev/null 2>&1 && { ready=1; break; }; sleep 0.5; done
-[ "$ready" = 1 ] || { echo "!! staging never became healthy"; tail -20 /tmp/certforge_staging.log; exit 1; }
+[ "$ready" = 1 ] || { echo "!! staging never became healthy"; tail -20 var/certforge_staging.log; exit 1; }
 
 echo "== [5/7] staging live-smoke =="
 if ! ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$STAGING_PORT"; then
@@ -63,9 +71,38 @@ Environment=PYTHONUNBUFFERED=1
 Environment=ECHO_CERTFORGE_DB=$REPO_DIR/var/certforge.sqlite3
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$REPO_DIR/var/evidence
 Environment=ECHO_CERTFORGE_POLICY=$REPO_DIR/policies/mandatory-rules.v1.json
+Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$REPO_DIR/policies/subscriber-governance.v1.json
+Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$REPO_DIR/var/trusted-public-keys
+EnvironmentFile=/home/forge/.config/echo/certforge.env
 ExecStart=$REPO_DIR/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo tee /etc/systemd/system/$DISPATCH_SERVICE.service >/dev/null <<UNIT
+[Unit]
+Description=echo-certification-forge — durable subscriber run dispatcher
+After=network.target $SERVICE.service
+Requires=$SERVICE.service
+
+[Service]
+Type=simple
+User=forge
+WorkingDirectory=$REPO_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=ECHO_CERTFORGE_DB=$REPO_DIR/var/certforge.sqlite3
+Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$REPO_DIR/var/evidence
+Environment=ECHO_CERTFORGE_POLICY=$REPO_DIR/policies/mandatory-rules.v1.json
+Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$REPO_DIR/policies/subscriber-governance.v1.json
+Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
+Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$REPO_DIR/var/trusted-public-keys
+Environment=ECHO_CERTFORGE_RUN_SIGNING_KEY=$REPO_DIR/var/run-signing-key.pem
+EnvironmentFile=/home/forge/.config/echo/certforge.env
+ExecStart=$REPO_DIR/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox
+Restart=always
 RestartSec=5
 
 [Install]
@@ -74,21 +111,28 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now $SERVICE.service
 sudo systemctl restart $SERVICE.service
+sudo systemctl enable --now $DISPATCH_SERVICE.service
+sudo systemctl restart $DISPATCH_SERVICE.service
 
 echo "== [7/7] production health + live-smoke =="
 ready=0
 for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && { ready=1; break; }; sleep 0.5; done
-if [ "$ready" != 1 ] || ! ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$PROD_PORT"; then
+if [ "$ready" != 1 ] \
+  || ! systemctl is-active --quiet $DISPATCH_SERVICE.service \
+  || ! ./.venv/bin/python deploy/smoke_live.py "http://127.0.0.1:$PROD_PORT"; then
   echo "!! PROD RED — rolling back to $PREV_COMMIT"
   if [ "$PREV_COMMIT" != none ]; then
     git reset --hard --quiet "$PREV_COMMIT"
     ./.venv/bin/pip install --quiet . >/dev/null
     sudo systemctl restart $SERVICE.service || true
+    sudo systemctl restart $DISPATCH_SERVICE.service || true
   else
     sudo systemctl stop $SERVICE.service || true
+    sudo systemctl stop $DISPATCH_SERVICE.service || true
   fi
   echo "ROLLBACK COMPLETE — investigate before retrying"; exit 1
 fi
 
 echo "DEPLOY GREEN — $SERVICE live on :$PROD_PORT @ $NEW_COMMIT"
 sudo systemctl status $SERVICE.service --no-pager -l | head -6 || true
+sudo systemctl status $DISPATCH_SERVICE.service --no-pager -l | head -6 || true

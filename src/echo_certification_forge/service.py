@@ -308,6 +308,10 @@ def create_app(context: ServiceContext) -> FastAPI:
             if context.subscribers is not None:
                 if principal is None or request.project_id is None:
                     raise SubscriberError(422, "project_id_required")
+                try:
+                    target_spec = request.target.worker_spec()
+                except ValueError as exc:
+                    raise SubscriberError(422, "target_not_dispatchable") from exc
                 reservation = context.subscribers.reserve_certification_run(
                     principal,
                     project_id=request.project_id,
@@ -317,10 +321,18 @@ def create_app(context: ServiceContext) -> FastAPI:
                     target_type=request.target.target_type,
                     target_reference=request.target.reference,
                     target_identity_digest=request.target.identity_digest,
+                    dispatch_target_spec=target_spec,
+                    journey=request.journey,
+                    submit_request=request.model_dump(exclude_none=True),
                 )
             status_code, body = submit(context.store, context.manifest, request, tenant_id)
             if context.subscribers is not None and reservation is not None:
-                context.subscribers.bind_run(reservation, str(body["run_id"]))
+                context.subscribers.bind_run(
+                    reservation,
+                    str(body["run_id"]),
+                    target_spec=target_spec,
+                    journey=request.journey,
+                )
         except SubmitError as exc:
             if reservation is not None and reservation.created:
                 context.subscribers.release_reservation(

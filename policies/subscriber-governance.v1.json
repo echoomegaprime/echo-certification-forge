@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.1",
   "policy_id": "certforge.subscriber-governance.v1",
   "api_key_max_ttl_days": 90,
   "api_key_secret_bytes": 32,
@@ -7,6 +7,10 @@
   "rate_limit_scope": "api_key_global",
   "audit_denied_requests": true,
   "reservation_ttl_seconds": 300,
+  "worker_claim_lease_seconds": 30,
+  "worker_heartbeat_interval_seconds": 5,
+  "dispatch_claim_lease_seconds": 30,
+  "max_dispatch_attempts": 3,
   "plans": [
     {
       "code": "developer",

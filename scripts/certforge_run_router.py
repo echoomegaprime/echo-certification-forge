@@ -1,21 +1,13 @@
-"""/sdk/certification-forge/run — self-service certification of an (untrusted) target.
+"""/sdk/certification-forge/run — trigger an existing governed subscriber run.
 
-Gate-triggered full certification. Sovereign-authenticated. Launches the KEY-HOLDING run-worker
-DETACHED on FORGE with the isolated Docker sandbox enabled (``--sandbox``), so the target's critical
-journey executes only inside a locked-down container (no host escape) while the trusted orchestration
-(acquire → scan → sign) runs on the host and never executes target code. Returns a run_id
-immediately; poll with the existing ``echo.certforge.status`` cap (the worker writes the shared store).
-
-Additive router (auto-mounted). Does NOT modify the read API or the R5 routers.
+The subscriber intake API owns run identity, reservation, metering, and the transactional outbox.
+This gate route accepts only that returned run ID and confirms it for the always-on dispatcher. It
+never creates a second identity or bypasses subscriber governance.
 """
 from __future__ import annotations
 
-import asyncio
-import hashlib
-import json
-import os
 import re
-import time
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -28,10 +20,7 @@ router = APIRouter(prefix="/sdk/certification-forge", tags=["certification-forge
 
 _SOVEREIGN_KEY_FILE = "/home/forge/.echo_sovereign_key"
 _REPO = "/home/forge/echo-certification-forge"
-_VENV_PY = f"{_REPO}/.venv/bin/python"
-_RUN_OUT_DIR = "/tmp/certforge_runs"
-_TENANT = "echo-sovereign"  # the sovereign gate tenant (matches echo.certforge.* static X-Tenant-ID)
-_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 def _sovereign_key() -> str | None:
@@ -51,76 +40,55 @@ def _require_sovereign(x_echo_api_key: str | None) -> None:
         raise HTTPException(status_code=403, detail="sovereign key required")
 
 
-class RunTarget(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    type: str = Field(pattern=r"^(git|local)$")
-    url: str | None = Field(default=None, max_length=2048)
-    path: str | None = Field(default=None, max_length=2048)
-    ref: str | None = Field(default=None, max_length=256)
-
-
 class RunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    target: RunTarget
-    journey: list[str] | None = Field(default=None, max_length=32)
-    policy_version: str | None = Field(default=None, max_length=128)
+    run_id: str = Field(min_length=1, max_length=128)
+    tenant: str = Field(min_length=1, max_length=128)
 
 
-@router.post("/run", summary="echo.certforge.run — certify an (untrusted) target in the sandbox",
-             dependencies=[Depends(rate_limit)])
-async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(None)) -> dict[str, Any]:
+@router.post(
+    "/run",
+    summary="echo.certforge.run — dispatch an existing governed subscriber run",
+    dependencies=[Depends(rate_limit)],
+)
+async def certforge_run(
+    req: RunRequest, x_echo_api_key: str | None = Header(None)
+) -> dict[str, Any]:
     _require_sovereign(x_echo_api_key)
+    if not _RUN_ID_RE.fullmatch(req.run_id) or not _RUN_ID_RE.fullmatch(req.tenant):
+        raise HTTPException(status_code=400, detail="invalid run or tenant identifier")
 
-    target = req.target.model_dump(exclude_none=True)
-    if req.target.type == "git" and not req.target.url:
-        raise HTTPException(status_code=400, detail="git target requires url")
-    if req.target.type == "local" and not req.target.path:
-        raise HTTPException(status_code=400, detail="local target requires path")
-    if req.journey is not None and not all(isinstance(x, str) and x for x in req.journey):
-        raise HTTPException(status_code=400, detail="journey must be a non-empty list of strings")
-
-    seed = f"{target}|{req.journey}|{time.time_ns()}".encode("utf-8")
-    run_id = "cert_run_" + hashlib.sha256(seed).hexdigest()[:40]
-    if not _RUN_ID_RE.fullmatch(run_id):  # defensive; the charset is fixed
-        raise HTTPException(status_code=500, detail="run_id generation error")
-
-    argv = [
-        _VENV_PY, "-m", "echo_certification_forge.run_worker",
-        "--run-id", run_id, "--tenant", _TENANT,
-        "--target-json", json.dumps(target), "--sandbox",
-    ]
-    if req.journey:
-        argv += ["--journey-json", json.dumps(req.journey)]
-    if req.policy_version:
-        argv += ["--policy-version", req.policy_version]
-
-    env = {
-        **os.environ,
-        "ECHO_CERTFORGE_DB": f"{_REPO}/var/certforge.sqlite3",
-        "ECHO_CERTFORGE_EVIDENCE_ROOT": f"{_REPO}/var/evidence",
-        "ECHO_CERTFORGE_POLICY": f"{_REPO}/policies/mandatory-rules.v1.json",
-        "ECHO_CERTFORGE_TRUSTED_KEYS": f"{_REPO}/var/trusted-public-keys",
-        "ECHO_CERTFORGE_RUN_SIGNING_KEY": f"{_REPO}/var/run-signing-key.pem",
-        "ECHO_CERTFORGE_ENTITLED_TENANTS": _TENANT,
-        "ECHO_CERTFORGE_SANDBOX_DOCKER": "docker",
-    }
-
-    Path(_RUN_OUT_DIR).mkdir(parents=True, exist_ok=True)
-    out_path = Path(_RUN_OUT_DIR) / f"{run_id}.out"
+    db_path = Path(f"{_REPO}/var/certforge.sqlite3")
     try:
-        out_fd = open(out_path, "wb")  # noqa: SIM115 — handed to the detached child
-        # No shell: argv is passed directly (no injection surface). start_new_session detaches the
-        # worker so it survives gate-worker recycling; its output goes to a file, not our pipes.
-        await asyncio.create_subprocess_exec(
-            *argv, cwd=_REPO, env=env, stdout=out_fd, stderr=out_fd,
-            stdin=asyncio.subprocess.DEVNULL, start_new_session=True,
-        )
-    except OSError as exc:
-        raise HTTPException(status_code=502, detail=f"run-worker launch failed: {type(exc).__name__}") from exc
+        with sqlite3.connect(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT state FROM subscriber_run_dispatches
+                WHERE run_id = ? AND organization_id = ?
+                """,
+                (req.run_id, req.tenant),
+            ).fetchone()
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"subscriber dispatch store unavailable:{type(exc).__name__}",
+        ) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="governed run dispatch not found")
+    if str(row[0]) not in {"PENDING", "CLAIMED"}:
+        raise HTTPException(status_code=409, detail=f"dispatch is {row[0]}")
 
-    await audit("certforge-run", "launched", "certforge-run", run_id,
-                {"run_id": run_id, "target_type": req.target.type, "sandboxed": True})
+    await audit(
+        "certforge-run",
+        "outbox-confirmed",
+        "certforge-run",
+        req.run_id,
+        {"run_id": req.run_id, "tenant": req.tenant, "sandboxed": True},
+    )
     return {
-        "run_id": run_id, "status": "RUNNING", "tenant": _TENANT, "sandboxed": True,
+        "run_id": req.run_id,
+        "status": str(row[0]),
+        "tenant": req.tenant,
+        "sandboxed": True,
         "poll_capability": "echo.certforge.status",
     }

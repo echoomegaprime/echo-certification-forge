@@ -47,6 +47,31 @@ class SubmitTarget(BaseModel):
     )
     identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     reference: str = Field(min_length=1, max_length=2048)
+    url: str | None = Field(default=None, min_length=1, max_length=2048)
+    path: str | None = Field(default=None, min_length=1, max_length=2048)
+    ref: str | None = Field(default=None, min_length=1, max_length=256)
+
+    def worker_spec(self) -> dict[str, str]:
+        if self.target_type == "local":
+            return {"type": "local", "path": self.path or self.reference}
+        if self.target_type == "git":
+            if self.url is not None:
+                spec = {"type": "git", "url": self.url}
+                if self.ref is not None:
+                    spec["ref"] = self.ref
+                return spec
+            reference = self.reference
+            separator = reference.rfind("@")
+            if separator > reference.rfind("/") and not (
+                reference.startswith("git@") and reference.count("@") == 1
+            ):
+                return {
+                    "type": "git",
+                    "url": reference[:separator],
+                    "ref": reference[separator + 1 :],
+                }
+            return {"type": "git", "url": reference}
+        raise ValueError("target type is not dispatchable")
 
 
 class SubmitEnvironment(BaseModel):
@@ -65,6 +90,7 @@ class SubmitRequest(BaseModel):
     environment: SubmitEnvironment
     policy_version: str = Field(min_length=1, max_length=128)
     idempotency_key: str = Field(min_length=8, max_length=128)
+    journey: list[str] | None = Field(default=None, max_length=32)
 
     def request_digest(self) -> str:
         """Semantic identity of the request (excludes the idempotency key itself)."""
@@ -72,9 +98,10 @@ class SubmitRequest(BaseModel):
             {
                 "tenant_id": self.tenant_id,
                 **({"project_id": self.project_id} if self.project_id is not None else {}),
-                "target": self.target.model_dump(),
+                "target": self.target.model_dump(exclude_none=True),
                 "environment": self.environment.model_dump(),
                 "policy_version": self.policy_version,
+                **({"journey": self.journey} if self.journey is not None else {}),
             }
         )
 
@@ -164,8 +191,45 @@ def submit(
             manifest_digest=manifest.digest,
         )
     except sqlite3.IntegrityError:
-        # A concurrent submit of the same (request, key) already created this run — return it as a
-        # clean idempotent replay rather than a 500.
+        # A concurrent or recovered submit already created this deterministic run. Finish any
+        # interrupted CREATED -> QUEUED/idempotency steps before returning the replay.
+        row = store.get_run(run_id, request.tenant_id)
+        if row["state"] == RunState.CREATED.value:
+            try:
+                store.transition_state(
+                    run_id=run_id,
+                    tenant_id=request.tenant_id,
+                    next_state=RunState.QUEUED,
+                    actor="certforge.intake-recovery",
+                    reason="recover_interrupted_submission",
+                    workflow_version="p7.subscriber",
+                )
+            except ValueError:
+                if (
+                    store.get_run(run_id, request.tenant_id)["state"]
+                    != RunState.QUEUED.value
+                ):
+                    raise
+        existing = store.find_idempotent(
+            request.tenant_id, request.idempotency_key
+        )
+        if existing is None:
+            try:
+                store.bind_idempotent(
+                    request.tenant_id,
+                    request.idempotency_key,
+                    request_digest,
+                    run_id,
+                )
+            except sqlite3.IntegrityError:
+                existing = store.find_idempotent(
+                    request.tenant_id, request.idempotency_key
+                )
+        if existing is not None and (
+            existing["request_digest"] != request_digest
+            or existing["run_id"] != run_id
+        ):
+            raise SubmitError(409, "idempotency_conflict")
         return 200, project_run(store, store.get_run(run_id, request.tenant_id))
     store.transition_state(
         run_id=run_id,

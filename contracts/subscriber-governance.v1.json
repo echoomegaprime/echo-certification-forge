@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.1",
   "contract_id": "certforge.subscriber-governance.v1",
   "authentication": {
     "scheme": "Bearer",
@@ -36,7 +36,8 @@
     "API keys",
     "policy packs",
     "private workers",
-    "certification reservations"
+    "certification reservations",
+    "subscriber run dispatch outbox"
   ],
   "quota_meters": [
     "projects",
@@ -56,8 +57,10 @@
     "subscriptions": ["TRIALING", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"],
     "stale_run_reservations": "released and metering-compensated",
     "billing_events": "provider timestamp plus monotonic sequence; stale events are persisted as rejected and cannot mutate lifecycle state",
-    "billing_periods": "activation, renewal, and plan-change events require valid current_period_start/current_period_end and replace both boundaries atomically",
-    "plan_changes": "plan changes atomically cap retention and disable governance controls that the destination plan does not entitle"
+    "billing_periods": "activation, reactivation, renewal, and plan-change events require valid current_period_start/current_period_end and replace both boundaries atomically",
+    "plan_changes": "plan changes atomically cap retention and disable governance controls that the destination plan does not entitle without changing PAST_DUE, SUSPENDED, or CANCELLED lifecycle state",
+    "nonstarted_revocation": "past-due, suspension, and cancellation atomically release unstarted reservations, cancel queued runs, and cancel pending or claimed dispatches",
+    "reactivation": "only an ordered subscription.activated or subscription.reactivated event may leave PAST_DUE or SUSPENDED"
   },
   "api": {
     "project_archive": "DELETE /v1/subscriber/projects/{project_id}",
@@ -80,7 +83,11 @@
   "worker_execution": {
     "claim_precondition": "subscriber execution requires an existing QUEUED run and matching BOUND subscriber_run_reservation",
     "claim_binding": "tenant, project, policy, target type, target reference, and target identity digest must match persisted run and reservation state",
-    "claim_transition": "BOUND to EXECUTING is atomic and occurs before target acquisition; duplicate/direct claims fail closed",
+    "dispatch": "API intake first commits a metered reservation containing the complete validated submission, exact target, and journey, then idempotently materializes the deterministic run and transactional outbox; after any crash in that gap, the restart-safe dispatcher reconstructs and binds the same run_id before claiming only work compatible with current worker, location, signer, and authority governance",
+    "claim_transition": "BOUND to EXECUTING is atomic and leased before target acquisition; duplicate/direct claims fail closed",
+    "execution_boundary": "immediately before customer execution, subscription and governance are revalidated in one BEGIN IMMEDIATE transaction that moves QUEUED to ACQUIRING_TARGET and EXECUTING to STARTED with both versions",
+    "leases": "dispatcher and worker claims have expirations; active worker claims heartbeat before expiry",
+    "crash_recovery": "expired pre-start claims requeue without compensation until the bounded retry limit; exhaustion or an expired STARTED claim terminalizes as infrastructure failure, releases concurrency, fails dispatch, and receives one idempotent meter compensation",
     "entitlement_source": "SubscriberGovernance is resolved at claim and revalidated immediately before RunExecutor execution",
     "retention_source": "active subscriber plan/governance retention is revalidated immediately before RunExecutor execution and capped at the current plan maximum",
     "private_worker_only": "requires a matching ACTIVE tenant worker identity and attestation digest",

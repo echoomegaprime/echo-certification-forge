@@ -185,7 +185,13 @@ class RunExecutor:
                 halt_reason=reason,
             )
 
-        self._t(run_id, tenant_id, RunState.ACQUIRING_TARGET, "acquire_target")
+        run = self.store.get_run(run_id, tenant_id)
+        if run["state"] == RunState.QUEUED.value:
+            self._t(run_id, tenant_id, RunState.ACQUIRING_TARGET, "acquire_target")
+        elif run["state"] != RunState.ACQUIRING_TARGET.value:
+            raise ValueError(
+                f"execution requires QUEUED or ACQUIRING_TARGET, got {run['state']}"
+            )
         self._t(run_id, tenant_id, RunState.DISCOVERING, "discover")
 
         blocking: list[str] = []

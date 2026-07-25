@@ -15,6 +15,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -36,6 +37,36 @@ from .subscriber import SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
 _ADAPTER_RULE = "adapter_identity_and_quality"
+
+
+class _ClaimHeartbeat:
+    def __init__(self, governance: SubscriberGovernance, claim) -> None:
+        self._governance = governance
+        self._claim = claim
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"certforge-heartbeat-{claim.run_id}",
+            daemon=True,
+        )
+
+    def _run(self) -> None:
+        interval = self._governance.policy.worker_heartbeat_interval_seconds
+        while not self._stop.wait(interval):
+            try:
+                self._governance.heartbeat_worker_claim(self._claim)
+            except SubscriberError:
+                return
+            except (OSError, sqlite3.Error):
+                continue
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=2)
 
 
 def _env_digest(component: str) -> str:
@@ -125,6 +156,7 @@ def run(
             }
 
     claim = None
+    heartbeat = None
     if subscribers is not None:
         target_type = str(target_spec.get("type", "")).strip()
         if target_type == "local":
@@ -153,6 +185,8 @@ def run(
                 signing_authority=signing_authority,
                 signing_key_id=signer.key_id,
             )
+            heartbeat = _ClaimHeartbeat(subscribers, claim)
+            heartbeat.start()
         except (OSError, sqlite3.Error, SubscriberError, TypeError, ValueError) as exc:
             return {
                 "run_id": run_id,
@@ -177,6 +211,8 @@ def run(
                 )
                 store.set_run_outcome(run_id, tenant, RunOutcome.INFRA_FAILED)
             finally:
+                if heartbeat is not None:
+                    heartbeat.stop()
                 subscribers.finish_worker_claim(claim, reason="workspace_creation_failed")
         return {
             "run_id": run_id,
@@ -198,6 +234,8 @@ def run(
                 )
                 store.set_run_outcome(run_id, tenant, RunOutcome.INFRA_FAILED)
             finally:
+                if heartbeat is not None:
+                    heartbeat.stop()
                 subscribers.finish_worker_claim(claim, reason="target_acquisition_failed")
         shutil.rmtree(workdir, ignore_errors=True)
         return {"run_id": run_id, "error": "acquisition_failed", "detail": str(exc)}
@@ -217,6 +255,8 @@ def run(
     if subscribers is not None:
         if existing is None or existing["state"] != RunState.QUEUED.value:
             if claim is not None:
+                if heartbeat is not None:
+                    heartbeat.stop()
                 subscribers.finish_worker_claim(claim, reason="run_not_queued")
             shutil.rmtree(workdir, ignore_errors=True)
             return {
@@ -224,7 +264,7 @@ def run(
                 "error": "run_not_queued",
                 "state": existing["state"] if existing is not None else "UNKNOWN",
             }
-        if claim is None or target.identity_digest != claim.target_identity_digest:
+        if claim is None:
             try:
                 store.transition_state(
                     run_id,
@@ -237,11 +277,13 @@ def run(
                 store.set_run_outcome(run_id, tenant, RunOutcome.INFRA_FAILED)
             finally:
                 if claim is not None:
+                    if heartbeat is not None:
+                        heartbeat.stop()
                     subscribers.finish_worker_claim(
-                        claim, reason="target_identity_binding_mismatch"
+                        claim, reason="worker_run_claim_missing"
                     )
             shutil.rmtree(workdir, ignore_errors=True)
-            return {"run_id": run_id, "error": "target_identity_binding_mismatch"}
+            return {"run_id": run_id, "error": "worker_run_claim_missing"}
     elif existing is None:
         store.register_run(run_id, target, environment, manifest.manifest_id, manifest.digest)
     elif existing["state"] not in (RunState.CREATED.value, RunState.QUEUED.value):
@@ -255,7 +297,8 @@ def run(
         try:
             if claim is None:
                 raise SubscriberError(409, "worker_run_claim_missing")
-            retention_days = subscribers.authorize_worker_execution(claim)
+            authorization = subscribers.authorize_worker_execution(claim)
+            retention_days = authorization.retention_days
             if retention_days <= 0:
                 raise ValueError("subscriber retention must be positive")
         except (OSError, sqlite3.Error, SubscriberError, TypeError, ValueError) as exc:
@@ -266,6 +309,8 @@ def run(
             current = store.get_run(run_id, tenant)
             if current["state"] != RunState.QUEUED.value:
                 if claim is not None:
+                    if heartbeat is not None:
+                        heartbeat.stop()
                     subscribers.finish_worker_claim(
                         claim, reason="execution_authorization_denied"
                     )
@@ -308,6 +353,8 @@ def run(
         )
     finally:
         if claim is not None:
+            if heartbeat is not None:
+                heartbeat.stop()
             subscribers.finish_worker_claim(claim, reason="execution_finished")
         shutil.rmtree(workdir, ignore_errors=True)
     return {

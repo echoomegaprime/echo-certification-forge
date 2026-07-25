@@ -5,6 +5,7 @@ import hashlib
 import json
 import sqlite3
 import sys
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,7 +14,9 @@ from fastapi.testclient import TestClient
 
 from echo_certification_forge.acquisition import acquire_target
 from echo_certification_forge.canonical import parse_utc_iso
+from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
+from echo_certification_forge.intake import SubmitRequest
 from echo_certification_forge.models import RunState, TargetIdentity
 from echo_certification_forge.run_worker import run
 from echo_certification_forge.service import ServiceContext, create_app
@@ -133,6 +136,7 @@ def _submit_local_run(
     source: Path,
     *,
     key: str,
+    journey: list[str] | None = None,
 ) -> tuple[str, TargetIdentity]:
     project_response = _project(
         client,
@@ -151,24 +155,27 @@ def _submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
+    payload = {
+        "tenant_id": organization_id,
+        "project_id": project_response.json()["project_id"],
+        "target": {
+            "target_type": "local",
+            "identity_digest": target.identity_digest,
+            "reference": acquired.canonical_ref,
+        },
+        "environment": {
+            "identity_digest": _digest(f"environment-{key}"),
+            "runner_image_digest": "sha256:" + _digest(f"runner-{key}"),
+        },
+        "policy_version": manifest.manifest_id,
+        "idempotency_key": key,
+    }
+    if journey is not None:
+        payload["journey"] = journey
     response = client.post(
         "/v1/certifications",
         headers=_headers(organization_id, token),
-        json={
-            "tenant_id": organization_id,
-            "project_id": project_response.json()["project_id"],
-            "target": {
-                "target_type": "local",
-                "identity_digest": target.identity_digest,
-                "reference": acquired.canonical_ref,
-            },
-            "environment": {
-                "identity_digest": _digest(f"environment-{key}"),
-                "runner_image_digest": "sha256:" + _digest(f"runner-{key}"),
-            },
-            "policy_version": manifest.manifest_id,
-            "idempotency_key": key,
-        },
+        json=payload,
     )
     assert response.status_code == 201
     return response.json()["run_id"], target
@@ -1267,21 +1274,39 @@ def test_worker_enforces_private_local_and_customer_signing_controls(
     )
     assert platform_signing["detail"] == "customer_signing_authority_required"
 
-    result = run(
-        run_id,
-        org.organization_id,
-        {"type": "local", "path": str(source)},
-        store=store,
-        manifest=manifest,
-        signer=customer_signer,
-        subscribers=governance,
-        worker_id=worker["worker_id"],
-        worker_attestation_sha256=worker_attestation,
-        execution_location="local",
-        signing_authority="customer",
-        journey=[sys.executable, "hello.py"],
+    platform_dispatch, _platform_result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="platform-dispatcher",
+        run_id=run_id,
+        organization_id=org.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": Ed25519VerdictSigner.generate(),
+            "subscribers": governance,
+        },
     )
-    assert result["state"] == RunState.COMPLETED.value
+    controlled_dispatch, result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="customer-dispatcher",
+        run_id=run_id,
+        organization_id=org.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": customer_signer,
+            "subscribers": governance,
+            "worker_id": worker["worker_id"],
+            "worker_attestation_sha256": worker_attestation,
+            "execution_location": "local",
+            "signing_authority": "customer",
+        },
+    )
+    assert platform_dispatch is None
+    assert controlled_dispatch is not None
+    assert result is not None and result["state"] == RunState.COMPLETED.value
     assert result["signer_public_key_id"] == customer_signer.key_id
 
 
@@ -1908,6 +1933,512 @@ def test_compensation_remains_in_original_billing_period(tmp_path, manifest):
     assert usage["meters"]["certification_runs"] == 1
 
 
+def test_api_submission_dispatches_exact_bound_run_to_worker(tmp_path, manifest):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "dispatch-e2e")
+    source = tmp_path / "dispatch-source"
+    source.mkdir()
+    marker = tmp_path / "dispatch-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    journey = [sys.executable, "journey.py"]
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="dispatch-e2e-0001",
+        journey=journey,
+    )
+    signer = Ed25519VerdictSigner.generate()
+    abandoned = governance.claim_dispatch(
+        "abandoned-dispatcher",
+        run_id=run_id,
+        organization_id=org.organization_id,
+    )
+    assert abandoned is not None
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_run_dispatches
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE run_id = ? AND organization_id = ?
+            """,
+            (run_id, org.organization_id),
+        )
+        connection.commit()
+
+    dispatch, result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="acceptance-dispatcher",
+        run_id=run_id,
+        organization_id=org.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": signer,
+            "subscribers": governance,
+        },
+    )
+
+    assert dispatch is not None
+    assert dispatch.run_id == run_id
+    assert dispatch.attempts == 2
+    assert dispatch.target_spec == {
+        "path": source.resolve().as_posix(),
+        "type": "local",
+    }
+    assert dispatch.journey == journey
+    assert result is not None and result["state"] == RunState.COMPLETED.value
+    assert marker.read_text(encoding="utf-8") == "executed"
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "COMPLETE"
+
+
+@pytest.mark.parametrize("crash_stage", ("reserved", "run_created"))
+def test_dispatcher_recovers_crash_after_durable_reservation(
+    tmp_path, manifest, crash_stage
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "durable-intake")
+    project_response = _project(
+        client,
+        org.organization_id,
+        org.bootstrap_api_key,
+        slug="durable-intake-app",
+    )
+    assert project_response.status_code == 201
+    source = tmp_path / "durable-intake-source"
+    source.mkdir()
+    marker = tmp_path / "durable-intake-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('recovered', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    acquired = acquire_target(
+        {"type": "local", "path": str(source)},
+        tmp_path / ".unused-durable-intake-acquisition",
+    )
+    target = TargetIdentity(
+        tenant_id=org.organization_id,
+        target_type=acquired.target_type,
+        canonical_ref=acquired.canonical_ref,
+        artifact_sha256=acquired.artifact_sha256,
+    )
+    request = SubmitRequest.model_validate(
+        {
+            "tenant_id": org.organization_id,
+            "project_id": project_response.json()["project_id"],
+            "target": {
+                "target_type": "local",
+                "identity_digest": target.identity_digest,
+                "reference": acquired.canonical_ref,
+                "path": source.resolve().as_posix(),
+            },
+            "environment": {
+                "identity_digest": _digest("durable-intake-environment"),
+                "runner_image_digest": "sha256:" + _digest("durable-intake-runner"),
+            },
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": "durable-intake-0001",
+            "journey": [sys.executable, "journey.py"],
+        }
+    )
+    principal = governance.authenticate(
+        org.bootstrap_api_key,
+        tenant_hint=org.organization_id,
+        permission=Permission.RUN_CREATE,
+        action="acceptance.durable-intake.reserve",
+    )
+    reservation = governance.reserve_certification_run(
+        principal,
+        project_id=str(request.project_id),
+        idempotency_key=request.idempotency_key,
+        request_digest=request.request_digest(),
+        policy_version=request.policy_version,
+        target_type=request.target.target_type,
+        target_reference=request.target.reference,
+        target_identity_digest=request.target.identity_digest,
+        dispatch_target_spec=request.target.worker_spec(),
+        journey=request.journey,
+        submit_request=request.model_dump(exclude_none=True),
+    )
+    assert reservation.created is True
+    if crash_stage == "run_created":
+        store.register_declared_run(
+            run_id=request.run_id(),
+            tenant_id=org.organization_id,
+            target_type=request.target.target_type,
+            target_identity_digest=request.target.identity_digest,
+            target_reference=request.target.reference,
+            project_id=request.project_id,
+            environment_identity_digest=request.environment.identity_digest,
+            environment_json=request.environment.model_dump(exclude_none=True),
+            policy_version=request.policy_version,
+            manifest_id=manifest.manifest_id,
+            manifest_digest=manifest.digest,
+        )
+        assert store.get_run(request.run_id(), org.organization_id)["state"] == "CREATED"
+    else:
+        with pytest.raises(KeyError):
+            store.get_run(request.run_id(), org.organization_id)
+
+    dispatch, result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="durable-intake-dispatcher",
+        run_id=request.run_id(),
+        organization_id=org.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": Ed25519VerdictSigner.generate(),
+            "subscribers": governance,
+        },
+    )
+
+    assert dispatch is not None
+    assert dispatch.run_id == request.run_id()
+    assert result is not None and result["state"] == RunState.COMPLETED.value
+    assert marker.read_text(encoding="utf-8") == "recovered"
+    assert governance.pending_intake_requests() == []
+    assert governance.dispatch_status(request.run_id(), org.organization_id)["state"] == "COMPLETE"
+
+
+def test_worker_lease_heartbeat_and_started_crash_recovery(tmp_path, manifest):
+    now = [datetime.now(UTC)]
+    policy = _policy().model_copy(
+        update={
+            "worker_claim_lease_seconds": 4,
+            "worker_heartbeat_interval_seconds": 1,
+            "dispatch_claim_lease_seconds": 4,
+        }
+    )
+    db = tmp_path / "certforge.sqlite3"
+    store = EvidenceStore(db, tmp_path / "evidence")
+    governance = SubscriberGovernance(db, policy, PEPPER, clock=lambda: now[0])
+    client = TestClient(
+        create_app(
+            ServiceContext(
+                store,
+                manifest,
+                TrustedPublicKeyRegistry.empty(),
+                governance,
+            )
+        )
+    )
+    org = _provision(governance, "lease-recovery")
+    source = tmp_path / "lease-source"
+    source.mkdir()
+    (source / "hello.py").write_text("print('lease')\n", encoding="utf-8")
+    run_id, target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="lease-recovery-0001",
+    )
+    dispatch = governance.claim_dispatch(
+        "lease-dispatcher",
+        run_id=run_id,
+        organization_id=org.organization_id,
+    )
+    assert dispatch is not None
+    signer = Ed25519VerdictSigner.generate()
+    claim = governance.claim_worker_run(
+        run_id=run_id,
+        organization_id=org.organization_id,
+        policy_version=manifest.manifest_id,
+        target_type="local",
+        target_reference=target.canonical_ref,
+        worker_id=None,
+        worker_attestation_sha256=None,
+        execution_location="local",
+        signing_authority="platform",
+        signing_key_id=signer.key_id,
+    )
+    authorization = governance.authorize_worker_execution(claim)
+    assert authorization.subscription_version >= 1
+
+    now[0] += timedelta(seconds=3)
+    renewed_expiry = governance.heartbeat_worker_claim(claim)
+    assert parse_utc_iso(renewed_expiry) == now[0] + timedelta(seconds=4)
+    now[0] += timedelta(seconds=3)
+    assert governance.recover_expired_claims(org.organization_id) == 0
+
+    now[0] += timedelta(seconds=2)
+    assert governance.recover_expired_claims(org.organization_id) == 1
+    assert (
+        store.get_run(run_id, org.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value
+    )
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "FAILED"
+    usage = governance.usage_summary(
+        _owner(
+            governance,
+            org.organization_id,
+            org.bootstrap_api_key,
+            Permission.USAGE_READ,
+        )
+    )
+    assert usage["meters"]["certification_runs"] == 0
+    assert usage["active_run_reservations"] == 0
+    with sqlite3.connect(db) as connection:
+        compensation = connection.execute(
+            """
+            SELECT COUNT(*), COALESCE(SUM(quantity), 0)
+            FROM subscriber_usage_events
+            WHERE organization_id = ? AND idempotency_key = ?
+            """,
+            (org.organization_id, "claim-crash:lease-recovery-0001"),
+        ).fetchone()
+    assert compensation == (1, -1)
+
+
+def test_expired_prestart_worker_claim_requeues_without_compensation(
+    tmp_path, manifest
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "prestart-recovery")
+    source = tmp_path / "prestart-source"
+    source.mkdir()
+    (source / "hello.py").write_text("print('prestart')\n", encoding="utf-8")
+    run_id, target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="prestart-recovery-0001",
+    )
+    dispatch = governance.claim_dispatch(
+        "prestart-dispatcher",
+        run_id=run_id,
+        organization_id=org.organization_id,
+    )
+    assert dispatch is not None
+    signer = Ed25519VerdictSigner.generate()
+    governance.claim_worker_run(
+        run_id=run_id,
+        organization_id=org.organization_id,
+        policy_version=manifest.manifest_id,
+        target_type="local",
+        target_reference=target.canonical_ref,
+        worker_id=None,
+        worker_attestation_sha256=None,
+        execution_location="local",
+        signing_authority="platform",
+        signing_key_id=signer.key_id,
+    )
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_run_reservations
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE run_id = ? AND organization_id = ?
+            """,
+            (run_id, org.organization_id),
+        )
+        connection.commit()
+
+    assert governance.recover_expired_claims(org.organization_id) == 1
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "PENDING"
+    usage = governance.usage_summary(
+        _owner(
+            governance,
+            org.organization_id,
+            org.bootstrap_api_key,
+            Permission.USAGE_READ,
+        )
+    )
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+
+
+def test_dispatch_retry_exhaustion_terminalizes_and_compensates(tmp_path, manifest):
+    policy = _policy().model_copy(update={"max_dispatch_attempts": 1})
+    store, governance, client = _stack(tmp_path, manifest, policy=policy)
+    org = _provision(governance, "dispatch-exhaustion")
+    source = tmp_path / "dispatch-exhaustion-source"
+    source.mkdir()
+    (source / "hello.py").write_text("print('dispatch')\n", encoding="utf-8")
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="dispatch-exhaustion-0001",
+    )
+    assert (
+        governance.claim_dispatch(
+            "crashing-dispatcher",
+            run_id=run_id,
+            organization_id=org.organization_id,
+        )
+        is not None
+    )
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_run_dispatches
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE run_id = ? AND organization_id = ?
+            """,
+            (run_id, org.organization_id),
+        )
+        connection.commit()
+
+    assert (
+        governance.claim_dispatch(
+            "recovery-dispatcher",
+            run_id=run_id,
+            organization_id=org.organization_id,
+        )
+        is None
+    )
+    assert (
+        store.get_run(run_id, org.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value
+    )
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "FAILED"
+    usage = governance.usage_summary(
+        _owner(
+            governance,
+            org.organization_id,
+            org.bootstrap_api_key,
+            Permission.USAGE_READ,
+        )
+    )
+    assert usage["meters"]["certification_runs"] == 0
+    assert usage["active_run_reservations"] == 0
+
+
+@pytest.mark.parametrize(
+    ("event_type", "expected_status"),
+    [
+        ("payment.failed", OrganizationStatus.PAST_DUE),
+        ("subscription.suspended", OrganizationStatus.SUSPENDED),
+        ("subscription.cancelled", OrganizationStatus.CANCELLED),
+    ],
+)
+def test_plan_change_preserves_risk_lifecycle_state(
+    tmp_path, manifest, event_type, expected_status
+):
+    _store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, f"plan-state-{expected_status.value.lower()}")
+    occurred_at = datetime.now(UTC)
+    governance.apply_billing_event(
+        organization_id=org.organization_id,
+        provider_event_id=f"evt-{expected_status.value.lower()}",
+        event_type=event_type,
+        payload={"reason": "risk"},
+        provider_occurred_at=occurred_at,
+        provider_sequence=10,
+    )
+    status = governance.apply_billing_event(
+        organization_id=org.organization_id,
+        provider_event_id=f"evt-plan-{expected_status.value.lower()}",
+        event_type="subscription.plan_changed",
+        payload={
+            "current_period_start": occurred_at.isoformat().replace("+00:00", "Z"),
+            "current_period_end": (occurred_at + timedelta(days=30))
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
+        provider_occurred_at=occurred_at + timedelta(minutes=1),
+        provider_sequence=11,
+        plan_code="professional",
+    )
+
+    assert status is expected_status
+    with sqlite3.connect(governance.db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT o.status, s.status, s.plan_code
+            FROM subscriber_organizations o
+            JOIN subscriber_subscriptions s USING (organization_id)
+            WHERE o.organization_id = ?
+            """,
+            (org.organization_id,),
+        ).fetchone()
+    assert row == (expected_status.value, expected_status.value, "professional")
+
+
+def test_concurrent_suspension_wins_before_execution_boundary(
+    tmp_path, manifest, monkeypatch
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "suspension-boundary")
+    source = tmp_path / "suspension-source"
+    source.mkdir()
+    marker = tmp_path / "suspension-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        org.organization_id,
+        org.bootstrap_api_key,
+        source,
+        key="suspension-boundary-0001",
+    )
+    entered_boundary = threading.Event()
+    release_boundary = threading.Event()
+    original_authorize = governance.authorize_worker_execution
+
+    def blocked_authorize(claim):
+        entered_boundary.set()
+        assert release_boundary.wait(timeout=10)
+        return original_authorize(claim)
+
+    monkeypatch.setattr(governance, "authorize_worker_execution", blocked_authorize)
+    result_holder: dict[str, dict] = {}
+
+    def execute() -> None:
+        result_holder["result"] = run(
+            run_id,
+            org.organization_id,
+            {"type": "local", "path": str(source)},
+            store=store,
+            manifest=manifest,
+            signer=Ed25519VerdictSigner.generate(),
+            subscribers=governance,
+            journey=[sys.executable, "journey.py"],
+        )
+
+    worker = threading.Thread(target=execute)
+    worker.start()
+    assert entered_boundary.wait(timeout=10)
+    governance.apply_billing_event(
+        organization_id=org.organization_id,
+        provider_event_id="evt-boundary-suspend",
+        event_type="subscription.suspended",
+        payload={"reason": "risk"},
+        provider_occurred_at=datetime.now(UTC),
+        provider_sequence=1,
+    )
+    release_boundary.set()
+    worker.join(timeout=15)
+    assert worker.is_alive() is False
+
+    result = result_holder["result"]
+    assert result["error"] == "subscriber_execution_denied"
+    assert result["state"] == RunState.CANCELLED.value
+    assert marker.exists() is False
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "CANCELLED"
+
+
 def test_subscriber_policy_and_contract_are_versioned_and_consistent():
     root = Path(__file__).parents[1]
     policy = _policy()
@@ -1926,3 +2457,5 @@ def test_subscriber_policy_and_contract_are_versioned_and_consistent():
     assert contract["worker_execution"]["lookup_failure_mode"].startswith("fail closed")
     assert "current_period_start" in contract["quota_meters"][2]
     assert "final path" in contract["audit"]["final_request_outcomes"]
+    assert policy.worker_heartbeat_interval_seconds < policy.worker_claim_lease_seconds
+    assert "transactional outbox" in contract["worker_execution"]["dispatch"]

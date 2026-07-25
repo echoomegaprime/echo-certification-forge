@@ -3777,6 +3777,10 @@ P7 subscriber-governance hardening requirements
 - Plan changes atomically reconcile retention and unsupported governance controls; all worker retention is capped by the current plan.
 - Activation, renewal, and plan-change billing events require valid authoritative billing-period boundaries.
 - Authenticated validation failures, denials, and unhandled errors are appended to the immutable final-request audit chain.
+- Governed intake first durably commits the complete validated submission, exact target, and journey in the metered reservation, then idempotently materializes the deterministic run and transactional outbox; the restart-safe dispatcher recovers any crash in that gap and dispatches only the exact bound run ID.
+- Dispatcher and worker claims are leased; worker heartbeats renew active leases, while expired started claims terminalize, release concurrency, and receive one idempotent original-period meter compensation.
+- The final execution boundary atomically binds governance/subscription versions and moves the run/reservation to execution-started before customer code runs.
+- Plan changes preserve PAST_DUE, SUSPENDED, and CANCELLED lifecycle states; risk transitions revoke non-started claims and only explicit ordered activation/reactivation may restore execution.
 
 39. Forge Self-Certification
 The ECHO Certification Forge must certify itself.

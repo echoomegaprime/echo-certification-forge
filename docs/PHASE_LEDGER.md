@@ -8,7 +8,7 @@
 | P4 hostile runner, signer image, and supply-chain qualification | COMPLETE | FORGE gate `passed=True, run_outcome=COMPLETE` — `p4-runs/p4-8c6b30d-rerun7c/p4_hostile_result.json` (2026-07-20, commit 8c6b30d) | NOT_READY |
 | P5 adapter breadth and service modes | IN_PROGRESS / BLOCKED | Live ANVIL R5 routing controls PASS for GS343 and R2D2; signed acceptance report `artifacts/p5-adapter-bundle-20260723/adapter-acceptance-report.json` blocks both adapters on quality and `EXPERIMENTAL` maturity | NOT_READY |
 | P6 deployment enforcement and platform integration | NOT_STARTED | exact-digest evaluator exists; real deployment hook absent | NOT_READY |
-| P7 subscriber productization and governance | COMPLETE | `artifacts/p7_acceptance_report.json` (`passed=true`, **26 executable scenarios**, `release_verdict=NOT_READY`); `tests/test_p7_subscriber_governance.py` (**34 passed**); full regression **313 passed, 1 skipped**; required P1 acceptance passed (2026-07-25). Subscriber workers now require atomically consumed bound reservations, persisted worker/location/signing controls are revalidated immediately before execution, mutations reauthorize inside their write transaction, plan changes reconcile retention, lifecycle events require authoritative billing periods, and authenticated denials/errors are immutable-audited. | NOT_READY |
+| P7 subscriber productization and governance | COMPLETE | `artifacts/p7_acceptance_report.json` (`passed=true`, **32 executable scenarios**, `release_verdict=NOT_READY`); `tests/test_p7_subscriber_governance.py` (**44 passed**); full regression **323 passed, 1 skipped**; required P1 acceptance passed (2026-07-25). API intake durably persists the complete validated submission and exact dispatch payload before idempotently materializing the deterministic run/outbox, so the dispatcher recovers a crash anywhere in that gap without changing run identity. Leased worker claims heartbeat and recover pre-start or started crashes with bounded retries, concurrency release, and idempotent original-period metering compensation. Execution start atomically binds governance/subscription versions, plan changes preserve risk lifecycle states, and suspension revokes claims that have not crossed the execution boundary. | NOT_READY |
 
 ## Task 4 — Certification Forge service + `echo.certforge.*` caps (sub-track)
 
@@ -20,17 +20,14 @@
 > `echo.certforge.verdict`=signed (run-signer `ed25519:a07f417e…`) · `echo.certforge.verify`=valid
 > (11 artifacts) · `echo.certforge.deploy_gate` (tier-2 HMAC)=**allowed, `exact_certification_valid`**.
 > The run-signer PUBLIC key is in the API's trust store; the PRIVATE key is worker-only. Commit 8ee64fc.
-> **SELF-SERVICE RUN CAP SHIPPED (2026-07-21, commit c7b47cc):** `echo.certforge.run` is LIVE + green.
-> The **isolated execution sandbox** (`sandbox.py::DockerSandbox`, SPEC 14.2 Level-2 container) confines
-> the untrusted critical-journey: `--network none`, memory/cpu/pids quotas, `--read-only` + noexec tmpfs,
-> `--user nobody`, `--cap-drop ALL`, `no-new-privileges`, source mounted `:ro`, pinned `@sha256` image.
-> **Real-Docker test on FORGE PASSED** — benign journeys run, network egress is blocked. The cap
-> (additive `certforge_run_router.py`) sovereign-auths, launches the KEY-HOLDING worker detached with
-> `--sandbox` (no shell → no injection); poll via `echo.certforge.status`. Untrusted code runs ONLY in
-> the container; acquire/scan/sign never execute target code. **Live E2E:** `echo.certforge.run` (local
-> target) → worker ran journey in Docker (`journey_isolation: docker`) → COMPLETED PRODUCTION_READY
-> signed → gate `status`/`verdict`/`verify` green + `deploy_gate`=**allowed**. **12 `echo.certforge.*`
-> caps green.** Full suite **228 passed** (+1 docker-gated skip on HAMMER, passes on FORGE).
+> **SELF-SERVICE RUN CAP SHIPPED (2026-07-21, commit c7b47cc), P7-GOVERNED DISPATCH SUPERSEDES
+> DIRECT LAUNCH (2026-07-25):** the Docker isolation proof remains valid (`--network none`,
+> memory/cpu/pids quotas, read-only/noexec filesystem, non-root, dropped capabilities,
+> `no-new-privileges`, read-only source, pinned image). `certforge_run_router.py` now accepts only an
+> exact run ID already returned by subscriber intake and verifies its transactional-outbox record; it
+> never generates a second ID or launches an unreserved worker. The restart-safe
+> `echo-certforge-dispatcher.service` claims that outbox and invokes the key-holding sandboxed worker.
+> Polling and signed-verdict/deploy-gate semantics remain unchanged.
 >
 > **FABLE ADVERSARIAL REVIEW (2026-07-21, commit f651805) — SHIP-WITH-FIXES, all applied.** No HIGH
 > holes (no tenant bypass, no shell injection, no fail-open authz, bootstrap independence sound). 4 MEDs
@@ -71,7 +68,7 @@ suite stays green on an independent re-run.
 - P3 re-certified 2026-07-18 against corrected `scripts/p3_forge_acceptance.py` (signer-identity fix source identity): passed
 - P4 deterministic closure verifier: passed after P3 re-cert
 - Central `echo.certforge.*`: **REGISTERED + live-verified** (12 caps green, 2026-07-21)
-- P7 subscriber governance: **COMPLETE** — tenant-scoped bearer authorization, role/scope intersection, append-only hash-chained final-outcome audit including validation failures and unhandled errors, plan quotas/global API-key rate limiting, authoritative subscription-period metering and stale-reservation recovery, ordered billing/subscription enforcement with mandatory lifecycle periods, atomically bound worker claims, execution-time entitlement/retention/control revalidation, transaction-local mutation authorization, downgrade reconciliation, resource revocation, versioned policy/contract, and governed certification intake are executable and green in `artifacts/p7_acceptance_report.json`
+- P7 subscriber governance: **COMPLETE** — tenant-scoped bearer authorization, role/scope intersection, append-only hash-chained final-outcome audit, authoritative subscription-period metering, ordered lifecycle enforcement, atomically bound leased worker claims, durable pre-run intake recovery plus exact transactional-outbox dispatch, heartbeat/crash recovery with compensation, execution-boundary version binding, suspension-race closure, transaction-local mutation authorization, risk-state-preserving plan reconciliation, resource revocation, and versioned policy/contract are executable and green in `artifacts/p7_acceptance_report.json`
 - P5 ANVIL adapter routing: **PASS** for GS343 and R2D2 (exact target digests, wrong-active `409`, unloaded `503`, clean restoration); adapter gate remains **BLOCK** because both quality suites fail and both registry maturities are `CONFORMANCE_PENDING`/`EXPERIMENTAL`
 - `echo.builds.log`: not registered
 - Hosted CI: `CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED`

@@ -1,14 +1,14 @@
 {
   "contract_id": "certforge.subscriber-governance.v1",
-  "contract_sha256": "4ec0605ca23b8868d70e87656ce4df941fdc2a1b1119e6ec47cfb821dd6f3ae7",
-  "generated_at_utc": "2026-07-25T10:43:47.381743Z",
+  "contract_sha256": "1ab85f4464daf2299b410cbef29c152c45932f8e022664a267ba2a6900f1a242",
+  "generated_at_utc": "2026-07-25T12:03:46.063870Z",
   "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
   "manifest_id": "certforge.release-strict.v1",
   "passed": true,
   "phase": "P7",
   "platform": "Windows-11-10.0.22631-SP0",
   "policy_id": "certforge.subscriber-governance.v1",
-  "policy_sha256": "c9cb98c4c0b0f07c72ec07a8ef8d9e92989580f3a776b8d359d5ba992a66a2f1",
+  "policy_sha256": "68bea3186afe44dd1a44d1dcb19e5fe9e8831cd7e70e9986cd3926141b0d8ad2",
   "python": "3.13.0 (tags/v3.13.0:60403a5, Oct  7 2024, 09:38:07) [MSC v.1941 64 bit (AMD64)]",
   "release_note": "P7 completion does not override unresolved P5/P6 and hosted-CI blockers.",
   "release_verdict": "NOT_READY",
@@ -65,8 +65,8 @@
         "meters": {
           "certification_runs": 25
         },
-        "organization_id": "org_8791aa031eea6d63ff5e11da",
-        "period_ended_at": "2026-09-03T10:43:47.306278Z",
+        "organization_id": "org_c0069a4aa1fd37230d849cef",
+        "period_ended_at": "2026-09-03T12:03:44.017669Z",
         "period_started_at": "2026-06-29T00:00:00Z"
       }
     },
@@ -97,6 +97,37 @@
       "detail": "concurrent_run_quota_exceeded",
       "passed": true,
       "status_code": 429
+    },
+    "durable_exact_run_dispatch": {
+      "dispatch_attempts": 2,
+      "dispatch_state": "COMPLETE",
+      "passed": true,
+      "run_id": "cert_db5447d6d647a4eb0216541ed577f383101c071c",
+      "worker_state": "COMPLETED"
+    },
+    "durable_intake_crash_gap_recovery": {
+      "dispatch_state": "COMPLETE",
+      "passed": true,
+      "run_id": "cert_210916b711b67fb882a8d264f8274c8b2d4a83d5",
+      "worker_state": "COMPLETED"
+    },
+    "expired_prestart_claim_requeue": {
+      "passed": true,
+      "recovered_claims": 1,
+      "usage": {
+        "active_run_reservations": 1,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 1
+        },
+        "organization_id": "org_b0f6e7eef016143e49d085ea",
+        "period_ended_at": "2026-08-24T12:03:45.744369Z",
+        "period_started_at": "2026-07-25T12:03:45.744369Z"
+      }
     },
     "expired_subscription_read_only": {
       "detail": "subscription_period_expired",
@@ -155,15 +186,36 @@
       "passed": true,
       "release_verdict": "NOT_READY",
       "replay_status": 200,
-      "run_id": "cert_fc2629ac221213e2aca81d0d5654a9bc0622b83c"
+      "run_id": "cert_23052512e4e2ccada8f6adf4d475b1dea3a3d91d"
     },
     "immutable_audit_chain": {
-      "chain_tip": "3cff763c7e1268010d02cbd5c6662e7a1dabbbe895df8df0d2d56719b3e6afaa",
+      "chain_tip": "728f3ac72f0652c4fd7864a8f8975af2252d2bc50755461f457c8fc245f2eb91",
       "delete_blocked": true,
       "denied_audits": 3,
-      "event_count": 26,
+      "event_count": 27,
       "passed": true,
       "update_blocked": true
+    },
+    "leased_worker_heartbeat_crash_recovery": {
+      "dispatch_state": "FAILED",
+      "heartbeat_expiry": "2026-07-25T12:04:15.709953Z",
+      "passed": true,
+      "recovered_claims": 1,
+      "run_state": "INFRASTRUCTURE_FAILURE",
+      "usage": {
+        "active_run_reservations": 0,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 0
+        },
+        "organization_id": "org_3db8a6b5bb1d4daf0038ffe4",
+        "period_ended_at": "2026-08-24T12:03:45.562050Z",
+        "period_started_at": "2026-07-25T12:03:45.562050Z"
+      }
     },
     "member_lifecycle_revocation": {
       "activate_status": 204,
@@ -183,17 +235,27 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_e2de0203aca9b54bccc24d35",
-        "period_ended_at": "2026-08-24T10:43:43.442542Z",
-        "period_started_at": "2026-07-25T10:43:43.442542Z"
+        "organization_id": "org_7a7d740937f84e36cea6f9a1",
+        "period_ended_at": "2026-08-24T12:03:41.452631Z",
+        "period_started_at": "2026-07-25T12:03:41.452631Z"
       }
     },
     "persisted_execution_governance_controls": {
       "execution_location_denial": "local_execution_required",
       "passed": true,
+      "platform_dispatch_claimed": false,
       "positive_state": "COMPLETED",
       "private_worker_denial": "private_worker_identity_invalid",
       "signing_denial": "customer_signing_authority_required"
+    },
+    "plan_change_preserves_suspension": {
+      "lifecycle_status": "SUSPENDED",
+      "passed": true,
+      "persisted": [
+        "SUSPENDED",
+        "SUSPENDED",
+        "professional"
+      ]
     },
     "required_billing_periods": {
       "invalid_period_code": "billing_period_invalid",
@@ -202,14 +264,14 @@
       "prior_state": [
         "developer",
         "ACTIVE",
-        "2026-07-25T10:43:47.042378Z",
-        "2026-08-24T10:43:47.042378Z"
+        "2026-07-25T12:03:43.813764Z",
+        "2026-08-24T12:03:43.813764Z"
       ],
       "resulting_state": [
         "developer",
         "ACTIVE",
-        "2026-07-25T10:43:47.042378Z",
-        "2026-08-24T10:43:47.042378Z"
+        "2026-07-25T12:03:43.813764Z",
+        "2026-08-24T12:03:43.813764Z"
       ]
     },
     "resource_lifecycle_revocation": {
@@ -245,9 +307,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_605ed4f91db961a863937852",
-        "period_ended_at": "2026-08-24T10:43:44.168067Z",
-        "period_started_at": "2026-07-25T10:43:44.168067Z"
+        "organization_id": "org_e2f0ea924e19d4b52b636c88",
+        "period_ended_at": "2026-08-24T12:03:42.075854Z",
+        "period_started_at": "2026-07-25T12:03:42.075854Z"
       }
     },
     "strict_worker_reservation_claim": {
@@ -258,6 +320,18 @@
       },
       "duplicate_claim_code": "worker_run_already_claimed",
       "passed": true
+    },
+    "suspension_wins_execution_boundary": {
+      "boundary_reached": true,
+      "customer_code_executed": false,
+      "passed": true,
+      "worker_result": {
+        "detail": "worker_run_claim_inactive",
+        "error": "subscriber_execution_denied",
+        "run_id": "cert_6eaf2bcd9316c9b595b97ff3a76a1c56d228ecba",
+        "signed": false,
+        "state": "CANCELLED"
+      }
     },
     "tenant_isolation": {
       "detail": "tenant_not_found",
@@ -272,7 +346,7 @@
     "versioned_policy_contract": {
       "contract_id": "certforge.subscriber-governance.v1",
       "passed": true,
-      "schema_version": "1.1.0"
+      "schema_version": "1.2.1"
     },
     "worker_entitlement_and_plan_retention": {
       "active_state": "COMPLETED",
@@ -283,5 +357,5 @@
       "suspended_state": null
     }
   },
-  "schema_version": "1.1.0"
+  "schema_version": "1.2.1"
 }

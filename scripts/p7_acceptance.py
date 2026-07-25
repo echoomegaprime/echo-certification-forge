@@ -7,6 +7,7 @@ import platform
 import shutil
 import sqlite3
 import sys
+import threading
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,7 +20,9 @@ sys.path.insert(0, str(REPO / "src"))
 
 from echo_certification_forge.acquisition import acquire_target
 from echo_certification_forge.canonical import parse_utc_iso
+from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
+from echo_certification_forge.intake import SubmitRequest
 from echo_certification_forge.models import TargetIdentity
 from echo_certification_forge.run_worker import run
 from echo_certification_forge.service import ServiceContext, create_app
@@ -65,6 +68,7 @@ def submit_local_run(
     source: Path,
     *,
     key: str,
+    journey: list[str] | None = None,
 ) -> tuple[str, TargetIdentity]:
     project = client.post(
         "/v1/subscriber/projects",
@@ -87,24 +91,27 @@ def submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
+    payload = {
+        "tenant_id": organization_id,
+        "project_id": project.json()["project_id"],
+        "target": {
+            "target_type": "local",
+            "identity_digest": target.identity_digest,
+            "reference": target.canonical_ref,
+        },
+        "environment": {
+            "identity_digest": digest(f"environment-{key}"),
+            "runner_image_digest": "sha256:" + digest(f"runner-{key}"),
+        },
+        "policy_version": manifest.manifest_id,
+        "idempotency_key": key,
+    }
+    if journey is not None:
+        payload["journey"] = journey
     response = client.post(
         "/v1/certifications",
         headers=headers(organization_id, api_key),
-        json={
-            "tenant_id": organization_id,
-            "project_id": project.json()["project_id"],
-            "target": {
-                "target_type": "local",
-                "identity_digest": target.identity_digest,
-                "reference": target.canonical_ref,
-            },
-            "environment": {
-                "identity_digest": digest(f"environment-{key}"),
-                "runner_image_digest": "sha256:" + digest(f"runner-{key}"),
-            },
-            "policy_version": manifest.manifest_id,
-            "idempotency_key": key,
-        },
+        json=payload,
     )
     if response.status_code != 201:
         raise RuntimeError(f"local run setup failed: {response.text}")
@@ -895,19 +902,35 @@ def main() -> int:
         execution_location="local",
         signing_authority="platform",
     )
-    controlled_result = run(
-        controlled_run_id,
-        controlled.organization_id,
-        {"type": "local", "path": str(worker_source)},
-        store=store,
-        manifest=manifest,
-        signer=controlled_signer,
-        subscribers=governance,
-        worker_id=controlled_worker["worker_id"],
-        worker_attestation_sha256=controlled_attestation,
-        execution_location="local",
-        signing_authority="customer",
-        journey=[sys.executable, "-c", "print('controlled')"],
+    rejected_platform_dispatch, _ = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="p7-platform-dispatcher",
+        run_id=controlled_run_id,
+        organization_id=controlled.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": Ed25519VerdictSigner.generate(),
+            "subscribers": governance,
+        },
+    )
+    accepted_controlled_dispatch, controlled_result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="p7-customer-dispatcher",
+        run_id=controlled_run_id,
+        organization_id=controlled.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": controlled_signer,
+            "subscribers": governance,
+            "worker_id": controlled_worker["worker_id"],
+            "worker_attestation_sha256": controlled_attestation,
+            "execution_location": "local",
+            "signing_authority": "customer",
+        },
     )
     record(
         scenarios,
@@ -915,12 +938,16 @@ def main() -> int:
         wrong_identity.get("detail") == "private_worker_identity_invalid"
         and wrong_location.get("detail") == "local_execution_required"
         and wrong_signer.get("detail") == "customer_signing_authority_required"
+        and rejected_platform_dispatch is None
+        and accepted_controlled_dispatch is not None
+        and controlled_result is not None
         and controlled_result.get("state") == "COMPLETED"
         and controlled_result.get("signer_public_key_id") == controlled_signer.key_id,
         private_worker_denial=wrong_identity.get("detail"),
         execution_location_denial=wrong_location.get("detail"),
         signing_denial=wrong_signer.get("detail"),
-        positive_state=controlled_result.get("state"),
+        platform_dispatch_claimed=rejected_platform_dispatch is not None,
+        positive_state=controlled_result.get("state") if controlled_result else None,
     )
 
     race_org = governance.provision_organization(
@@ -1403,11 +1430,468 @@ def main() -> int:
         rollover_created=rollover.created,
     )
 
+    dispatch_org = governance.provision_organization(
+        slug="p7-durable-dispatch",
+        display_name="P7 Durable Dispatch",
+        owner_email="owner@p7-durable-dispatch.example",
+        owner_display_name="P7 Durable Dispatch Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    dispatch_source = workspace / "dispatch-source"
+    dispatch_source.mkdir()
+    dispatch_marker = workspace / "dispatch-executed"
+    (dispatch_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(dispatch_marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    dispatch_journey = [sys.executable, "journey.py"]
+    dispatch_run_id, _dispatch_target = submit_local_run(
+        client,
+        manifest,
+        dispatch_org.organization_id,
+        dispatch_org.bootstrap_api_key,
+        dispatch_source,
+        key="p7-durable-dispatch-0001",
+        journey=dispatch_journey,
+    )
+    abandoned_dispatch = governance.claim_dispatch(
+        "p7-abandoned-dispatcher",
+        run_id=dispatch_run_id,
+        organization_id=dispatch_org.organization_id,
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_run_dispatches
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE run_id = ? AND organization_id = ?
+            """,
+            (dispatch_run_id, dispatch_org.organization_id),
+        )
+        connection.commit()
+    dispatched, dispatch_result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="p7-acceptance-dispatcher",
+        run_id=dispatch_run_id,
+        organization_id=dispatch_org.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": Ed25519VerdictSigner.generate(),
+            "subscribers": governance,
+        },
+    )
+    dispatch_state = governance.dispatch_status(
+        dispatch_run_id, dispatch_org.organization_id
+    )
+    record(
+        scenarios,
+        "durable_exact_run_dispatch",
+        abandoned_dispatch is not None
+        and dispatched is not None
+        and dispatched.run_id == dispatch_run_id
+        and dispatched.attempts == 2
+        and dispatched.journey == dispatch_journey
+        and dispatch_result is not None
+        and dispatch_result.get("state") == "COMPLETED"
+        and dispatch_state["state"] == "COMPLETE"
+        and dispatch_marker.exists(),
+        run_id=dispatch_run_id,
+        dispatch_attempts=dispatched.attempts if dispatched else None,
+        dispatch_state=dispatch_state["state"],
+        worker_state=dispatch_result.get("state") if dispatch_result else None,
+    )
+
+    intake_org = governance.provision_organization(
+        slug="p7-durable-intake",
+        display_name="P7 Durable Intake",
+        owner_email="owner@p7-durable-intake.example",
+        owner_display_name="P7 Durable Intake Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    intake_project_response = client.post(
+        "/v1/subscriber/projects",
+        headers=headers(intake_org.organization_id, intake_org.bootstrap_api_key),
+        json={
+            "slug": "durable-intake-app",
+            "name": "Durable Intake App",
+            "target_reference": "local:durable-intake",
+        },
+    )
+    intake_source = workspace / "durable-intake-source"
+    intake_source.mkdir()
+    intake_marker = workspace / "durable-intake-executed"
+    (intake_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(intake_marker)!r}).write_text('recovered', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    intake_acquired = acquire_target(
+        {"type": "local", "path": str(intake_source)},
+        workspace / ".unused-durable-intake-acquisition",
+    )
+    intake_target = TargetIdentity(
+        tenant_id=intake_org.organization_id,
+        target_type=intake_acquired.target_type,
+        canonical_ref=intake_acquired.canonical_ref,
+        artifact_sha256=intake_acquired.artifact_sha256,
+    )
+    intake_request = SubmitRequest.model_validate(
+        {
+            "tenant_id": intake_org.organization_id,
+            "project_id": intake_project_response.json()["project_id"],
+            "target": {
+                "target_type": "local",
+                "identity_digest": intake_target.identity_digest,
+                "reference": intake_acquired.canonical_ref,
+                "path": intake_source.resolve().as_posix(),
+            },
+            "environment": {
+                "identity_digest": digest("p7-durable-intake-environment"),
+                "runner_image_digest": "sha256:" + digest("p7-durable-intake-runner"),
+            },
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": "p7-durable-intake-0001",
+            "journey": [sys.executable, "journey.py"],
+        }
+    )
+    intake_principal = governance.authenticate(
+        intake_org.bootstrap_api_key,
+        tenant_hint=intake_org.organization_id,
+        permission=Permission.RUN_CREATE,
+        action="acceptance.durable-intake.reserve",
+    )
+    intake_reservation = governance.reserve_certification_run(
+        intake_principal,
+        project_id=str(intake_request.project_id),
+        idempotency_key=intake_request.idempotency_key,
+        request_digest=intake_request.request_digest(),
+        policy_version=intake_request.policy_version,
+        target_type=intake_request.target.target_type,
+        target_reference=intake_request.target.reference,
+        target_identity_digest=intake_request.target.identity_digest,
+        dispatch_target_spec=intake_request.target.worker_spec(),
+        journey=intake_request.journey,
+        submit_request=intake_request.model_dump(exclude_none=True),
+    )
+    recovered_dispatch, recovered_result = dispatch_once(
+        governance,
+        run,
+        dispatcher_id="p7-durable-intake-dispatcher",
+        run_id=intake_request.run_id(),
+        organization_id=intake_org.organization_id,
+        worker_options={
+            "store": store,
+            "manifest": manifest,
+            "signer": Ed25519VerdictSigner.generate(),
+            "subscribers": governance,
+        },
+    )
+    record(
+        scenarios,
+        "durable_intake_crash_gap_recovery",
+        intake_project_response.status_code == 201
+        and intake_reservation.created
+        and recovered_dispatch is not None
+        and recovered_dispatch.run_id == intake_request.run_id()
+        and recovered_result is not None
+        and recovered_result.get("state") == "COMPLETED"
+        and intake_marker.exists()
+        and governance.pending_intake_requests() == [],
+        run_id=intake_request.run_id(),
+        dispatch_state=(
+            governance.dispatch_status(
+                intake_request.run_id(), intake_org.organization_id
+            )["state"]
+            if recovered_dispatch
+            else None
+        ),
+        worker_state=recovered_result.get("state") if recovered_result else None,
+    )
+
+    crash_org = governance.provision_organization(
+        slug="p7-lease-recovery",
+        display_name="P7 Lease Recovery",
+        owner_email="owner@p7-lease-recovery.example",
+        owner_display_name="P7 Lease Recovery Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    crash_run_id, crash_target = submit_local_run(
+        client,
+        manifest,
+        crash_org.organization_id,
+        crash_org.bootstrap_api_key,
+        worker_source,
+        key="p7-lease-recovery-0001",
+    )
+    crash_dispatch = governance.claim_dispatch(
+        "p7-crash-dispatcher",
+        run_id=crash_run_id,
+        organization_id=crash_org.organization_id,
+    )
+    crash_signer = Ed25519VerdictSigner.generate()
+    crash_claim = governance.claim_worker_run(
+        run_id=crash_run_id,
+        organization_id=crash_org.organization_id,
+        policy_version=manifest.manifest_id,
+        target_type="local",
+        target_reference=crash_target.canonical_ref,
+        worker_id=None,
+        worker_attestation_sha256=None,
+        execution_location="local",
+        signing_authority="platform",
+        signing_key_id=crash_signer.key_id,
+    )
+    governance.authorize_worker_execution(crash_claim)
+    heartbeat_expiry = governance.heartbeat_worker_claim(crash_claim)
+    with closing(sqlite3.connect(db)) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_run_reservations
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE organization_id = ? AND run_id = ?
+            """,
+            (crash_org.organization_id, crash_run_id),
+        )
+        connection.execute(
+            """
+            UPDATE subscriber_run_dispatches
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE organization_id = ? AND run_id = ?
+            """,
+            (crash_org.organization_id, crash_run_id),
+        )
+        connection.commit()
+    recovered = governance.recover_expired_claims(crash_org.organization_id)
+    crash_usage = governance.usage_summary(
+        governance.authenticate(
+            crash_org.bootstrap_api_key,
+            tenant_hint=crash_org.organization_id,
+            permission=Permission.USAGE_READ,
+            action="acceptance.lease-recovery.usage",
+        )
+    )
+    crash_run = store.get_run(crash_run_id, crash_org.organization_id)
+    crash_dispatch_state = governance.dispatch_status(
+        crash_run_id, crash_org.organization_id
+    )["state"]
+    record(
+        scenarios,
+        "leased_worker_heartbeat_crash_recovery",
+        crash_dispatch is not None
+        and parse_utc_iso(heartbeat_expiry) > datetime.now(UTC)
+        and recovered == 1
+        and crash_run["state"] == "INFRASTRUCTURE_FAILURE"
+        and crash_dispatch_state == "FAILED"
+        and crash_usage["meters"].get("certification_runs") == 0
+        and crash_usage["active_run_reservations"] == 0,
+        heartbeat_expiry=heartbeat_expiry,
+        recovered_claims=recovered,
+        run_state=crash_run["state"],
+        dispatch_state=crash_dispatch_state,
+        usage=crash_usage,
+    )
+
+    prestart_org = governance.provision_organization(
+        slug="p7-prestart-recovery",
+        display_name="P7 Prestart Recovery",
+        owner_email="owner@p7-prestart-recovery.example",
+        owner_display_name="P7 Prestart Recovery Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    prestart_run_id, prestart_target = submit_local_run(
+        client,
+        manifest,
+        prestart_org.organization_id,
+        prestart_org.bootstrap_api_key,
+        worker_source,
+        key="p7-prestart-recovery-0001",
+    )
+    prestart_dispatch = governance.claim_dispatch(
+        "p7-prestart-dispatcher",
+        run_id=prestart_run_id,
+        organization_id=prestart_org.organization_id,
+    )
+    prestart_claim = governance.claim_worker_run(
+        run_id=prestart_run_id,
+        organization_id=prestart_org.organization_id,
+        policy_version=manifest.manifest_id,
+        target_type="local",
+        target_reference=prestart_target.canonical_ref,
+        worker_id=None,
+        worker_attestation_sha256=None,
+        execution_location="local",
+        signing_authority="platform",
+        signing_key_id=Ed25519VerdictSigner.generate().key_id,
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_run_reservations
+            SET lease_expires_at = '2000-01-01T00:00:00Z'
+            WHERE run_id = ? AND organization_id = ?
+            """,
+            (prestart_run_id, prestart_org.organization_id),
+        )
+        connection.commit()
+    prestart_recovered = governance.recover_expired_claims(
+        prestart_org.organization_id
+    )
+    prestart_usage = governance.usage_summary(
+        governance.authenticate(
+            prestart_org.bootstrap_api_key,
+            tenant_hint=prestart_org.organization_id,
+            permission=Permission.USAGE_READ,
+            action="acceptance.prestart-recovery.usage",
+        )
+    )
+    record(
+        scenarios,
+        "expired_prestart_claim_requeue",
+        prestart_dispatch is not None
+        and prestart_claim.run_id == prestart_run_id
+        and prestart_recovered == 1
+        and store.get_run(prestart_run_id, prestart_org.organization_id)["state"]
+        == "QUEUED"
+        and governance.dispatch_status(
+            prestart_run_id, prestart_org.organization_id
+        )["state"]
+        == "PENDING"
+        and prestart_usage["meters"].get("certification_runs") == 1
+        and prestart_usage["active_run_reservations"] == 1,
+        recovered_claims=prestart_recovered,
+        usage=prestart_usage,
+    )
+
+    plan_change_at = ordered_at + timedelta(minutes=1)
+    preserved_status = governance.apply_billing_event(
+        organization_id=ordered.organization_id,
+        provider_event_id="p7-suspended-plan-change",
+        event_type="subscription.plan_changed",
+        payload={
+            "current_period_start": plan_change_at.isoformat().replace("+00:00", "Z"),
+            "current_period_end": (plan_change_at + timedelta(days=30))
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
+        provider_occurred_at=plan_change_at,
+        provider_sequence=21,
+        plan_code="professional",
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        preserved_plan = connection.execute(
+            """
+            SELECT o.status, s.status, s.plan_code
+            FROM subscriber_organizations o
+            JOIN subscriber_subscriptions s USING (organization_id)
+            WHERE o.organization_id = ?
+            """,
+            (ordered.organization_id,),
+        ).fetchone()
+    record(
+        scenarios,
+        "plan_change_preserves_suspension",
+        preserved_status is OrganizationStatus.SUSPENDED
+        and preserved_plan
+        == (
+            OrganizationStatus.SUSPENDED.value,
+            OrganizationStatus.SUSPENDED.value,
+            "professional",
+        ),
+        lifecycle_status=preserved_status.value,
+        persisted=list(preserved_plan),
+    )
+
+    boundary_org = governance.provision_organization(
+        slug="p7-execution-boundary",
+        display_name="P7 Execution Boundary",
+        owner_email="owner@p7-execution-boundary.example",
+        owner_display_name="P7 Execution Boundary Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    boundary_marker = workspace / "boundary-executed"
+    boundary_source = workspace / "boundary-source"
+    boundary_source.mkdir()
+    (boundary_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(boundary_marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    boundary_run_id, _boundary_target = submit_local_run(
+        client,
+        manifest,
+        boundary_org.organization_id,
+        boundary_org.bootstrap_api_key,
+        boundary_source,
+        key="p7-execution-boundary-0001",
+    )
+    boundary_entered = threading.Event()
+    boundary_release = threading.Event()
+    boundary_authorize = governance.authorize_worker_execution
+
+    def wait_at_execution_boundary(claim):
+        boundary_entered.set()
+        if not boundary_release.wait(timeout=10):
+            raise RuntimeError("execution boundary synchronization failed")
+        return boundary_authorize(claim)
+
+    governance.authorize_worker_execution = wait_at_execution_boundary  # type: ignore[method-assign]
+    boundary_result: dict[str, Any] = {}
+
+    def execute_boundary_run() -> None:
+        boundary_result.update(
+            run(
+                boundary_run_id,
+                boundary_org.organization_id,
+                {"type": "local", "path": str(boundary_source)},
+                store=store,
+                manifest=manifest,
+                signer=Ed25519VerdictSigner.generate(),
+                subscribers=governance,
+                journey=[sys.executable, "journey.py"],
+            )
+        )
+
+    boundary_thread = threading.Thread(target=execute_boundary_run)
+    boundary_thread.start()
+    boundary_reached = boundary_entered.wait(timeout=10)
+    if boundary_reached:
+        governance.apply_billing_event(
+            organization_id=boundary_org.organization_id,
+            provider_event_id="p7-boundary-suspension",
+            event_type="subscription.suspended",
+            payload={"reason": "risk"},
+            provider_occurred_at=datetime.now(UTC),
+            provider_sequence=1,
+        )
+    boundary_release.set()
+    boundary_thread.join(timeout=15)
+    governance.authorize_worker_execution = boundary_authorize  # type: ignore[method-assign]
+    record(
+        scenarios,
+        "suspension_wins_execution_boundary",
+        boundary_reached
+        and not boundary_thread.is_alive()
+        and boundary_result.get("error") == "subscriber_execution_denied"
+        and boundary_result.get("state") == "CANCELLED"
+        and not boundary_marker.exists(),
+        boundary_reached=boundary_reached,
+        worker_result=boundary_result,
+        customer_code_executed=boundary_marker.exists(),
+    )
+
     record(
         scenarios,
         "versioned_policy_contract",
         contract.get("schema_version") == policy.schema_version
-        and contract.get("schema_version") == "1.1.0"
+        and contract.get("schema_version") == "1.2.1"
         and contract.get("contract_id") == "certforge.subscriber-governance.v1"
         and contract.get("authentication", {}).get("denied_request_audit_required")
         is True
@@ -1420,7 +1904,7 @@ def main() -> int:
     )
 
     report = {
-        "schema_version": "1.1.0",
+        "schema_version": "1.2.1",
         "phase": "P7",
         "generated_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "python": sys.version,
