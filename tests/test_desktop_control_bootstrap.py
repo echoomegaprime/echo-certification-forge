@@ -84,7 +84,7 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
 
 def test_admin_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("echo.certforge.admin.") == 5
+    assert sql.count("('echo.certforge.admin.") == 5
     assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 5
     assert "ecf_" not in sql
 
@@ -95,3 +95,4 @@ def test_live_accepted_lifecycle_cap_is_durably_green():
     assert "revocation, invalidation, or supersession" in lifecycle
     assert "expiry" not in lifecycle
     assert "15, 'active', 'green'" in lifecycle
+    assert "WHERE id = 'echo.certforge.admin.lifecycle'" in sql

@@ -132,3 +132,9 @@ ON CONFLICT (id) DO UPDATE SET
   default_timeout_seconds = EXCLUDED.default_timeout_seconds,
   lifecycle_status = 'active',
   updated_at = now();
+
+-- Promoted only after the Desktop live acceptance completed a disposable
+-- submit -> REVOKED -> audited -> cancel journey through the signed SDK path.
+UPDATE arcanum_sdk.sdk_capabilities
+SET health_status = 'green', updated_at = now()
+WHERE id = 'echo.certforge.admin.lifecycle';
