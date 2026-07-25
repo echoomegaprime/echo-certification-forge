@@ -40,6 +40,7 @@ def test_recipe_matches_p5_v1_training_evidence():
         "quantization": "4bit-nf4-double-quant",
         "save_steps": 50,
         "trainable_dtype": "bfloat16",
+        "truncation_side": "right",
     }
 
 
@@ -56,7 +57,11 @@ def test_max_length_override_is_bounded_and_explicit():
         "out",
     ]
     assert parser.parse_args(required).max_length == 1024
-    assert parser.parse_args([*required, "--max-length", "896"]).max_length == 896
+    bounded = parser.parse_args(
+        [*required, "--max-length", "512", "--truncation-side", "left"]
+    )
+    assert bounded.max_length == 512
+    assert bounded.truncation_side == "left"
     with pytest.raises(SystemExit):
         parser.parse_args([*required, "--max-length", "900"])
 
