@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .deploy_gate import DeployGate
+from .deployment import DeploymentAdmissionController, DeploymentLedger
+from .deployment_service import install_deployment_api
 from .evidence import EvidenceStore
 from .intake import SubmitError, SubmitRequest, project_run, submit
 from .models import RunState, SignedVerdictEnvelope
 from .policy import RuleManifest
+from .release_hooks import WebhookSecretRegistry
 from .signing import TrustedPublicKeyRegistry
 
 
@@ -20,6 +24,10 @@ class ServiceContext:
     store: EvidenceStore
     manifest: RuleManifest
     trusted_keys: TrustedPublicKeyRegistry
+    deployment_ledger_path: Path | None = None
+    webhook_secrets: WebhookSecretRegistry = field(
+        default_factory=lambda: WebhookSecretRegistry(secrets={})
+    )
 
 
 class DeployGateRequest(BaseModel):
@@ -229,5 +237,18 @@ def create_app(context: ServiceContext) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         return result.to_dict()
+
+    # P6 — deployment enforcement: admission hook, outcomes, rollback, release status,
+    # signed platform webhooks. Additive; reuses the same store + trusted keys + gate.
+    app.state.certforge_manifest = context.manifest
+    ledger_path = context.deployment_ledger_path or context.store.db_path.with_name(
+        context.store.db_path.stem + "-deployments.sqlite3"
+    )
+    controller = DeploymentAdmissionController(
+        store=context.store,
+        trusted_keys=context.trusted_keys,
+        ledger=DeploymentLedger(ledger_path),
+    )
+    install_deployment_api(app, controller, context.webhook_secrets)
 
     return app
