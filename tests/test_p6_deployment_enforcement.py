@@ -614,3 +614,272 @@ def test_nonce_consumption_is_atomic_and_persistent_across_instances(tmp_path):
     # an EXPIRED nonce can be pruned and reused (TTL window bounds the replay cache)
     assert first.consume_nonce(TENANT, "nonce-expiring-0001", ttl_seconds=-1) is True
     assert first.consume_nonce(TENANT, "nonce-expiring-0001", ttl_seconds=-1) is True
+
+
+# --------------------------------------------------------------------------------------
+# Terminal outcome transitions — atomic, immutable, admission-bound rollback evidence
+# --------------------------------------------------------------------------------------
+
+
+def test_terminal_outcome_transitions_are_immutable(
+    controller, store, manifest, environment, signer, tmp_path, ledger
+):
+    """Once ANY terminal outcome exists for an admission, contradictory or repeated
+    transitions are rejected — especially the forgery FAILED -> SUCCEEDED — and a
+    ROLLED_BACK is only accepted against the candidate BOUND into the FAILED record."""
+    v1 = _target("term-v1")
+    v2 = _target("term-v2")
+    _certify(store, manifest, signer, environment, tmp_path, "cert-term-v1", v1)
+    _certify(store, manifest, signer, environment, tmp_path, "cert-term-v2", v2)
+    controller.bind_certification("cert-term-v1", TENANT, ACTOR)
+    controller.bind_certification("cert-term-v2", TENANT, ACTOR)
+
+    # -- staging: the one successful outcome is immutable ------------------------------
+    staging = controller.admit(
+        _admission(v1.artifact_sha256, "staging", environment, manifest, "deploy-term-s1"), ACTOR
+    )
+    assert staging.allowed, staging.reasons
+    controller.report_outcome(
+        staging.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "staging green", ACTOR
+    )
+    for repeat in (DeploymentOutcomeStatus.SUCCEEDED, DeploymentOutcomeStatus.FAILED):
+        with pytest.raises(OutcomeError) as excinfo:
+            controller.report_outcome(staging.admission_id, TENANT, repeat, "again", ACTOR)
+        assert excinfo.value.code == "outcome_already_terminal"
+    # a staging admission can never carry rollback evidence
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            staging.admission_id, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "impossible", ACTOR, rollback_to=v1.artifact_sha256,
+        )
+    assert excinfo.value.code == "rollback_requires_failed_production"
+
+    # -- production: ROLLED_BACK needs a preceding FAILED on the SAME admission --------
+    prod1 = controller.admit(
+        _admission(v1.artifact_sha256, "production", environment, manifest, "deploy-term-p1"),
+        ACTOR,
+    )
+    assert prod1.allowed, prod1.reasons
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            prod1.admission_id, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "no failure yet", ACTOR, rollback_to=v1.artifact_sha256,
+        )
+    assert excinfo.value.code == "rollback_requires_failed_production"
+
+    # first production failure has NO prior good production -> no bound candidate
+    failure = controller.report_outcome(
+        prod1.admission_id, TENANT, DeploymentOutcomeStatus.FAILED, "prod red", ACTOR
+    )
+    assert failure["payload"]["rollback_candidate"] is None
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            prod1.admission_id, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "nothing to restore", ACTOR, rollback_to=v1.artifact_sha256,
+        )
+    assert excinfo.value.code == "rollback_candidate_missing"
+    # the forgery: FAILED can never be rewritten to SUCCEEDED
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            prod1.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "forged", ACTOR
+        )
+    assert excinfo.value.code == "outcome_already_terminal"
+
+    # -- v1 ships clean on a NEW admission; SUCCEEDED is terminal too -------------------
+    prod2 = controller.admit(
+        _admission(v1.artifact_sha256, "production", environment, manifest, "deploy-term-p2"),
+        ACTOR,
+    )
+    assert prod2.allowed, prod2.reasons
+    controller.report_outcome(
+        prod2.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "prod green", ACTOR
+    )
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            prod2.admission_id, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "cannot roll back a success", ACTOR, rollback_to=v1.artifact_sha256,
+        )
+    assert excinfo.value.code == "outcome_already_terminal"
+
+    # -- v2 fails in production; rollback accepted ONLY for the bound candidate ---------
+    v2_admission = _deploy_to_production(controller, manifest, environment, v2.artifact_sha256, "term-v2")
+    failure = controller.report_outcome(
+        v2_admission, TENANT, DeploymentOutcomeStatus.FAILED, "prod smoke red", ACTOR
+    )
+    assert failure["payload"]["rollback_candidate"]["artifact_sha256"] == v1.artifact_sha256
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            v2_admission, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "wrong digest", ACTOR, rollback_to=v2.artifact_sha256,
+        )
+    assert excinfo.value.code == "rollback_target_mismatch"
+    controller.report_outcome(
+        v2_admission, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+        "restored v1", ACTOR, rollback_to=v1.artifact_sha256,
+    )
+    for status in (
+        DeploymentOutcomeStatus.ROLLED_BACK,
+        DeploymentOutcomeStatus.FAILED,
+        DeploymentOutcomeStatus.SUCCEEDED,
+    ):
+        with pytest.raises(OutcomeError) as excinfo:
+            controller.report_outcome(
+                v2_admission, TENANT, status, "post-rollback", ACTOR,
+                rollback_to=v1.artifact_sha256,
+            )
+        assert excinfo.value.code == "outcome_already_terminal"
+
+    assert ledger.verify_chain()[0] is True
+
+
+def test_staging_acceptance_requires_the_one_immutable_successful_outcome(
+    controller, store, manifest, environment, signer, tmp_path
+):
+    """A failed staging outcome can never be rewritten into the success that unlocks
+    production — promotion requires a staging admission whose FIRST (and only terminal)
+    outcome is SUCCEEDED."""
+    target = _target("stg-immutable")
+    _certify(store, manifest, signer, environment, tmp_path, "cert-stg-imm", target)
+    controller.bind_certification("cert-stg-imm", TENANT, ACTOR)
+
+    staging = controller.admit(
+        _admission(target.artifact_sha256, "staging", environment, manifest, "deploy-imm-s1"),
+        ACTOR,
+    )
+    assert staging.allowed, staging.reasons
+    controller.report_outcome(
+        staging.admission_id, TENANT, DeploymentOutcomeStatus.FAILED, "staging red", ACTOR
+    )
+
+    # the failed staging cannot be overwritten with a success
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            staging.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "forged", ACTOR
+        )
+    assert excinfo.value.code == "outcome_already_terminal"
+
+    # production stays locked
+    denied = controller.admit(
+        _admission(target.artifact_sha256, "production", environment, manifest, "deploy-imm-p1"),
+        ACTOR,
+    )
+    assert denied.allowed is False
+    assert "staging_acceptance_missing" in denied.reasons
+
+    # a NEW staging deployment that genuinely succeeds is what unlocks production
+    staging2 = controller.admit(
+        _admission(target.artifact_sha256, "staging", environment, manifest, "deploy-imm-s2"),
+        ACTOR,
+    )
+    assert staging2.allowed, staging2.reasons
+    controller.report_outcome(
+        staging2.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "staging green", ACTOR
+    )
+    allowed = controller.admit(
+        _admission(target.artifact_sha256, "production", environment, manifest, "deploy-imm-p2"),
+        ACTOR,
+    )
+    assert allowed.allowed is True, allowed.reasons
+
+
+def test_rollback_evidence_bound_at_failure_ignores_target_drift(
+    controller, store, manifest, environment, signer, tmp_path
+):
+    """The accepted rollback digest is the candidate FROZEN into the FAILED record.
+    Concurrent deployment activity that moves the LIVE rollback target afterwards must
+    not change what the failed admission may report as its rollback."""
+    a1 = _target("drift-v1")
+    a2 = _target("drift-v2")
+    a3 = _target("drift-v3")
+    for run_id, target in (("cert-drift-v1", a1), ("cert-drift-v2", a2), ("cert-drift-v3", a3)):
+        _certify(store, manifest, signer, environment, tmp_path, run_id, target)
+        controller.bind_certification(run_id, TENANT, ACTOR)
+
+    # v1 becomes last known good
+    v1_admission = _deploy_to_production(controller, manifest, environment, a1.artifact_sha256, "drift-v1")
+    controller.report_outcome(
+        v1_admission, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "prod green", ACTOR
+    )
+
+    # v2 fails in production — the rollback candidate v1 is bound into the FAILED record
+    v2_admission = _deploy_to_production(controller, manifest, environment, a2.artifact_sha256, "drift-v2")
+    failure = controller.report_outcome(
+        v2_admission, TENANT, DeploymentOutcomeStatus.FAILED, "prod red", ACTOR
+    )
+    assert failure["payload"]["rollback_candidate"]["artifact_sha256"] == a1.artifact_sha256
+
+    # CONCURRENT drift: v3 ships clean, the LIVE rollback target moves to v3
+    v3_admission = _deploy_to_production(controller, manifest, environment, a3.artifact_sha256, "drift-v3")
+    controller.report_outcome(
+        v3_admission, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "prod green", ACTOR
+    )
+    live = controller.rollback_target(TENANT)
+    assert live is not None and live["artifact_sha256"] == a3.artifact_sha256
+
+    # reporting the drifted live target as the v2 rollback is REJECTED
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            v2_admission, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "drifted target", ACTOR, rollback_to=a3.artifact_sha256,
+        )
+    assert excinfo.value.code == "rollback_target_mismatch"
+
+    # only the digest bound at failure time is accepted
+    rollback = controller.report_outcome(
+        v2_admission, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+        "restored bound candidate", ACTOR, rollback_to=a1.artifact_sha256,
+    )
+    assert rollback["payload"]["rollback_to"] == a1.artifact_sha256
+
+
+def test_concurrent_outcome_reports_have_exactly_one_winner(
+    controller, store, manifest, environment, signer, tmp_path, ledger
+):
+    """Racing outcome writers for one admission: exactly ONE terminal outcome lands, all
+    other attempts fail with outcome_already_terminal, and the hash chain stays linear."""
+    target = _target("race-outcome")
+    _certify(store, manifest, signer, environment, tmp_path, "cert-race", target)
+    controller.bind_certification("cert-race", TENANT, ACTOR)
+    staging = controller.admit(
+        _admission(target.artifact_sha256, "staging", environment, manifest, "deploy-race-s1"),
+        ACTOR,
+    )
+    assert staging.allowed, staging.reasons
+
+    workers = 8
+    barrier = threading.Barrier(workers)
+    results: list[tuple[str, str]] = []
+    lock = threading.Lock()
+
+    def report(index: int) -> None:
+        status = (
+            DeploymentOutcomeStatus.SUCCEEDED if index % 2 == 0 else DeploymentOutcomeStatus.FAILED
+        )
+        barrier.wait(timeout=30)
+        try:
+            controller.report_outcome(
+                staging.admission_id, TENANT, status, f"attempt-{index}", ACTOR
+            )
+            outcome = ("ok", status.value)
+        except OutcomeError as exc:
+            outcome = ("error", exc.code)
+        with lock:
+            results.append(outcome)
+
+    threads = [threading.Thread(target=report, args=(i,)) for i in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+
+    assert len(results) == workers
+    winners = [entry for entry in results if entry[0] == "ok"]
+    losers = [entry for entry in results if entry[0] == "error"]
+    assert len(winners) == 1
+    assert len(losers) == workers - 1
+    assert all(code == "outcome_already_terminal" for _, code in losers)
+
+    recorded = ledger.outcomes(staging.admission_id, TENANT)
+    assert len(recorded) == 1
+    assert json.loads(str(recorded[0]["payload_json"]))["status"] == winners[0][1]
+    assert ledger.verify_chain()[0] is True

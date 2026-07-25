@@ -924,3 +924,255 @@ def test_enforce_admission_sh_records_real_outcomes_end_to_end(
     # staging SUCCEEDED + production SUCCEEDED + production FAILED, all via the script
     assert len(outcomes) == 3
     assert all(row["admission_id"] for row in outcomes)
+
+
+# --------------------------------------------------------------------------------------
+# Terminal outcome transitions over HTTP — 409 fail-closed mapping
+# --------------------------------------------------------------------------------------
+
+
+def test_http_terminal_outcome_transitions_fail_closed(
+    client, certified_target, environment, manifest
+):
+    """FAILED -> SUCCEEDED forgery and drifted rollback digests are rejected with 409
+    through the real API surface."""
+    artifact = certified_target.artifact_sha256
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
+    assert response.status_code == 201
+
+    staging = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "staging", environment, manifest, "deploy-term-s1"),
+    ).json()
+    assert staging["allowed"] is True, staging["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "staging green"},
+    )
+    assert response.status_code == 201
+
+    # repeated / contradictory outcomes on the same admission are 409 outcome_already_terminal
+    for body in ({"status": "SUCCEEDED", "detail": "again"}, {"status": "FAILED", "detail": "flip"}):
+        response = _post_signed(
+            client, f"/v1/deployments/admissions/{staging['admission_id']}/outcome", body
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == "outcome_already_terminal"
+
+    production = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "production", environment, manifest, "deploy-term-p1"),
+    ).json()
+    assert production["allowed"] is True, production["reasons"]
+
+    # rollback without a preceding production failure is refused
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{production['admission_id']}/outcome",
+        {"status": "ROLLED_BACK", "detail": "premature", "rollback_to": artifact},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "rollback_requires_failed_production"
+
+    # first production failure binds NO candidate (no prior good production)
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{production['admission_id']}/outcome",
+        {"status": "FAILED", "detail": "prod red"},
+    )
+    assert response.status_code == 201
+    assert response.json()["payload"]["rollback_candidate"] is None
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{production['admission_id']}/outcome",
+        {"status": "ROLLED_BACK", "detail": "nothing bound", "rollback_to": artifact},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "rollback_candidate_missing"
+
+    # and the forgery is impossible over HTTP too
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{production['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "forged"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "outcome_already_terminal"
+
+
+# --------------------------------------------------------------------------------------
+# enforce_admission.sh — rollback MUST run even when outcome recording is down
+# --------------------------------------------------------------------------------------
+
+
+class _OneShotProxy:
+    """TCP proxy forwarding ONLY the first connection to the upstream service, then
+    refusing every later one — simulating the outcome endpoint going down right after
+    admission was granted (urllib opens one connection per request; no keep-alive)."""
+
+    def __init__(self, upstream_port: int) -> None:
+        self.upstream_port = upstream_port
+        self._listener = socket.socket()
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self.port = self._listener.getsockname()[1]
+        self._listener.listen(8)
+        self.forwarded = 0
+        self.refused = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    @staticmethod
+    def _pump(source: socket.socket, sink: socket.socket) -> None:
+        try:
+            while True:
+                data = source.recv(65536)
+                if not data:
+                    break
+                sink.sendall(data)
+        except OSError:
+            pass
+        finally:
+            try:
+                sink.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    def _serve(self) -> None:
+        self._listener.settimeout(0.5)
+        while not self._stop.is_set():
+            try:
+                connection, _ = self._listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if self.forwarded == 0:
+                self.forwarded += 1
+                upstream = socket.create_connection(("127.0.0.1", self.upstream_port), timeout=30)
+                threading.Thread(target=self._pump, args=(connection, upstream), daemon=True).start()
+                threading.Thread(target=self._pump, args=(upstream, connection), daemon=True).start()
+            else:
+                self.refused += 1
+                connection.close()
+
+    def stop(self) -> None:
+        self._stop.set()
+        try:
+            self._listener.close()
+        except OSError:
+            pass
+        self._thread.join(timeout=5)
+
+
+@pytest.mark.skipif(_bash_executable() is None, reason="no usable bash for the .sh integration")
+def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
+    context, certified_target, environment, manifest, tmp_path
+):
+    """Outcome-endpoint failure must NEVER prevent the actual production rollback: the
+    wrapper retries FAILED recording, still executes CERTFORGE_ROLLBACK_CMD, and then
+    fails closed (exit 3) because reporting is incomplete."""
+    import urllib.request
+
+    import uvicorn
+
+    app = create_app(context)
+    client = TestClient(app)
+    artifact = certified_target.artifact_sha256
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
+    assert response.status_code == 201
+
+    # staging accepted directly against the app so production is admissible
+    staging = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "staging", environment, manifest, "deploy-down-s1"),
+    ).json()
+    assert staging["allowed"] is True, staging["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "staging green"},
+    )
+    assert response.status_code == 201
+
+    port = _free_port()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=2) as live:
+                if live.status == 200:
+                    break
+        except OSError:
+            time.sleep(0.2)
+    else:
+        raise RuntimeError("live service never became healthy")
+
+    proxy = _OneShotProxy(port)
+    marker = tmp_path / "rollback-executed.marker"
+    bash = _bash_executable()
+    script = str(Path(__file__).parents[1] / "deploy" / "enforce_admission.sh").replace("\\", "/")
+    marker_posix = str(marker).replace("\\", "/")
+    try:
+        proc = subprocess.run(
+            [bash, script, "false"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={
+                **os.environ,
+                # admission goes through the proxy's ONE forwarded connection; every
+                # outcome request afterwards is refused (endpoint down)
+                "CERTFORGE_URL": f"http://127.0.0.1:{proxy.port}",
+                "CERTFORGE_TENANT": TENANT,
+                "CERTFORGE_ARTIFACT_DIGEST": artifact,
+                "CERTFORGE_ENVIRONMENT": "production",
+                "CERTFORGE_ENV_IDENTITY_DIGEST": environment.identity_digest,
+                "CERTFORGE_RULE_MANIFEST_DIGEST": manifest.digest,
+                "CERTFORGE_DEPLOYMENT_ID": "deploy-down-p1",
+                "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET,
+                "CERTFORGE_PYTHON": sys.executable.replace("\\", "/"),
+                "CERTFORGE_ROLLBACK_CMD": f"touch '{marker_posix}'",
+            },
+        )
+    finally:
+        proxy.stop()
+        server.should_exit = True
+        thread.join(timeout=10)
+
+    # fail-closed: reporting is incomplete -> exit 3, NOT the raw deploy status
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    # the FAILED recording was retried and reported as not recorded
+    assert "outcome recording attempt 3/3 failed" in proc.stderr
+    assert "OUTCOME NOT RECORDED (FAILED)" in proc.stderr
+    # ... and the ACTUAL rollback still executed
+    assert marker.exists(), proc.stdout + proc.stderr
+    assert "EXECUTING ROLLBACK" in proc.stderr
+    assert "DEPLOYMENT REPORTING INCOMPLETE" in proc.stderr
+    assert proxy.forwarded == 1
+    assert proxy.refused >= 3
+
+    # the ledger holds the admission but NO outcome rows for it (reporting was down),
+    # and the chain is still valid
+    audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
+    assert audit["chain_valid"] is True
+    prod_admissions = [
+        row
+        for row in audit["records"]
+        if row["record_type"] == "ADMISSION" and row["deployment_environment"] == "production"
+    ]
+    assert len(prod_admissions) == 1
+    admission_id = prod_admissions[0]["record_id"]
+    outcomes = [
+        row
+        for row in audit["records"]
+        if row["record_type"] == "OUTCOME" and row["admission_id"] == admission_id
+    ]
+    assert outcomes == []

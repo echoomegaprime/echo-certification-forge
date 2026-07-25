@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from .canonical import (
     require_identifier,
@@ -260,6 +260,7 @@ class DeploymentLedger:
         artifact_sha256: str | None = None,
         deployment_environment: str | None = None,
         allowed: bool | None = None,
+        precondition: Callable[[sqlite3.Connection], None] | None = None,
     ) -> dict[str, Any]:
         require_identifier(tenant_id, "tenant_id")
         require_identifier(actor, "actor")
@@ -272,6 +273,11 @@ class DeploymentLedger:
             connection.isolation_level = None
             connection.execute("BEGIN IMMEDIATE")
             try:
+                if precondition is not None:
+                    # Validated UNDER the write lock: state-transition checks (e.g. "no
+                    # terminal outcome exists yet for this admission") are atomic with the
+                    # insert — two racing writers cannot both pass the check.
+                    precondition(connection)
                 previous = connection.execute(
                     "SELECT ordinal, chain_hash FROM deployment_records ORDER BY ordinal DESC LIMIT 1"
                 ).fetchone()
@@ -345,18 +351,34 @@ class DeploymentLedger:
         )
         return rows[0] if rows else None
 
-    def latest_outcome(self, admission_id: str, tenant_id: str) -> dict[str, Any] | None:
+    def first_outcome(self, admission_id: str, tenant_id: str) -> dict[str, Any] | None:
+        """The FIRST recorded outcome for an admission — the authoritative terminal one.
+
+        Outcome transitions are enforced atomically at write time (``report_outcome``), so
+        the first outcome is immutable: a later contradictory record (e.g. FAILED followed
+        by SUCCEEDED) can never exist. Reading the first record — never the latest — means
+        even a hypothetical extra row could not flip a decision that reads this."""
         rows = self._rows(
             "SELECT * FROM deployment_records WHERE admission_id = ? AND tenant_id = ?"
-            " AND record_type = ? ORDER BY ordinal DESC LIMIT 1",
+            " AND record_type = ? ORDER BY ordinal ASC LIMIT 1",
             (admission_id, tenant_id, DeploymentRecordType.OUTCOME.value),
         )
         return rows[0] if rows else None
 
+    def outcomes(self, admission_id: str, tenant_id: str) -> list[dict[str, Any]]:
+        rows = self._rows(
+            "SELECT * FROM deployment_records WHERE admission_id = ? AND tenant_id = ?"
+            " AND record_type = ? ORDER BY ordinal ASC",
+            (admission_id, tenant_id, DeploymentRecordType.OUTCOME.value),
+        )
+        return rows
+
     def staging_accepted(self, tenant_id: str, artifact_sha256: str, run_id: str) -> bool:
         """True when an ALLOWED staging admission for this exact artifact digest AND certifying
-        run has a latest outcome of SUCCEEDED. A failed or missing staging deployment never
-        unlocks production."""
+        run has its ONE immutable outcome recorded as SUCCEEDED. A failed or missing staging
+        deployment never unlocks production, and a success can never be forged after the fact:
+        once any terminal outcome exists for an admission, contradictory transitions
+        (especially FAILED -> SUCCEEDED) are rejected atomically at write time."""
         admissions = self._rows(
             "SELECT * FROM deployment_records WHERE tenant_id = ? AND artifact_sha256 = ?"
             " AND run_id = ? AND record_type = ? AND deployment_environment = ? AND allowed = 1"
@@ -364,7 +386,7 @@ class DeploymentLedger:
             (tenant_id, artifact_sha256, run_id, DeploymentRecordType.ADMISSION.value, STAGING),
         )
         for admission in admissions:
-            outcome = self.latest_outcome(str(admission["record_id"]), tenant_id)
+            outcome = self.first_outcome(str(admission["record_id"]), tenant_id)
             if outcome is not None:
                 payload = json.loads(str(outcome["payload_json"]))
                 if payload.get("status") == DeploymentOutcomeStatus.SUCCEEDED.value:
@@ -372,7 +394,7 @@ class DeploymentLedger:
         return False
 
     def good_production_admissions(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Allowed production admissions whose latest outcome is SUCCEEDED, newest first."""
+        """Allowed production admissions whose one immutable outcome is SUCCEEDED, newest first."""
         admissions = self._rows(
             "SELECT * FROM deployment_records WHERE tenant_id = ? AND record_type = ?"
             " AND deployment_environment = ? AND allowed = 1 ORDER BY ordinal DESC",
@@ -380,7 +402,7 @@ class DeploymentLedger:
         )
         good: list[dict[str, Any]] = []
         for admission in admissions:
-            outcome = self.latest_outcome(str(admission["record_id"]), tenant_id)
+            outcome = self.first_outcome(str(admission["record_id"]), tenant_id)
             if outcome is None:
                 continue
             payload = json.loads(str(outcome["payload_json"]))
@@ -600,9 +622,21 @@ class DeploymentAdmissionController:
     ) -> dict[str, Any]:
         """Record the real deployment outcome for an ALLOWED admission (append-only).
 
-        ``ROLLED_BACK`` requires ``rollback_to`` — the exact digest that was restored —
-        which is the durable rollback evidence. A FAILED production outcome includes the
-        current last-known-good rollback candidate in the recorded payload.
+        Terminal-transition enforcement (validated ATOMICALLY under the ledger write lock,
+        so two racing writers can never both record):
+
+        * ``SUCCEEDED`` / ``FAILED`` are terminal — once ANY outcome exists for the
+          admission, a later contradictory or repeated transition (especially
+          FAILED -> SUCCEEDED) is rejected with ``outcome_already_terminal``.
+        * ``ROLLED_BACK`` is only valid as the single follow-up to a FAILED PRODUCTION
+          outcome on the same admission, and its ``rollback_to`` digest must EXACTLY match
+          the last-known-good rollback candidate that was persisted in that FAILED record —
+          the binding is frozen at failure time, so concurrent deployment activity can
+          never drift the accepted rollback target.
+
+        A FAILED production outcome persists the current last-known-good rollback
+        candidate in the recorded payload; that frozen digest is the only digest a
+        subsequent ``ROLLED_BACK`` may name.
         """
         admission = self.ledger.find_admission(admission_id, tenant_id)
         if admission is None:
@@ -614,6 +648,10 @@ class DeploymentAdmissionController:
             if rollback_to is None:
                 raise OutcomeError("rollback_target_required")
             normalized_rollback = normalize_artifact_digest(rollback_to)
+            if admission["deployment_environment"] != PRODUCTION:
+                # Rollback evidence only exists for production; a staging admission can
+                # never carry a ROLLED_BACK outcome.
+                raise OutcomeError("rollback_requires_failed_production")
         elif rollback_to is not None:
             normalized_rollback = normalize_artifact_digest(rollback_to)
         payload: dict[str, Any] = {
@@ -630,6 +668,42 @@ class DeploymentAdmissionController:
         ):
             candidate = self.rollback_target(tenant_id)
             payload["rollback_candidate"] = candidate
+
+        def _validate_transition(connection: sqlite3.Connection) -> None:
+            rows = connection.execute(
+                "SELECT payload_json FROM deployment_records WHERE admission_id = ?"
+                " AND tenant_id = ? AND record_type = ? ORDER BY ordinal ASC",
+                (admission_id, tenant_id, DeploymentRecordType.OUTCOME.value),
+            ).fetchall()
+            existing = [json.loads(str(row["payload_json"])) for row in rows]
+            statuses = [entry.get("status") for entry in existing]
+            if status is not DeploymentOutcomeStatus.ROLLED_BACK:
+                if statuses:
+                    # SUCCEEDED/FAILED after ANY terminal outcome — including the forgery
+                    # FAILED -> SUCCEEDED and simple repeats — is rejected outright.
+                    raise OutcomeError("outcome_already_terminal")
+                return
+            if (
+                DeploymentOutcomeStatus.ROLLED_BACK.value in statuses
+                or DeploymentOutcomeStatus.SUCCEEDED.value in statuses
+            ):
+                raise OutcomeError("outcome_already_terminal")
+            failed = [
+                entry
+                for entry in existing
+                if entry.get("status") == DeploymentOutcomeStatus.FAILED.value
+            ]
+            if not failed:
+                raise OutcomeError("rollback_requires_failed_production")
+            bound = failed[-1].get("rollback_candidate") or {}
+            bound_digest = bound.get("artifact_sha256")
+            if not isinstance(bound_digest, str) or not bound_digest:
+                # The failure record bound no last-known-good candidate: there is nothing
+                # a rollback can be verified against — fail closed.
+                raise OutcomeError("rollback_candidate_missing")
+            if normalized_rollback != bound_digest:
+                raise OutcomeError("rollback_target_mismatch")
+
         record = self.ledger.append(
             DeploymentRecordType.OUTCOME,
             tenant_id,
@@ -639,6 +713,7 @@ class DeploymentAdmissionController:
             run_id=admission["run_id"],
             artifact_sha256=admission["artifact_sha256"],
             deployment_environment=admission["deployment_environment"],
+            precondition=_validate_transition,
         )
         return {**record}
 

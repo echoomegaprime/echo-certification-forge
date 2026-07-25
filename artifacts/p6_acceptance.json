@@ -1,7 +1,7 @@
 {
   "phase": "P6",
   "title": "deployment enforcement and platform integration \u2014 live local acceptance",
-  "generated_at": "2026-07-25T10:04:30.377096Z",
+  "generated_at": "2026-07-25T10:33:09.418559Z",
   "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
   "passed": true,
   "checks": [
@@ -11,7 +11,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-cd74da179ef1e339cc33997f6a4f655d\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"68cb43e5c4f967caad2d302e8c1a311cac225422490b0d7f4ad82bf988f8351e\", \"created_at\": \"2026-07-25T10:04:25.600113Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-ed7e2b498f33116ea86e05b9006f9226\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"ad8dc0a24bf9e47fa00d69799d7a6c72f34f15b98daee596772227269abf536a\", \"created_at\": \"2026-07-25T10:33:03.926884Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -29,7 +29,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-4d042fffd0ab2256f06adad6a48d1708\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"9c9dcecd3b39ce2526a4b26c5b6e3557fbb50ac465df3931429ea032f31d44c3\", \"created_at\": \"2026-07-25T10:04:25.843742Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-338a71986cf1bb043951239a977d3013\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"4e73c3a973a0dd3deb9288d9c6f2c1bf54aee4d868186c45ed89e744236f0dd1\", \"created_at\": \"2026-07-25T10:33:04.152027Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -38,7 +38,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-05f392d0914e80daa9eb449ec364be9f\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"a7e43d1314d1242eae134e472467865befca24763f91a184c5292fc70e1115ea\", \"created_at\": \"2026-07-25T10:04:26.018259Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-10a2d45c38d567adc8e187ef041eb720\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"1ca8ff48108c0c84d3b4be42bd6c9d5ada9bfa89f156492a47a77b7d5eb0f9c3\", \"created_at\": \"2026-07-25T10:33:04.362160Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -57,8 +57,8 @@
       "passed": true,
       "detail": {
         "failure_candidate": {
-          "admission_id": "dep-3529cd4eb716ad8875f958b072f88976",
-          "admitted_at": "2026-07-25T10:04:26.561385Z",
+          "admission_id": "dep-266fa35421cbf633c6867fd5ec744e63",
+          "admitted_at": "2026-07-25T10:33:05.112825Z",
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "deployment_id": "deploy-a3-prd",
           "run_id": "cert-p6-v1"
@@ -66,12 +66,12 @@
         "rollback_target": {
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "run_id": "cert-p6-v1",
-          "admission_id": "dep-3529cd4eb716ad8875f958b072f88976",
+          "admission_id": "dep-266fa35421cbf633c6867fd5ec744e63",
           "deployment_id": "deploy-a3-prd",
-          "admitted_at": "2026-07-25T10:04:26.561385Z"
+          "admitted_at": "2026-07-25T10:33:05.112825Z"
         },
         "rolled_back": {
-          "admission_id": "dep-c4efd3fc54b0ed0a21c3158f5fdfb749",
+          "admission_id": "dep-2e78a101e214199e3bc0e082edc69f8a",
           "artifact_sha256": "6cf9eb2e75fbaf4037393188b98be82a05499dcfc0c45a6eeeb840bd7f775c20",
           "deployment_environment": "production",
           "detail": "restored v1",
@@ -86,7 +86,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-f3a6a2f9efdee343acc9efe3bceddb0e\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"949e120850207ad58c65802952eeaee0dc33e28f8c5f01f577874eba40280713\", \"created_at\": \"2026-07-25T10:04:27.799555Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-669b62c00e05cf23db42bf43b5ae27dd\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"388be983dee4fbf2bd7fdb4dca40f0b695c5af4058191876fe6c78871b0fe83d\", \"created_at\": \"2026-07-25T10:33:06.789504Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
