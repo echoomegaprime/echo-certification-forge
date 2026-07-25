@@ -8,6 +8,7 @@ run deduplication. Fail-closed on every negative path.
 from __future__ import annotations
 
 import hashlib
+import http.server
 import json
 import os
 import secrets as _secrets
@@ -23,6 +24,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from echo_certification_forge import run_worker
+from echo_certification_forge.acquisition import AcquisitionError, acquire_target
 from echo_certification_forge.canonical import to_utc_iso, utc_now
 from echo_certification_forge.deployment_service import (
     DEPLOY_NONCE_HEADER,
@@ -922,19 +925,47 @@ def test_enforce_admission_sh_records_real_outcomes_end_to_end(
         assert '"recorded": true' in staging_proc.stdout
         assert '"status": "SUCCEEDED"' in staging_proc.stdout
 
-        # production is admissible ONLY because the wrapper recorded staging success
+        # a production admission that binds NO rollback target (no prior good production)
+        # is REFUSED by the wrapper before the deploy command can run: the FIRST
+        # production deployment must be provisioned out-of-band via the authenticated API
+        marker = tmp_path / "no-bound-target-deploy-ran.marker"
+        proc = run_wrapper(
+            "production", "deploy-sh-nofirst", "touch", str(marker).replace("\\", "/")
+        )
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert "no admission-bound rollback target" in proc.stderr
+        assert not marker.exists()  # the deployment never began
+
+        # bootstrap the first production deployment out-of-band via the authenticated API
+        artifact = certified_target.artifact_sha256
+        boot = _post_signed(
+            client,
+            "/v1/deployments/admissions",
+            _admit_body(artifact, "production", environment, manifest, "deploy-sh-boot"),
+        ).json()
+        assert boot["allowed"] is True, boot["reasons"]
+        response = _post_signed(
+            client,
+            f"/v1/deployments/admissions/{boot['admission_id']}/outcome",
+            {"status": "SUCCEEDED", "detail": "bootstrap production"},
+        )
+        assert response.status_code == 201
+
+        # production through the wrapper now carries the admission-bound rollback target
         prod_proc = run_wrapper("production", "deploy-sh-prd", "true")
         assert prod_proc.returncode == 0, prod_proc.stdout + prod_proc.stderr
         assert '"status": "SUCCEEDED"' in prod_proc.stdout
+        assert f'"artifact_sha256": "{artifact}"' in prod_proc.stdout  # frozen candidate
 
         # a FAILING production deploy exits with the deploy status, records FAILED,
-        # executes the mandatory rollback against the BOUND candidate and records it
+        # executes the mandatory rollback against the ADMISSION-BOUND target and records it
         fail_proc = run_wrapper("production", "deploy-sh-fail", "false")
         assert fail_proc.returncode == 1, fail_proc.stdout + fail_proc.stderr
         assert "recording FAILED outcome" in fail_proc.stderr
         assert '"status": "FAILED"' in fail_proc.stdout
-        assert "EXECUTING ROLLBACK" in fail_proc.stderr
+        assert "EXECUTING ROLLBACK (admission-bound last-known-good" in fail_proc.stderr
         assert '"status": "ROLLED_BACK"' in fail_proc.stdout
+        assert f'"rollback_to": "{artifact}"' in fail_proc.stdout
     finally:
         server.should_exit = True
         thread.join(timeout=10)
@@ -942,8 +973,9 @@ def test_enforce_admission_sh_records_real_outcomes_end_to_end(
     audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
     assert audit["chain_valid"] is True
     outcomes = [row for row in audit["records"] if row["record_type"] == "OUTCOME"]
-    # staging SUCCEEDED + production SUCCEEDED + production FAILED + ROLLED_BACK, all via the script
-    assert len(outcomes) == 4
+    # staging SUCCEEDED (script) + bootstrap production SUCCEEDED (API) + production
+    # SUCCEEDED (script) + production FAILED + ROLLED_BACK (script)
+    assert len(outcomes) == 5
     assert all(row["admission_id"] for row in outcomes)
 
 
@@ -1094,9 +1126,10 @@ class _OneShotProxy:
 def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
     context, certified_target, environment, manifest, tmp_path
 ):
-    """Outcome-endpoint failure must NEVER prevent the actual production rollback: the
-    wrapper retries FAILED recording, still executes CERTFORGE_ROLLBACK_CMD, and then
-    fails closed (exit 3) because reporting is incomplete."""
+    """TOTAL outcome-reporting outage must NEVER prevent the actual production rollback:
+    the wrapper retries FAILED recording, still executes CERTFORGE_ROLLBACK_CMD with the
+    ADMISSION-BOUND target (frozen before the deployment began), attempts ROLLED_BACK
+    reporting, and then fails closed (exit 3) because reporting is incomplete."""
     import urllib.request
 
     import uvicorn
@@ -1107,7 +1140,8 @@ def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
     response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
     assert response.status_code == 201
 
-    # staging accepted directly against the app so production is admissible
+    # staging accepted + a good production deployment establish the last-known-good
+    # that the wrapper's admission will freeze as its rollback target
     staging = _post_signed(
         client,
         "/v1/deployments/admissions",
@@ -1118,6 +1152,18 @@ def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
         client,
         f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
         {"status": "SUCCEEDED", "detail": "staging green"},
+    )
+    assert response.status_code == 201
+    good_prod = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "production", environment, manifest, "deploy-down-p0"),
+    ).json()
+    assert good_prod["allowed"] is True, good_prod["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{good_prod['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "prod green"},
     )
     assert response.status_code == 201
 
@@ -1160,7 +1206,8 @@ def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
                 "CERTFORGE_DEPLOYMENT_ID": "deploy-down-p1",
                 "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET,
                 "CERTFORGE_PYTHON": sys.executable.replace("\\", "/"),
-                "CERTFORGE_ROLLBACK_CMD": f"touch '{marker_posix}'",
+                "CERTFORGE_ROLLBACK_CMD":
+                    f"printf %s \"$CERTFORGE_ROLLBACK_TARGET\" > '{marker_posix}'",
             },
         )
     finally:
@@ -1173,24 +1220,31 @@ def test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down(
     # the FAILED recording was retried and reported as not recorded
     assert "outcome recording attempt 3/3 failed" in proc.stderr
     assert "OUTCOME NOT RECORDED (FAILED)" in proc.stderr
-    # ... and the ACTUAL rollback still executed
+    # ... and the ACTUAL rollback still executed with the EXACT admission-bound target,
+    # even though every single reporting attempt failed
     assert marker.exists(), proc.stdout + proc.stderr
-    assert "EXECUTING ROLLBACK" in proc.stderr
+    assert marker.read_text(encoding="utf-8").strip() == artifact
+    assert "EXECUTING ROLLBACK (admission-bound last-known-good" in proc.stderr
+    # ROLLED_BACK reporting was ATTEMPTED after the rollback and also failed
+    assert "ROLLED_BACK outcome NOT RECORDED" in proc.stderr
     assert "DEPLOYMENT REPORTING INCOMPLETE" in proc.stderr
     assert proxy.forwarded == 1
-    assert proxy.refused >= 3
+    # 3 FAILED attempts + 3 ROLLED_BACK attempts were all refused by the dead endpoint
+    assert proxy.refused >= 6
 
-    # the ledger holds the admission but NO outcome rows for it (reporting was down),
-    # and the chain is still valid
+    # the ledger holds the wrapper's admission but NO outcome rows for it (reporting was
+    # down), and the chain is still valid
     audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
     assert audit["chain_valid"] is True
-    prod_admissions = [
+    sh_admissions = [
         row
         for row in audit["records"]
-        if row["record_type"] == "ADMISSION" and row["deployment_environment"] == "production"
+        if row["record_type"] == "ADMISSION"
+        and row["deployment_environment"] == "production"
+        and row["record_id"] != good_prod["admission_id"]
     ]
-    assert len(prod_admissions) == 1
-    admission_id = prod_admissions[0]["record_id"]
+    assert len(sh_admissions) == 1
+    admission_id = sh_admissions[0]["record_id"]
     outcomes = [
         row
         for row in audit["records"]
@@ -1483,3 +1537,196 @@ def test_enforce_admission_sh_recovers_committed_outcome_when_response_is_droppe
     assert statuses == ["FAILED", "ROLLED_BACK"]
     assert payloads[0]["rollback_candidate"]["artifact_sha256"] == artifact
     assert payloads[1]["rollback_to"] == artifact
+
+# --------------------------------------------------------------------------------------
+# OCI acquisition — registry-image webhooks deploy end-to-end by IMMUTABLE digest
+# --------------------------------------------------------------------------------------
+
+
+class _LocalOciRegistry:
+    """Minimal in-process OCI registry: serves pre-registered manifests/blobs by digest
+    over the standard /v2/<name>/{manifests,blobs}/<digest> paths."""
+
+    def __init__(self) -> None:
+        objects: dict[str, bytes] = {}
+        self.objects = objects
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                body = objects.get(self.path)
+                if body is None:
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args) -> None:
+                return
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.port = self._server.server_address[1]
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def put(self, path: str, body: bytes) -> None:
+        self.objects[path] = body
+
+    def stop(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=5)
+
+
+_OCI_LAYER = b"certforge oci integration layer contents\n"
+
+
+def _push_test_image(registry: _LocalOciRegistry, name: str = "testapp") -> str:
+    """Register a tiny single-arch OCI image; returns its sha256:<hex> manifest digest."""
+    config = json.dumps({"architecture": "amd64", "os": "linux"}).encode("utf-8")
+    config_digest = "sha256:" + hashlib.sha256(config).hexdigest()
+    layer_digest = "sha256:" + hashlib.sha256(_OCI_LAYER).hexdigest()
+    manifest_bytes = json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": config_digest,
+                "size": len(config),
+            },
+            "layers": [
+                {
+                    "mediaType": "application/vnd.oci.image.layer.v1.tar",
+                    "digest": layer_digest,
+                    "size": len(_OCI_LAYER),
+                }
+            ],
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+    manifest_digest = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+    registry.put(f"/v2/{name}/manifests/{manifest_digest}", manifest_bytes)
+    registry.put(f"/v2/{name}/blobs/{config_digest}", config)
+    registry.put(f"/v2/{name}/blobs/{layer_digest}", _OCI_LAYER)
+    return manifest_digest
+
+
+def test_oci_acquisition_is_digest_pinned_and_fail_closed(tmp_path):
+    """The OCI path NEVER trusts a mutable tag and hash-verifies every byte it pulls:
+    tag specs and unverifiable manifests/blobs fail acquisition BEFORE any run state
+    could be created, while the digest-pinned pull produces an inert OCI layout whose
+    artifact identity is the image's NATIVE manifest digest."""
+    registry = _LocalOciRegistry()
+    try:
+        manifest_digest = _push_test_image(registry)
+        repo = f"http://127.0.0.1:{registry.port}/testapp"
+
+        # mutable tags are rejected outright — a registry could re-point them later
+        with pytest.raises(AcquisitionError, match="never a tag"):
+            acquire_target({"type": "oci", "repository": repo, "tag": "latest"}, tmp_path / "t1")
+        with pytest.raises(AcquisitionError, match="requires 'digest'"):
+            acquire_target({"type": "oci", "repository": repo}, tmp_path / "t2")
+
+        # manifest bytes that do not hash to the requested digest are refused
+        wrong = "sha256:" + hashlib.sha256(b"attacker manifest").hexdigest()
+        registry.put(f"/v2/testapp/manifests/{wrong}", b'{"schemaVersion": 2}')
+        with pytest.raises(AcquisitionError, match="digest mismatch"):
+            acquire_target({"type": "oci", "repository": repo, "digest": wrong}, tmp_path / "t3")
+
+        # a tampered layer blob is refused even when the manifest itself verifies
+        layer_digest = "sha256:" + hashlib.sha256(_OCI_LAYER).hexdigest()
+        registry.put(f"/v2/testapp/blobs/{layer_digest}", b"tampered layer bytes")
+        with pytest.raises(AcquisitionError, match="digest mismatch"):
+            acquire_target(
+                {"type": "oci", "repository": repo, "digest": manifest_digest}, tmp_path / "t4"
+            )
+        registry.put(f"/v2/testapp/blobs/{layer_digest}", _OCI_LAYER)  # restore
+
+        # the digest-pinned pull verifies everything and preserves native identity
+        acquired = acquire_target(
+            {"type": "oci", "repository": repo, "digest": manifest_digest}, tmp_path / "t5"
+        )
+        assert acquired.target_type == "oci"
+        assert acquired.canonical_ref == f"{repo}@{manifest_digest}"
+        assert acquired.artifact_sha256 == manifest_digest.split(":", 1)[1]
+        assert (acquired.source_root / "oci-layout").exists()
+        assert (acquired.source_root / "index.json").exists()
+        assert (acquired.source_root / "blobs" / "sha256" / acquired.artifact_sha256).exists()
+    finally:
+        registry.stop()
+
+
+def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
+    client, store, manifest, signer
+):
+    """A registry-image webhook is NOT a dead end: the worker acquires the image from
+    the registry BY THE DECLARED IMMUTABLE DIGEST (no tag trust, nothing executed from
+    the image), the acquisition reconciles exactly to the declared native identity, the
+    run certifies, binds, and admits — end to end through the real surfaces."""
+    registry = _LocalOciRegistry()
+    try:
+        manifest_digest = _push_test_image(registry)
+        repo = f"http://127.0.0.1:{registry.port}/testapp"
+        event = {
+            "event_id": "evt-oci-0001",
+            "event_type": "registry.image.pushed",
+            "tenant_id": TENANT,
+            "image_digest": manifest_digest,
+            "image_repository": repo,
+            "source_commit": "abc123def456",
+            # the platform declares the WORKER's environment commitment for the run
+            "environment_identity_digest": run_worker._worker_environment().identity_digest,
+            "policy_version": manifest.manifest_id,
+        }
+        body = json.dumps(event).encode("utf-8")
+        response = client.post("/v1/hooks/registry", content=body, headers=_signed_headers(body))
+        assert response.status_code == 201, response.text
+        run = response.json()["run"]
+        run_id = run["run_id"]
+        assert run["state"] == "QUEUED"
+        assert run["release_verdict"] == "NOT_READY"  # default-deny until certified
+
+        # the worker pulls the image BY DIGEST and reconciles the declared commitment
+        result = run_worker.run(
+            run_id,
+            TENANT,
+            {"type": "oci", "repository": repo, "digest": manifest_digest},
+            store=store,
+            manifest=manifest,
+            signer=signer,
+            entitled=frozenset({TENANT}),
+            journey=[sys.executable, "-c", "print('oci journey ok')"],
+        )
+    finally:
+        registry.stop()
+    assert "error" not in result, result
+    assert result["release_verdict"] == "PRODUCTION_READY", result["blocking_findings"]
+
+    bare = manifest_digest.split(":", 1)[1]
+    row = store.get_run(run_id, TENANT)
+    identity = json.loads(str(row["target_identity_json"]))
+    assert identity["artifact_sha256"] == bare  # native registry identity preserved
+    assert identity["target_type"] == "oci"
+    assert "declared_identity_digest" not in identity  # reconciled, no longer declared
+
+    # binding + staging admission work against the image's NATIVE manifest digest
+    response = _post_signed(client, f"/v1/certifications/{run_id}/bindings")
+    assert response.status_code == 201, response.text
+    assert response.json()["artifact_sha256"] == bare
+    admit = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        {
+            "artifact_sha256": bare,
+            "deployment_environment": "staging",
+            "environment_identity_digest": result["environment_identity_digest"],
+            "rule_manifest_digest": manifest.digest,
+            "deployment_id": "deploy-oci-s1",
+            "requested_by": "ci.pipeline",
+        },
+    ).json()
+    assert admit["allowed"] is True, admit["reasons"]
+    assert admit["run_id"] == run_id

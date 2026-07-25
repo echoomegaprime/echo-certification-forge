@@ -146,6 +146,7 @@ class AdmissionDecision:
     deployment_id: str
     chain_hash: str
     created_at: str
+    rollback_candidate: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -159,6 +160,7 @@ class AdmissionDecision:
             "deployment_id": self.deployment_id,
             "chain_hash": self.chain_hash,
             "created_at": self.created_at,
+            "rollback_candidate": self.rollback_candidate,
         }
 
 
@@ -357,13 +359,14 @@ class DeploymentLedger:
         with self._connection() as connection:
             return [dict(row) for row in connection.execute(sql, args).fetchall()]
 
-    def find_binding(self, tenant_id: str, artifact_sha256: str) -> dict[str, Any] | None:
-        rows = self._rows(
+    def find_bindings(self, tenant_id: str, artifact_sha256: str) -> list[dict[str, Any]]:
+        """Every BINDING for the artifact, newest-first — admission selects the first one
+        that is still valid under the ACTIVE manifest instead of trusting ordinal order."""
+        return self._rows(
             "SELECT * FROM deployment_records WHERE tenant_id = ? AND artifact_sha256 = ?"
-            " AND record_type = ? ORDER BY ordinal DESC LIMIT 1",
+            " AND record_type = ? ORDER BY ordinal DESC",
             (tenant_id, artifact_sha256, DeploymentRecordType.BINDING.value),
         )
-        return rows[0] if rows else None
 
     def find_binding_for_run(
         self, tenant_id: str, run_id: str, artifact_sha256: str
@@ -513,12 +516,19 @@ class DeploymentAdmissionController:
 
         The binding is derived exclusively from the server-side run record — never from
         caller input — and requires a signed verdict to exist (a run without a signed
-        verdict has no certification to attach). Idempotent per (tenant, run, digest).
+        verdict has no certification to attach) AND the run to be certified under the
+        CURRENTLY ACTIVE rule manifest. Idempotent per (tenant, run, digest).
         """
         row = self.store.get_run(run_id, tenant_id)  # KeyError -> not found (tenant-scoped)
         verdict_row = self.store.latest_signed_verdict(run_id, tenant_id)
         if verdict_row is None:
             raise BindingError("signed_verdict_missing")
+        if str(row["rule_manifest_digest"]) != self.active_rule_manifest_digest:
+            # A certification issued under a superseded (or unknown) policy must never gain
+            # a binding after rollover — stale runs are recertified, never rebound. This
+            # closes the shadowing window where a late stale binding could outrank a valid
+            # one purely by ledger ordinal.
+            raise BindingError("rule_manifest_not_active")
         target_identity = json.loads(str(row["target_identity_json"]))
         artifact_raw = target_identity.get("artifact_sha256")
         if not isinstance(artifact_raw, str) or not artifact_raw:
@@ -560,40 +570,58 @@ class DeploymentAdmissionController:
             # pre-rollover digest, unknown digest) is denied outright — fail-closed.
             reasons.append("rule_manifest_not_active")
 
-        binding = self.ledger.find_binding(request.tenant_id, artifact_sha256)
-        if binding is None:
+        bindings = self.ledger.find_bindings(request.tenant_id, artifact_sha256)
+        if not bindings:
             reasons.append("artifact_not_certified")
         else:
-            run_id = str(binding["run_id"])
-            try:
-                run_row = self.store.get_run(run_id, request.tenant_id)
-            except KeyError:
-                run_row = None
-                reasons.append("certification_record_missing")
-            if run_row is not None:
-                # Defense in depth: re-derive the artifact digest from the immutable run
-                # record; a ledger row that disagrees with the run identity never admits.
-                target_identity = json.loads(str(run_row["target_identity_json"]))
-                stored_artifact = target_identity.get("artifact_sha256")
-                if (
-                    not isinstance(stored_artifact, str)
-                    or normalize_artifact_digest(stored_artifact) != artifact_sha256
-                ):
-                    reasons.append("artifact_digest_mismatch")
-                else:
-                    gate_decision = self._gate.evaluate(
-                        tenant_id=request.tenant_id,
-                        run_id=run_id,
-                        target_identity_digest=str(run_row["target_identity_digest"]),
-                        environment_identity_digest=request.environment_identity_digest,
-                        # The gate always evaluates against the ACTIVE manifest digest, never
-                        # a caller-supplied one: a certification issued under a superseded
-                        # policy fails with rule_manifest_mismatch.
-                        rule_manifest_digest=self.active_rule_manifest_digest,
-                    )
-                    gate_reasons = gate_decision.reasons
-                    if not gate_decision.allowed:
-                        reasons.extend(gate_decision.reasons)
+            selected: tuple[str, list[str], tuple[str, ...]] | None = None
+            newest: tuple[str, list[str], tuple[str, ...]] | None = None
+            for binding in bindings:
+                candidate_run_id = str(binding["run_id"])
+                binding_reasons: list[str] = []
+                binding_gate: tuple[str, ...] = ()
+                try:
+                    run_row = self.store.get_run(candidate_run_id, request.tenant_id)
+                except KeyError:
+                    run_row = None
+                    binding_reasons.append("certification_record_missing")
+                if run_row is not None:
+                    # Defense in depth: re-derive the artifact digest from the immutable run
+                    # record; a ledger row that disagrees with the run identity never admits.
+                    target_identity = json.loads(str(run_row["target_identity_json"]))
+                    stored_artifact = target_identity.get("artifact_sha256")
+                    if (
+                        not isinstance(stored_artifact, str)
+                        or normalize_artifact_digest(stored_artifact) != artifact_sha256
+                    ):
+                        binding_reasons.append("artifact_digest_mismatch")
+                    else:
+                        gate_decision = self._gate.evaluate(
+                            tenant_id=request.tenant_id,
+                            run_id=candidate_run_id,
+                            target_identity_digest=str(run_row["target_identity_digest"]),
+                            environment_identity_digest=request.environment_identity_digest,
+                            # The gate always evaluates against the ACTIVE manifest digest,
+                            # never a caller-supplied one: a certification issued under a
+                            # superseded policy fails with rule_manifest_mismatch.
+                            rule_manifest_digest=self.active_rule_manifest_digest,
+                        )
+                        binding_gate = gate_decision.reasons
+                        if not gate_decision.allowed:
+                            binding_reasons.extend(gate_decision.reasons)
+                if newest is None:
+                    newest = (candidate_run_id, binding_reasons, binding_gate)
+                if not binding_reasons:
+                    # Select the first binding (newest-first) that is CURRENTLY valid under
+                    # the active manifest — a stale legacy binding recorded later can never
+                    # shadow a valid certification purely by ledger ordinal.
+                    selected = (candidate_run_id, binding_reasons, binding_gate)
+                    break
+            chosen = selected if selected is not None else newest
+            if chosen is not None:
+                run_id = chosen[0]
+                reasons.extend(chosen[1])
+                gate_reasons = chosen[2]
 
         if request.deployment_environment == PRODUCTION and run_id is not None and not reasons:
             if not self.ledger.staging_accepted(request.tenant_id, artifact_sha256, run_id):
@@ -606,6 +634,12 @@ class DeploymentAdmissionController:
                 reasons.append("staging_acceptance_missing")
 
         allowed = not reasons
+        rollback_candidate: dict[str, Any] | None = None
+        if request.deployment_environment == PRODUCTION:
+            # Freeze the exact rollback target NOW — before any deployment can begin — so
+            # concurrent deployments succeeding between admission and a later failure can
+            # never drift what this admission is allowed to roll back to.
+            rollback_candidate = self.rollback_target(request.tenant_id)
         payload = {
             "artifact_sha256": artifact_sha256,
             "deployment_environment": request.deployment_environment,
@@ -618,6 +652,8 @@ class DeploymentAdmissionController:
             "reasons": sorted(set(reasons)) if reasons else ["exact_certification_valid"],
             "gate_reasons": list(gate_reasons),
         }
+        if request.deployment_environment == PRODUCTION:
+            payload["rollback_candidate"] = rollback_candidate
         record = self.ledger.append(
             DeploymentRecordType.ADMISSION,
             request.tenant_id,
@@ -639,6 +675,7 @@ class DeploymentAdmissionController:
             deployment_id=request.deployment_id,
             chain_hash=str(record["chain_hash"]),
             created_at=str(record["created_at"]),
+            rollback_candidate=rollback_candidate,
         )
 
     # -- outcomes and rollback evidence ------------------------------------------------------
@@ -663,9 +700,9 @@ class DeploymentAdmissionController:
           FAILED -> SUCCEEDED) is rejected with ``outcome_already_terminal``.
         * ``ROLLED_BACK`` is only valid as the single follow-up to a FAILED PRODUCTION
           outcome on the same admission, and its ``rollback_to`` digest must EXACTLY match
-          the last-known-good rollback candidate that was persisted in that FAILED record —
-          the binding is frozen at failure time, so concurrent deployment activity can
-          never drift the accepted rollback target.
+          the rollback candidate that was FROZEN INTO THE ADMISSION RECORD before the
+          deployment began — concurrent deployment activity after admission can never
+          drift the accepted rollback target.
 
         Idempotent recovery (commit-then-response-loss): when the caller supplies an
         ``operation_id``, it is persisted in the outcome payload (and therefore covered by
@@ -677,15 +714,16 @@ class DeploymentAdmissionController:
         different payload is rejected with ``outcome_operation_conflict``; submissions
         without an ``operation_id`` keep the strict terminal behavior.
 
-        A FAILED production outcome persists the current last-known-good rollback
-        candidate in the recorded payload; that frozen digest is the only digest a
-        subsequent ``ROLLED_BACK`` may name.
+        A FAILED production outcome persists the rollback candidate that the ADMISSION
+        froze before deployment started (never recomputed at failure time); that frozen
+        digest is the only digest a subsequent ``ROLLED_BACK`` may name.
         """
         admission = self.ledger.find_admission(admission_id, tenant_id)
         if admission is None:
             raise KeyError("admission not found")
         if not admission["allowed"]:
             raise OutcomeError("outcome_on_denied_admission")
+        admission_payload: dict[str, Any] = json.loads(str(admission["payload_json"]))
         normalized_rollback: str | None = None
         if status is DeploymentOutcomeStatus.ROLLED_BACK:
             if rollback_to is None:
@@ -710,8 +748,10 @@ class DeploymentAdmissionController:
             status is DeploymentOutcomeStatus.FAILED
             and admission["deployment_environment"] == PRODUCTION
         ):
-            candidate = self.rollback_target(tenant_id)
-            payload["rollback_candidate"] = candidate
+            # Copy the candidate FROZEN at admission time — never recomputed here, so
+            # deployments that succeeded between admission and this failure cannot drift
+            # the rollback target this admission is bound to.
+            payload["rollback_candidate"] = admission_payload.get("rollback_candidate")
 
         def _validate_transition(connection: sqlite3.Connection) -> None:
             rows = connection.execute(
@@ -754,11 +794,13 @@ class DeploymentAdmissionController:
             ]
             if not failed:
                 raise OutcomeError("rollback_requires_failed_production")
-            bound = failed[-1].get("rollback_candidate") or {}
+            # Validate against the ADMISSION-frozen candidate (the FAILED record carries a
+            # verbatim copy, so both views agree; the admission record is authoritative).
+            bound = admission_payload.get("rollback_candidate") or {}
             bound_digest = bound.get("artifact_sha256")
             if not isinstance(bound_digest, str) or not bound_digest:
-                # The failure record bound no last-known-good candidate: there is nothing
-                # a rollback can be verified against — fail closed.
+                # The admission bound no last-known-good candidate: there is nothing a
+                # rollback can be verified against — fail closed.
                 raise OutcomeError("rollback_candidate_missing")
             if normalized_rollback != bound_digest:
                 raise OutcomeError("rollback_target_mismatch")
@@ -825,7 +867,7 @@ class DeploymentAdmissionController:
         evaluated against the ACTIVE rule manifest digest; a caller-supplied stale policy
         digest is reported as not-active and can never make the release admissible."""
         digest = normalize_artifact_digest(artifact_sha256)
-        binding = self.ledger.find_binding(tenant_id, digest)
+        bindings = self.ledger.find_bindings(tenant_id, digest)
         status: dict[str, Any] = {
             "artifact_sha256": digest,
             "certified": False,
@@ -835,26 +877,44 @@ class DeploymentAdmissionController:
             "staging_accepted": False,
             "production_admissible": False,
         }
-        if binding is None:
+        if not bindings:
             return status
-        run_id = str(binding["run_id"])
-        binding_payload = json.loads(str(binding["payload_json"]))
-        env_digest = environment_identity_digest or str(binding_payload["environment_identity_digest"])
         extra_reasons: list[str] = []
         if rule_manifest_digest is not None and rule_manifest_digest != self.active_rule_manifest_digest:
             extra_reasons.append("rule_manifest_not_active")
-        try:
-            run_row = self.store.get_run(run_id, tenant_id)
-        except KeyError:
-            status["reasons"] = ["certification_record_missing"]
-            return status
-        gate_decision = self._gate.evaluate(
-            tenant_id=tenant_id,
-            run_id=run_id,
-            target_identity_digest=str(run_row["target_identity_digest"]),
-            environment_identity_digest=env_digest,
-            rule_manifest_digest=self.active_rule_manifest_digest,
-        )
+        evaluated: list[tuple[str, Any]] = []
+        chosen: tuple[str, Any] | None = None
+        for binding in bindings:
+            candidate_run_id = str(binding["run_id"])
+            binding_payload = json.loads(str(binding["payload_json"]))
+            env_digest = environment_identity_digest or str(
+                binding_payload["environment_identity_digest"]
+            )
+            try:
+                run_row = self.store.get_run(candidate_run_id, tenant_id)
+            except KeyError:
+                evaluated.append((candidate_run_id, None))
+                continue
+            gate_decision = self._gate.evaluate(
+                tenant_id=tenant_id,
+                run_id=candidate_run_id,
+                target_identity_digest=str(run_row["target_identity_digest"]),
+                environment_identity_digest=env_digest,
+                rule_manifest_digest=self.active_rule_manifest_digest,
+            )
+            evaluated.append((candidate_run_id, gate_decision))
+            if gate_decision.allowed:
+                # Same selection rule as admission: the first (newest-first) binding that
+                # is valid under the ACTIVE manifest, never blindly the newest ordinal.
+                chosen = (candidate_run_id, gate_decision)
+                break
+        if chosen is None:
+            run_id, gate_decision = evaluated[0]
+            if gate_decision is None:
+                status["reasons"] = ["certification_record_missing"]
+                return status
+        else:
+            run_id, gate_decision = chosen
         gate_allowed = gate_decision.allowed and not extra_reasons
         staging_ok = self.ledger.staging_accepted(tenant_id, digest, run_id)
         status.update(

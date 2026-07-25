@@ -28,13 +28,13 @@
 #                                     missing rollback command fails closed (exit 3)
 #                                     BEFORE any admission is requested. It is ALWAYS run
 #                                     after a FAILED production deployment (even when
-#                                     outcome recording is down); it receives the
-#                                     candidate BOUND into the FAILED outcome record in
-#                                     CERTFORGE_ROLLBACK_TARGET and, when it succeeds, a
-#                                     ROLLED_BACK outcome naming that exact bound digest
-#                                     is recorded. Incomplete outcome reporting fails the
-#                                     pipeline closed (exit 3) AFTER the rollback has
-#                                     executed.
+#                                     outcome recording is completely down); it receives
+#                                     the exact rollback target BOUND INTO THE ADMISSION
+#                                     RECORD in CERTFORGE_ROLLBACK_TARGET and, when it
+#                                     succeeds, a ROLLED_BACK outcome naming that exact
+#                                     bound digest is recorded. Incomplete outcome
+#                                     reporting fails the pipeline closed (exit 3) AFTER
+#                                     the rollback has executed.
 # Optional environment:
 #   CERTFORGE_REQUESTED_BY            actor recorded on the admission (default deployment.pipeline)
 #   CERTFORGE_PYTHON                  python interpreter to use (default python3)
@@ -42,8 +42,15 @@
 # Outcome recording is idempotent/recoverable: every logical outcome gets ONE stable
 # operation id reused (with a fresh signature nonce) across up to 3 attempts, so if the
 # forge COMMITTED an outcome but the response was lost, the retry recovers the committed
-# record — including the bound rollback candidate a rollback must name — instead of
-# tripping the terminal-transition guard.
+# record instead of tripping the terminal-transition guard.
+#
+# Production rollback binding: the forge FREEZES the exact rollback target into the
+# admission record BEFORE the deployment begins. This script refuses to start a
+# production deployment whose admission carries no bound rollback target (exit 3) —
+# the FIRST production deployment of a tenant must be provisioned out-of-band through
+# the authenticated API, never through a wrapper that could not roll it back. On
+# failure the rollback ALWAYS runs with the admission-bound target, even when every
+# outcome-recording attempt fails.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -146,6 +153,26 @@ if [ -z "$ADMISSION_ID" ]; then
   echo "!! ADMISSION BLOCKED — admission_id missing from allowed decision (fail-closed)" >&2
   exit 3
 fi
+
+# The exact rollback target is FROZEN into the admission record before any deployment
+# begins — extract it now. A production deployment with no bound rollback target must
+# never start: there would be nothing to roll back to if it failed.
+ROLLBACK_TARGET=""
+if [ "$CERTFORGE_ENVIRONMENT" = "production" ]; then
+  ROLLBACK_TARGET="$(printf '%s' "$ADMIT_OUT" | "$PYTHON_BIN" -c '
+import json, sys
+lines = [line for line in sys.stdin.read().strip().splitlines() if line.strip()]
+decision = json.loads(lines[-1]) if lines else {}
+candidate = decision.get("rollback_candidate") or {}
+print(candidate.get("artifact_sha256") or "")
+' 2>/dev/null || true)"
+  if [ -z "$ROLLBACK_TARGET" ]; then
+    echo "!! ADMISSION BLOCKED — no admission-bound rollback target; refusing to deploy" >&2
+    echo "   (the first production deployment must be provisioned out-of-band via the" >&2
+    echo "    authenticated API — this wrapper never deploys what it cannot roll back)" >&2
+    exit 3
+  fi
+fi
 echo "== ADMISSION ALLOWED ($ADMISSION_ID) — running $CERTFORGE_ENVIRONMENT deployment =="
 
 set +e
@@ -170,49 +197,41 @@ fi
 # ---------------------------------------------------------------------------------------
 echo "!! DEPLOYMENT FAILED (exit $DEPLOY_STATUS) — recording FAILED outcome" >&2
 REPORTING_OK=1
-FAILED_RECORDED=0
 FAILED_OUT=""
-if record_outcome_retry FAILED_OUT FAILED "deployment command failed with exit $DEPLOY_STATUS: $*"; then
-  FAILED_RECORDED=1
-else
+if ! record_outcome_retry FAILED_OUT FAILED "deployment command failed with exit $DEPLOY_STATUS: $*"; then
   echo "!! OUTCOME NOT RECORDED (FAILED) — continuing to rollback; will fail closed after" >&2
   REPORTING_OK=0
 fi
 
 if [ "$CERTFORGE_ENVIRONMENT" = "production" ] && [ -n "${CERTFORGE_ROLLBACK_CMD:-}" ]; then
-  # The rollback target is the candidate BOUND into the FAILED outcome record — the
-  # last-known-good digest frozen at failure time. Never re-read the live rollback
-  # target here: concurrent deployments could have drifted it, and the ledger only
-  # accepts a ROLLED_BACK outcome naming the bound digest.
-  ROLLBACK_TARGET=""
-  if [ "$FAILED_RECORDED" -eq 1 ]; then
-    ROLLBACK_TARGET="$(printf '%s' "$FAILED_OUT" | "$PYTHON_BIN" -c '
-import json, sys
-lines = [line for line in sys.stdin.read().strip().splitlines() if line.strip()]
-record = json.loads(lines[-1]) if lines else {}
-candidate = (record.get("payload") or {}).get("rollback_candidate") or {}
-print(candidate.get("artifact_sha256") or "")
-' 2>/dev/null || true)"
-  fi
-  echo "== EXECUTING ROLLBACK (bound last-known-good: ${ROLLBACK_TARGET:-<unavailable>}) ==" >&2
+  # The rollback target was FROZEN into the admission record before the deployment began
+  # and extracted before the deploy command ran — it is available even when every
+  # outcome-recording attempt fails. Never re-read the live rollback target here:
+  # concurrent deployments could have drifted it, and the ledger only accepts a
+  # ROLLED_BACK outcome naming the admission-bound digest.
+  echo "== EXECUTING ROLLBACK (admission-bound last-known-good: $ROLLBACK_TARGET) ==" >&2
   set +e
   CERTFORGE_ROLLBACK_TARGET="$ROLLBACK_TARGET" bash -c "$CERTFORGE_ROLLBACK_CMD"
   ROLLBACK_STATUS=$?
   set -e
   if [ "$ROLLBACK_STATUS" -ne 0 ]; then
     echo "!! ROLLBACK COMMAND FAILED (exit $ROLLBACK_STATUS) — FAILED outcome stands" >&2
-  elif [ "$FAILED_RECORDED" -eq 1 ] && [ -n "$ROLLBACK_TARGET" ]; then
+  else
+    # ALWAYS attempt to record the rollback against the admission-bound target — even if
+    # the FAILED report above appeared to fail, its commit may simply have had its
+    # response lost; a successfully recorded ROLLED_BACK proves the ledger holds the
+    # complete FAILED -> ROLLED_BACK sequence.
     ROLLED_BACK_OUT=""
     if record_outcome_retry ROLLED_BACK_OUT ROLLED_BACK \
-        "rolled back to bound last-known-good after failed deployment" "$ROLLBACK_TARGET"; then
+        "rolled back to admission-bound last-known-good after failed deployment" "$ROLLBACK_TARGET"; then
       echo "== ROLLBACK RECORDED against $ADMISSION_ID ==" >&2
+      # ROLLED_BACK is only accepted after a committed FAILED production outcome, so a
+      # successful record here proves reporting is complete end-to-end.
+      REPORTING_OK=1
     else
       echo "!! ROLLBACK EXECUTED but ROLLED_BACK outcome NOT RECORDED — failing closed" >&2
       REPORTING_OK=0
     fi
-  else
-    echo "!! ROLLBACK EXECUTED but cannot be recorded (FAILED outcome or bound target unavailable) — failing closed" >&2
-    REPORTING_OK=0
   fi
 fi
 

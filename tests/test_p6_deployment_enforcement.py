@@ -549,10 +549,16 @@ def test_policy_rollover_rejects_stale_caller_supplied_manifest_digest(
     target = _target("app-rollover")
     _certify(store, manifest, signer, environment, tmp_path, "cert-rollover", target)
 
+    # Bind while the certified manifest is still ACTIVE, then roll the policy over.
+    original = DeploymentAdmissionController(store, trusted, ledger, manifest.digest)
+    original.bind_certification("cert-rollover", TENANT, ACTOR)
     rolled = DeploymentAdmissionController(
         store, trusted, ledger, _digest("rolled-over-manifest")
     )
-    rolled.bind_certification("cert-rollover", TENANT, ACTOR)
+
+    # binding a run certified under the superseded policy AFTER rollover is refused
+    with pytest.raises(BindingError, match="rule_manifest_not_active"):
+        rolled.bind_certification("cert-rollover", TENANT, ACTOR)
 
     # presenting the OLD (certified) digest after rollover is refused outright
     stale = rolled.admit(
@@ -975,3 +981,143 @@ def test_outcome_operation_id_idempotent_replay_and_conflict(
     outcomes = controller.ledger.outcomes(staging.admission_id, TENANT)
     assert len(outcomes) == 1
     assert controller.ledger.verify_chain()[0] is True
+
+def test_rollback_target_frozen_at_admission_survives_concurrent_drift(
+    controller, store, manifest, environment, signer, tmp_path
+):
+    """Concurrent production deployments cannot drift each other's rollback target: the
+    exact last-known-good is FROZEN into each admission record BEFORE the deployment
+    begins, surfaced on the decision, and ROLLED_BACK must name that frozen digest."""
+    a = _target("freeze-A")
+    b = _target("freeze-B")
+    c = _target("freeze-C")
+    for run_id, target in (("cert-freeze-A", a), ("cert-freeze-B", b), ("cert-freeze-C", c)):
+        _certify(store, manifest, signer, environment, tmp_path, run_id, target)
+        controller.bind_certification(run_id, TENANT, ACTOR)
+
+    def _prod_admit(target, tag):
+        staging = controller.admit(
+            _admission(target.artifact_sha256, "staging", environment, manifest, f"deploy-stg-{tag}"),
+            ACTOR,
+        )
+        assert staging.allowed, staging.reasons
+        # staging admissions freeze NO rollback target
+        assert staging.rollback_candidate is None
+        controller.report_outcome(
+            staging.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "staging green", ACTOR
+        )
+        decision = controller.admit(
+            _admission(target.artifact_sha256, "production", environment, manifest, f"deploy-prd-{tag}"),
+            ACTOR,
+        )
+        assert decision.allowed, decision.reasons
+        return decision
+
+    # A ships clean and becomes the last known good
+    a_decision = _prod_admit(a, "freeze-A")
+    assert a_decision.rollback_candidate is None  # no prior good production existed
+    controller.report_outcome(
+        a_decision.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "prod green", ACTOR
+    )
+
+    # B and C are admitted CONCURRENTLY — BOTH freeze A as their rollback target, and the
+    # frozen target is returned on the decision (what enforce_admission.sh consumes)
+    b_decision = _prod_admit(b, "freeze-B")
+    c_decision = _prod_admit(c, "freeze-C")
+    assert b_decision.rollback_candidate is not None
+    assert b_decision.rollback_candidate["artifact_sha256"] == a.artifact_sha256
+    assert c_decision.rollback_candidate is not None
+    assert c_decision.rollback_candidate["artifact_sha256"] == a.artifact_sha256
+    assert c_decision.to_dict()["rollback_candidate"]["artifact_sha256"] == a.artifact_sha256
+
+    # B ships clean — the LIVE last-known-good drifts to B ...
+    controller.report_outcome(
+        b_decision.admission_id, TENANT, DeploymentOutcomeStatus.SUCCEEDED, "prod green", ACTOR
+    )
+    live = controller.rollback_target(TENANT)
+    assert live is not None and live["artifact_sha256"] == b.artifact_sha256
+
+    # ... but C's failure evidence still carries the ADMISSION-FROZEN candidate A
+    failure = controller.report_outcome(
+        c_decision.admission_id, TENANT, DeploymentOutcomeStatus.FAILED, "prod red", ACTOR
+    )
+    assert failure["payload"]["rollback_candidate"]["artifact_sha256"] == a.artifact_sha256
+
+    # ROLLED_BACK naming the drifted live target B is REJECTED ...
+    with pytest.raises(OutcomeError) as excinfo:
+        controller.report_outcome(
+            c_decision.admission_id, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+            "rolled to drifted live target", ACTOR, rollback_to=b.artifact_sha256,
+        )
+    assert excinfo.value.code == "rollback_target_mismatch"
+
+    # ... and only the exact admission-bound target A is accepted
+    rollback = controller.report_outcome(
+        c_decision.admission_id, TENANT, DeploymentOutcomeStatus.ROLLED_BACK,
+        "restored admission-bound target", ACTOR, rollback_to=a.artifact_sha256,
+    )
+    assert rollback["payload"]["rollback_to"] == a.artifact_sha256
+
+
+def test_delayed_stale_binding_cannot_shadow_active_certification(
+    store, trusted, ledger, manifest, environment, signer, tmp_path
+):
+    """Stale-binding shadowing is closed on BOTH ends: bind_certification refuses to
+    bind a run certified under a superseded manifest, and admission selects the
+    currently VALID active-manifest certification even when a stale legacy binding
+    lands LATER (higher ledger ordinal) than the valid one."""
+    import dataclasses
+
+    target = _target("shadow-app")
+    _certify(store, manifest, signer, environment, tmp_path, "cert-shadow-old", target)
+
+    # bound under the ORIGINAL manifest while it was active
+    original = DeploymentAdmissionController(store, trusted, ledger, manifest.digest)
+    original.bind_certification("cert-shadow-old", TENANT, ACTOR)
+
+    # the mandatory rules roll over: same manifest_id, NEW content digest
+    rolled_manifest = dataclasses.replace(manifest, digest=_digest("shadow-rolled-manifest"))
+    rolled = DeploymentAdmissionController(store, trusted, ledger, rolled_manifest.digest)
+
+    # DELAYED re-binding of the stale-manifest run is refused outright — a stale run is
+    # recertified, never rebound
+    with pytest.raises(BindingError, match="rule_manifest_not_active"):
+        rolled.bind_certification("cert-shadow-old", TENANT, ACTOR)
+
+    # recertify the SAME artifact under the ACTIVE manifest and bind it
+    _certify(store, rolled_manifest, signer, environment, tmp_path, "cert-shadow-new", target)
+    rolled.bind_certification("cert-shadow-new", TENANT, ACTOR)
+
+    # a LEGACY stale binding row lands AFTER the valid one (delayed writer running the
+    # pre-rollover code path appended directly to the shared ledger)
+    ledger.append(
+        DeploymentRecordType.BINDING,
+        TENANT,
+        {
+            "artifact_sha256": target.artifact_sha256,
+            "source_commit": target.source_commit,
+            "rule_manifest_digest": manifest.digest,
+        },
+        ACTOR,
+        run_id="cert-shadow-old",
+        artifact_sha256=target.artifact_sha256,
+    )
+    bindings = ledger.find_bindings(TENANT, target.artifact_sha256)
+    assert str(bindings[0]["run_id"]) == "cert-shadow-old"  # the stale one IS newest
+
+    # admission must select the currently VALID active-manifest certification, never the
+    # newest binding ordinal blindly
+    decision = rolled.admit(
+        _admission(target.artifact_sha256, "staging", environment, rolled_manifest, "deploy-shadow-s1"),
+        ACTOR,
+    )
+    assert decision.allowed is True, decision.reasons
+    assert decision.run_id == "cert-shadow-new"
+
+    # and under the ORIGINAL controller the stale run would fail the gate anyway: the
+    # active digest there no longer matches the recertification — fail-closed both ways
+    stale_decision = rolled.admit(
+        _admission(target.artifact_sha256, "staging", environment, rolled_manifest, "deploy-shadow-s2"),
+        ACTOR,
+    )
+    assert stale_decision.run_id == "cert-shadow-new"
