@@ -208,6 +208,105 @@ def test_empty_registry_is_explicitly_non_green(tmp_path: Path) -> None:
     assert snapshot["adapters"]["maturity_status"] == "UNAVAILABLE"
 
 
+def test_quarantine_excludes_runner_and_adapter_without_deleting_evidence(tmp_path: Path) -> None:
+    current = utc_now()
+    registry = OperationalTelemetryRegistry(tmp_path / "telemetry.sqlite3")
+    heartbeat, heartbeat_trust = _heartbeat_report(now=current)
+    registry.ingest_worker_heartbeat(heartbeat, heartbeat_trust, now=current)
+    signed_adapter = _signed_adapter_bundle(
+        run_id="cert-adapter-quarantine", tenant_id="tenant-alpha"
+    )
+    adapter_trust = TrustedTransportRegistry.empty()
+    adapter_trust.add_pem(signed_adapter.control_plane_public_key_pem)
+    registry.ingest_adapter_inventory(
+        SignedOperationalReport(
+            credential=signed_adapter.credential,
+            response=signed_adapter.response,
+        ),
+        adapter_trust,
+        now=signed_adapter.response.issued_at,
+    )
+
+    runner = registry.quarantine(
+        "tenant-alpha",
+        subject_type="runner",
+        subject_id="runner-anvil-1",
+        reason="investigating an image-integrity mismatch",
+        actor="api_key:owner",
+        now=current,
+    )
+    replay = registry.quarantine(
+        "tenant-alpha",
+        subject_type="runner",
+        subject_id="runner-anvil-1",
+        reason="a conflicting replay must not replace the original reason",
+        actor="api_key:other",
+        now=current + timedelta(seconds=1),
+    )
+    adapter = registry.quarantine(
+        "tenant-alpha",
+        subject_type="adapter",
+        subject_id="gs343",
+        reason="quality regression requires isolation",
+        actor="api_key:owner",
+        now=current,
+    )
+    isolated = registry.snapshot("tenant-alpha", now=current + timedelta(minutes=1))
+
+    assert runner["idempotent"] is False
+    assert replay["idempotent"] is True
+    assert replay["reason"] == "investigating an image-integrity mismatch"
+    assert adapter["quarantined"] is True
+    assert isolated["runner"]["health"] == "QUARANTINED"
+    assert isolated["runner"]["capacity_total"] == 0
+    assert isolated["runner"]["entries"][0]["quarantined"] is True
+    assert isolated["adapters"]["inventory_status"] == "QUARANTINED"
+    assert isolated["adapters"]["total"] == 1
+    assert isolated["adapters"]["available"] == 0
+    assert isolated["adapters"]["entries"][0]["quarantined"] is True
+
+    registry.release_quarantine(
+        "tenant-alpha",
+        subject_type="runner",
+        subject_id="runner-anvil-1",
+        reason="runner image was independently reverified",
+        actor="api_key:owner",
+        now=current + timedelta(minutes=2),
+    )
+    registry.release_quarantine(
+        "tenant-alpha",
+        subject_type="adapter",
+        subject_id="gs343",
+        reason="adapter quality suite passed again",
+        actor="api_key:owner",
+        now=current + timedelta(minutes=2),
+    )
+    restored = registry.snapshot("tenant-alpha", now=current + timedelta(minutes=3))
+    assert restored["runner"]["health"] == "HEALTHY"
+    assert restored["adapters"]["inventory_status"] == "AVAILABLE"
+    assert restored["adapters"]["maturity_status"] == "STABLE"
+
+
+def test_quarantine_rejects_unknown_or_inactive_subject(tmp_path: Path) -> None:
+    registry = OperationalTelemetryRegistry(tmp_path / "telemetry.sqlite3")
+    with pytest.raises(OperationalTelemetryError, match="operational_subject_not_found"):
+        registry.quarantine(
+            "tenant-alpha",
+            subject_type="runner",
+            subject_id="missing-runner",
+            reason="unknown runners cannot create phantom quarantine state",
+            actor="api_key:owner",
+        )
+    with pytest.raises(OperationalTelemetryError, match="active_quarantine_not_found"):
+        registry.release_quarantine(
+            "tenant-alpha",
+            subject_type="adapter",
+            subject_id="missing-adapter",
+            reason="there is no active quarantine to release",
+            actor="api_key:owner",
+        )
+
+
 def test_service_ingests_signed_reports_and_projects_tenant_truth(store, manifest) -> None:
     subscribers = SubscriberGovernance(
         store.db_path,
@@ -271,3 +370,47 @@ def test_service_ingests_signed_reports_and_projects_tenant_truth(store, manifes
     assert body["adapters"]["inventory_status"] == "AVAILABLE"
     assert body["adapters"]["maturity_status"] == "STABLE"
     assert body["adapters"]["entries"][0]["adapter_id"] == "gs343"
+
+    quarantined = client.post(
+        "/v1/subscriber/operational-quarantines",
+        headers={
+            "X-Tenant-ID": account.organization_id,
+            "Authorization": f"Bearer {account.bootstrap_api_key}",
+        },
+        json={
+            "subject_type": "runner",
+            "subject_id": "runner-anvil-1",
+            "reason": "operator isolated the runner for verification",
+        },
+    )
+    isolated = client.get(
+        "/v1/subscriber/telemetry",
+        headers={
+            "X-Tenant-ID": account.organization_id,
+            "Authorization": f"Bearer {account.bootstrap_api_key}",
+        },
+    )
+    released = client.post(
+        "/v1/subscriber/operational-quarantines/runner/runner-anvil-1/release",
+        headers={
+            "X-Tenant-ID": account.organization_id,
+            "Authorization": f"Bearer {account.bootstrap_api_key}",
+        },
+        json={"reason": "independent verification completed successfully"},
+    )
+    audit = client.get(
+        "/v1/subscriber/audit?limit=10",
+        headers={
+            "X-Tenant-ID": account.organization_id,
+            "Authorization": f"Bearer {account.bootstrap_api_key}",
+        },
+    )
+
+    assert quarantined.status_code == 200
+    assert isolated.json()["capacity"]["runner_health"] == "QUARANTINED"
+    assert released.status_code == 200
+    assert released.json()["quarantined"] is False
+    assert {entry["action"] for entry in audit.json()} >= {
+        "operations.quarantine",
+        "operations.quarantine.release",
+    }

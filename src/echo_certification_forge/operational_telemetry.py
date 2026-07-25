@@ -119,8 +119,132 @@ class OperationalTelemetryRegistry:
                 );
                 CREATE INDEX IF NOT EXISTS idx_authenticated_adapter_tenant_maturity
                     ON authenticated_adapter_inventory(tenant_id, maturity);
+                CREATE TABLE IF NOT EXISTS operational_quarantines (
+                    tenant_id TEXT NOT NULL,
+                    subject_type TEXT NOT NULL CHECK(subject_type IN ('runner', 'adapter')),
+                    subject_id TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    quarantined_by TEXT NOT NULL,
+                    quarantined_at TEXT NOT NULL,
+                    released_by TEXT,
+                    release_reason TEXT,
+                    released_at TEXT,
+                    PRIMARY KEY(tenant_id, subject_type, subject_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_operational_quarantine_active
+                    ON operational_quarantines(tenant_id, subject_type, released_at);
                 """
             )
+
+    def quarantine(
+        self,
+        tenant_id: str,
+        *,
+        subject_type: Literal["runner", "adapter"],
+        subject_id: str,
+        reason: str,
+        actor: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Remove one authenticated runner or adapter from operational eligibility."""
+        current = to_utc_iso(now or utc_now())
+        source_table, source_column = (
+            ("authenticated_worker_heartbeats", "runner_id")
+            if subject_type == "runner"
+            else ("authenticated_adapter_inventory", "adapter_id")
+        )
+        with self._connect() as connection:
+            known = connection.execute(
+                f"SELECT 1 FROM {source_table} WHERE tenant_id = ? AND {source_column} = ?",
+                (tenant_id, subject_id),
+            ).fetchone()
+            if known is None:
+                raise OperationalTelemetryError("operational_subject_not_found", 404)
+            existing = connection.execute(
+                """
+                SELECT reason, quarantined_by, quarantined_at, released_at
+                FROM operational_quarantines
+                WHERE tenant_id = ? AND subject_type = ? AND subject_id = ?
+                """,
+                (tenant_id, subject_type, subject_id),
+            ).fetchone()
+            if existing is not None and existing["released_at"] is None:
+                return {
+                    "quarantined": True,
+                    "idempotent": True,
+                    "subject_type": subject_type,
+                    "subject_id": subject_id,
+                    "reason": str(existing["reason"]),
+                    "quarantined_by": str(existing["quarantined_by"]),
+                    "quarantined_at": str(existing["quarantined_at"]),
+                }
+            connection.execute(
+                """
+                INSERT INTO operational_quarantines(
+                    tenant_id, subject_type, subject_id, reason,
+                    quarantined_by, quarantined_at, released_by,
+                    release_reason, released_at
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+                ON CONFLICT(tenant_id, subject_type, subject_id) DO UPDATE SET
+                    reason=excluded.reason,
+                    quarantined_by=excluded.quarantined_by,
+                    quarantined_at=excluded.quarantined_at,
+                    released_by=NULL,
+                    release_reason=NULL,
+                    released_at=NULL
+                """,
+                (tenant_id, subject_type, subject_id, reason, actor, current),
+            )
+        return {
+            "quarantined": True,
+            "idempotent": False,
+            "subject_type": subject_type,
+            "subject_id": subject_id,
+            "reason": reason,
+            "quarantined_by": actor,
+            "quarantined_at": current,
+        }
+
+    def release_quarantine(
+        self,
+        tenant_id: str,
+        *,
+        subject_type: Literal["runner", "adapter"],
+        subject_id: str,
+        reason: str,
+        actor: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Restore eligibility while retaining the quarantine record and audit history."""
+        current = to_utc_iso(now or utc_now())
+        with self._connect() as connection:
+            existing = connection.execute(
+                """
+                SELECT 1 FROM operational_quarantines
+                WHERE tenant_id = ? AND subject_type = ? AND subject_id = ?
+                  AND released_at IS NULL
+                """,
+                (tenant_id, subject_type, subject_id),
+            ).fetchone()
+            if existing is None:
+                raise OperationalTelemetryError("active_quarantine_not_found", 404)
+            connection.execute(
+                """
+                UPDATE operational_quarantines
+                SET released_by = ?, release_reason = ?, released_at = ?
+                WHERE tenant_id = ? AND subject_type = ? AND subject_id = ?
+                  AND released_at IS NULL
+                """,
+                (actor, reason, current, tenant_id, subject_type, subject_id),
+            )
+        return {
+            "quarantined": False,
+            "subject_type": subject_type,
+            "subject_id": subject_id,
+            "release_reason": reason,
+            "released_by": actor,
+            "released_at": current,
+        }
 
     @staticmethod
     def _authenticate(
@@ -388,18 +512,41 @@ class OperationalTelemetryRegistry:
                 """,
                 (tenant_id,),
             ).fetchall()
+            quarantines = connection.execute(
+                """
+                SELECT subject_type, subject_id, reason, quarantined_by, quarantined_at
+                FROM operational_quarantines
+                WHERE tenant_id = ? AND released_at IS NULL
+                ORDER BY subject_type, subject_id
+                """,
+                (tenant_id,),
+            ).fetchall()
+
+        runner_quarantines = {
+            str(row["subject_id"]): row for row in quarantines if row["subject_type"] == "runner"
+        }
+        adapter_quarantines = {
+            str(row["subject_id"]): row for row in quarantines if row["subject_type"] == "adapter"
+        }
 
         fresh = [
             row
             for row in heartbeats
-            if current - parse_utc_iso(str(row["observed_at"])) <= heartbeat_freshness
+            if row["runner_id"] not in runner_quarantines
+            and current - parse_utc_iso(str(row["observed_at"])) <= heartbeat_freshness
         ]
         if not heartbeats:
             runner_health = "NO_AUTHENTICATED_HEARTBEATS"
             runner_reason = "No authenticated worker heartbeat has been received for this tenant."
+        elif len(runner_quarantines) == len(heartbeats):
+            runner_health = "QUARANTINED"
+            runner_reason = "Every authenticated runner is quarantined and excluded from capacity."
         elif not fresh:
             runner_health = "STALE"
             runner_reason = "All authenticated worker heartbeats are older than the freshness window."
+        elif runner_quarantines:
+            runner_health = "DEGRADED"
+            runner_reason = "At least one authenticated runner is quarantined and excluded from capacity."
         elif any(row["health"] != "HEALTHY" for row in fresh):
             runner_health = "DEGRADED"
             runner_reason = "At least one fresh authenticated worker reports degraded health."
@@ -407,16 +554,31 @@ class OperationalTelemetryRegistry:
             runner_health = "HEALTHY"
             runner_reason = "Fresh Ed25519-signed worker heartbeats are verified."
 
-        stable_count = sum(1 for row in adapters if row["maturity"] == "STABLE")
+        eligible_adapters = [
+            row for row in adapters if row["adapter_id"] not in adapter_quarantines
+        ]
+        stable_count = sum(1 for row in eligible_adapters if row["maturity"] == "STABLE")
         adapter_total = len(adapters)
         if adapter_total == 0:
             inventory_status = "EMPTY"
             maturity_status = "UNAVAILABLE"
             adapter_reason = "The authenticated adapter registry contains no entries for this tenant."
+        elif not eligible_adapters:
+            inventory_status = "QUARANTINED"
+            maturity_status = "UNAVAILABLE"
+            adapter_reason = "Every authenticated adapter is quarantined and excluded from execution."
         else:
             inventory_status = "AVAILABLE"
-            maturity_status = "STABLE" if stable_count == adapter_total else "MIXED"
-            adapter_reason = "Adapter identities and maturity were verified from signed runner bundles."
+            maturity_status = (
+                "STABLE"
+                if stable_count == len(eligible_adapters) and not adapter_quarantines
+                else "MIXED"
+            )
+            adapter_reason = (
+                "Authenticated adapters remain available, but quarantined entries are excluded."
+                if adapter_quarantines
+                else "Adapter identities and maturity were verified from signed runner bundles."
+            )
 
         return {
             "runner": {
@@ -425,10 +587,26 @@ class OperationalTelemetryRegistry:
                 "source": "authenticated_ed25519_worker_reports",
                 "registered": len(heartbeats),
                 "fresh": len(fresh),
+                "quarantined": len(runner_quarantines),
                 "capacity_total": sum(int(row["capacity_total"]) for row in fresh),
                 "capacity_available": sum(int(row["capacity_available"]) for row in fresh),
                 "active_run_count": sum(int(row["active_run_count"]) for row in fresh),
                 "latest_heartbeat_at": str(heartbeats[0]["observed_at"]) if heartbeats else None,
+                "entries": [
+                    {
+                        "runner_id": str(row["runner_id"]),
+                        "health": str(row["health"]),
+                        "worker_image_sha256": str(row["worker_image_sha256"]),
+                        "observed_at": str(row["observed_at"]),
+                        "quarantined": str(row["runner_id"]) in runner_quarantines,
+                        "quarantine_reason": (
+                            str(runner_quarantines[str(row["runner_id"])]["reason"])
+                            if str(row["runner_id"]) in runner_quarantines
+                            else None
+                        ),
+                    }
+                    for row in heartbeats
+                ],
             },
             "adapters": {
                 "inventory_status": inventory_status,
@@ -436,6 +614,8 @@ class OperationalTelemetryRegistry:
                 "reason": adapter_reason,
                 "source": "authenticated_signed_adapter_bundles",
                 "total": adapter_total,
+                "available": len(eligible_adapters),
+                "quarantined": len(adapter_quarantines),
                 "stable": stable_count,
                 "entries": [
                     {
@@ -447,6 +627,12 @@ class OperationalTelemetryRegistry:
                         "quality_cases": int(row["quality_cases"]),
                         "execution_node": str(row["execution_node"]),
                         "observed_at": str(row["observed_at"]),
+                        "quarantined": str(row["adapter_id"]) in adapter_quarantines,
+                        "quarantine_reason": (
+                            str(adapter_quarantines[str(row["adapter_id"])]["reason"])
+                            if str(row["adapter_id"]) in adapter_quarantines
+                            else None
+                        ),
                     }
                     for row in adapters
                 ],
@@ -459,6 +645,15 @@ class OperationalTelemetryRegistry:
                     "adapter_count": adapter_total,
                     "latest_heartbeat_at": str(heartbeats[0]["observed_at"]) if heartbeats else None,
                     "adapter_observed_at": [str(row["observed_at"]) for row in adapters],
+                    "active_quarantines": [
+                        {
+                            "subject_type": str(row["subject_type"]),
+                            "subject_id": str(row["subject_id"]),
+                            "reason": str(row["reason"]),
+                            "quarantined_at": str(row["quarantined_at"]),
+                        }
+                        for row in quarantines
+                    ],
                 }
             ),
         }

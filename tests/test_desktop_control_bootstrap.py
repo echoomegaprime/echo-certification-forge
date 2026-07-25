@@ -101,12 +101,17 @@ def test_provision_can_rotate_only_an_orphaned_vault_credential(tmp_path, monkey
 
 def test_desktop_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("('echo.certforge.admin.") == 8
-    assert sql.count('"Authorization":"vault:certforge.desktop_admin_api_key"') == 46
+    assert sql.count("('echo.certforge.admin.") >= 10
+    assert sql.count('"Authorization":"vault:certforge.desktop_admin_api_key"') >= 48
     assert '"X-Tenant-ID":"org-echo-sovereign"' in sql
+    assert '"X-CertForge-API-Key"' not in sql
     assert "echo.certforge.telemetry" in sql
     assert "echo.certforge.admin.evidence_artifact" in sql
     assert "echo.certforge.admin.rerun" in sql
+    assert "echo.certforge.admin.quarantine" in sql
+    assert "echo.certforge.admin.quarantine_release" in sql
+    assert "removing it from eligible capacity/execution without deleting telemetry" in sql
+    assert "immutable lineage" in sql
     assert "5 MiB raw" in sql
     assert "WHERE id = 'echo.certforge.admin.evidence_artifact'" in sql
     assert "ecf_" not in sql

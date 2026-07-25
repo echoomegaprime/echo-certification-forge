@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -53,6 +54,7 @@ from .subscriber import (
 
 
 _MAX_ADMIN_ARTIFACT_BYTES = 5 * 1024 * 1024
+_LOGGER = logging.getLogger(__name__)
 _SERVICE_VERSION = "0.8.0"
 _TELEMETRY_RUN_LIMIT = 25
 _TELEMETRY_EVENT_LIMIT = 64
@@ -177,6 +179,18 @@ class LifecycleRequest(BaseModel):
     replacement_run_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class OperationalQuarantineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject_type: Literal["runner", "adapter"]
+    subject_id: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=8, max_length=2048)
+
+
+class OperationalQuarantineReleaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=2048)
+
+
 def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version=_SERVICE_VERSION)
 
@@ -213,6 +227,11 @@ def create_app(context: ServiceContext) -> FastAPI:
         try:
             response = await call_next(request)
         except Exception:
+            _LOGGER.exception(
+                "unhandled request exception method=%s path=%s",
+                request.method,
+                request.url.path,
+            )
             if context.subscribers is not None and audit_actor is not None:
                 try:
                     context.subscribers.audit_request_outcome(
@@ -1466,6 +1485,79 @@ def create_app(context: ServiceContext) -> FastAPI:
             "adapters": authenticated["adapters"],
             "authenticated_source_snapshot_sha256": authenticated["snapshot_sha256"],
         }
+
+    @app.post("/v1/subscriber/operational-quarantines")
+    def quarantine_operational_subject(
+        request: OperationalQuarantineRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "operations.quarantine",
+        )
+        try:
+            result = context.operational_registry.quarantine(
+                actor.organization_id,
+                subject_type=request.subject_type,
+                subject_id=request.subject_id,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.quarantine",
+                resource_type=request.subject_type,
+                resource_id=request.subject_id,
+                details={
+                    "reason": request.reason,
+                    "idempotent": bool(result["idempotent"]),
+                },
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post(
+        "/v1/subscriber/operational-quarantines/{subject_type}/{subject_id}/release"
+    )
+    def release_operational_quarantine(
+        subject_type: Literal["runner", "adapter"],
+        subject_id: str,
+        request: OperationalQuarantineReleaseRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "operations.quarantine.release",
+        )
+        try:
+            result = context.operational_registry.release_quarantine(
+                actor.organization_id,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.quarantine.release",
+                resource_type=subject_type,
+                resource_id=subject_id,
+                details={"reason": request.reason},
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
 
     @app.get("/v1/subscriber/audit")
     def get_audit(
