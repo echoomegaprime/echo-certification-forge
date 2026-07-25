@@ -19,7 +19,7 @@ run_outcome: COMPLETE
 release_verdict: NOT_READY
 ```
 
-The complete product is not production-ready. GS343/R2D2 applied-adapter identity and quality proof, central `echo.certforge.*` registration, real deployment-path enforcement, subscriber governance, and hosted CI resolution remain blockers.
+The complete product is not production-ready. GS343/R2D2 quality promotion, real deployment-path enforcement, and subscriber governance remain blockers. Central `echo.certforge.*` registration and hosted CI are proven complete.
 
 The verified execution plane uses hardened non-root containers on a **rootful Docker Engine**. This is not a claim of rootless Docker or microVM isolation.
 

@@ -1,8 +1,8 @@
-# CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED
+# Hosted CI Startup Blocker - Resolved 2026-07-23
 
 ## Classification
 
-`CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED`
+`RESOLVED - NAMED WORKFLOW AND REAL JOBS PASSED`
 
 This classification replaces earlier wording that attributed the failures to an external GitHub platform issue. That attribution was not proven.
 
@@ -27,3 +27,22 @@ This classification replaces earlier wording that attributed the failures to an 
 ## Required resolution
 
 The blocker is resolved only when a pushed commit creates a named workflow and at least one job, or when GitHub exposes a concrete diagnostic that identifies and corrects the root cause. Tests must not be removed or weakened to obtain a run.
+
+## Resolution evidence
+
+Commit `c27324e4b7e0b147c34cb7c1eea232982cb619e7` created two successful hosted runs of the named
+`certification-forge-ci` workflow:
+
+- push run `30045260673`: job `test` passed checkout, Python 3.13 setup, editable dependency install,
+  compile, the full deterministic pytest suite with branch coverage, P1 verification, and evidence upload;
+- pull-request run `30045263342`: the same real job and all required steps passed.
+
+The retained artifacts are:
+
+- push artifact `8578873146`, digest
+  `sha256:3e8c11a0d61b1f7b4e46618b3de55b5766d1e7152b734095d42fb623bb43575e`;
+- pull-request artifact `8578871983`, digest
+  `sha256:d06747004c1b51cb3e294f91218da3a52e882a5d0eb1bd23c84c5e25948ebfa7`.
+
+Machine-readable evidence is recorded in `artifacts/hosted_ci_resolution.json`. Hosted CI is no
+longer a product blocker. This does not upgrade the whole-product verdict, which remains `NOT_READY`.

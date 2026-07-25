@@ -63,8 +63,9 @@
     }
   ],
   "hosted_ci": {
-    "state": "CI STARTUP BLOCKER — ROOT CAUSE UNRESOLVED",
-    "ready": false
+    "state": "RESOLVED",
+    "ready": true,
+    "evidence": "artifacts/hosted_ci_resolution.json"
   },
   "echo_desktop_p8c": "NOT_STARTED",
   "product_blockers": [
@@ -72,7 +73,6 @@
     "GS343 and R2D2 applied-adapter identity and quality qualification",
     "central echo.certforge.* registration",
     "real deployment-path exact-digest enforcement",
-    "subscriber governance, retention, billing, support-access, and commercial controls",
-    "hosted CI startup root-cause resolution"
+    "subscriber governance, retention, billing, support-access, and commercial controls"
   ]
 }
