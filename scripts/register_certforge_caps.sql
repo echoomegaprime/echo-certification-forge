@@ -1,4 +1,4 @@
--- Register the 12 safe-core and 6 hardened-administration Echo Desktop
+-- Register the 12 safe-core and 9 hardened-administration Echo Desktop
 -- operator-facing echo.certforge.* SDK capabilities as
 -- handler_kind='http' proxies to the live
 -- echo-certforge.service on FORGE :8309. Idempotent (ON CONFLICT DO UPDATE).
@@ -95,7 +95,7 @@ VALUES
    'certforge.admin.read', 1, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
 
   ('echo.certforge.telemetry',
-   'Certification Forge: tenant-scoped queue, state-machine, quota, and budget telemetry. Worker and adapter health remain explicitly UNKNOWN until authenticated heartbeat/registry contracts exist.',
+   'Certification Forge: tenant-scoped queue, state-machine, quota, budget, authenticated worker/adapter health, and fail-closed quarantine telemetry.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/telemetry', 'GET', 'query', 'forge',
    '{"type":"object","additionalProperties":false}'::jsonb,
    'certforge.read', 0, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
@@ -134,6 +134,18 @@ VALUES
    'Certification Forge administration: publish public-only verification material for a current production-ready verdict. Tier-2 HMAC and Desktop reauthentication are required.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/publish', 'POST', 'path', 'forge',
    '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.quarantine',
+   'Certification Forge administration: quarantine one authenticated runner or adapter, removing it from eligible capacity/execution without deleting telemetry. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/operational-quarantines', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["subject_type","subject_id","reason"],"properties":{"subject_type":{"type":"string","enum":["runner","adapter"]},"subject_id":{"type":"string","minLength":1,"maxLength":128},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.quarantine_release',
+   'Certification Forge administration: release one active runner or adapter quarantine after verification while retaining immutable audit history. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/operational-quarantines/{subject_type}/{subject_id}/release', 'POST', 'path', 'forge',
+   '{"type":"object","required":["subject_type","subject_id","reason"],"properties":{"subject_type":{"type":"string","enum":["runner","adapter"]},"subject_id":{"type":"string","minLength":1,"maxLength":128},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
    'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown')
 
 ON CONFLICT (id) DO UPDATE SET

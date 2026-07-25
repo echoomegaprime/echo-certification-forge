@@ -140,6 +140,18 @@ class LifecycleRequest(BaseModel):
     replacement_run_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class OperationalQuarantineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject_type: Literal["runner", "adapter"]
+    subject_id: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=8, max_length=2048)
+
+
+class OperationalQuarantineReleaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=2048)
+
+
 def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version="0.7.0")
     assert context.platform is not None
@@ -652,6 +664,73 @@ def create_app(context: ServiceContext) -> FastAPI:
             "adapters": authenticated["adapters"],
             "authenticated_source_snapshot_sha256": authenticated["snapshot_sha256"],
         }
+
+    @app.post("/v1/subscriber/operational-quarantines")
+    def quarantine_operational_subject(
+        request: OperationalQuarantineRequest,
+        x_certforge_api_key: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = principal(x_certforge_api_key)
+        try:
+            context.platform.require_role(actor, "owner", "admin")
+            result = context.operational_registry.quarantine(
+                actor.tenant_id,
+                subject_type=request.subject_type,
+                subject_id=request.subject_id,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.platform.audit(
+                actor.organization_id,
+                actor.project_id,
+                f"api_key:{actor.key_id}",
+                "operations.quarantine",
+                request.subject_type,
+                request.subject_id,
+                {
+                    "reason": request.reason,
+                    "idempotent": bool(result["idempotent"]),
+                },
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except PlatformError as exc:
+            raise platform_error(exc) from exc
+
+    @app.post(
+        "/v1/subscriber/operational-quarantines/{subject_type}/{subject_id}/release"
+    )
+    def release_operational_quarantine(
+        subject_type: Literal["runner", "adapter"],
+        subject_id: str,
+        request: OperationalQuarantineReleaseRequest,
+        x_certforge_api_key: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = principal(x_certforge_api_key)
+        try:
+            context.platform.require_role(actor, "owner", "admin")
+            result = context.operational_registry.release_quarantine(
+                actor.tenant_id,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.platform.audit(
+                actor.organization_id,
+                actor.project_id,
+                f"api_key:{actor.key_id}",
+                "operations.quarantine.release",
+                subject_type,
+                subject_id,
+                {"reason": request.reason},
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except PlatformError as exc:
+            raise platform_error(exc) from exc
 
     @app.get("/v1/subscriber/audit")
     def subscriber_audit(
