@@ -144,3 +144,10 @@ ON CONFLICT (id) DO UPDATE SET
 UPDATE arcanum_sdk.sdk_capabilities
 SET health_status = 'green', updated_at = now()
 WHERE id = 'echo.certforge.admin.lifecycle';
+
+-- Promoted only after a real tenant-owned COMPLETE artifact crossed the SDK,
+-- decoded to its declared size, matched its SHA-256 locally, and produced an
+-- evidence.download audit record without exposing subscriber credentials.
+UPDATE arcanum_sdk.sdk_capabilities
+SET health_status = 'green', updated_at = now()
+WHERE id = 'echo.certforge.admin.evidence_artifact';

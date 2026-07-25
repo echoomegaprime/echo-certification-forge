@@ -88,6 +88,7 @@ def test_admin_cap_registration_uses_vault_references_not_literal_credentials():
     assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 6
     assert "echo.certforge.admin.evidence_artifact" in sql
     assert "5 MiB raw" in sql
+    assert "WHERE id = 'echo.certforge.admin.evidence_artifact'" in sql
     assert "ecf_" not in sql
 
 
