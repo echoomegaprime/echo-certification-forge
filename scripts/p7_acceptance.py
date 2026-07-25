@@ -592,10 +592,8 @@ def main() -> int:
         "release_note": "P7 completion does not override unresolved P5/P6 and hosted-CI blockers.",
     }
     output = REPO / "artifacts" / "p7_acceptance_report.json"
-    output.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
+    output.write_bytes(
+        (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
     )
     client.close()
     shutil.rmtree(workspace)
