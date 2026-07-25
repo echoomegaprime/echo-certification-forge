@@ -16,6 +16,8 @@ subprocess (scripts/deployment_admission_hook.py):
   A7  the deployment audit chain verifies end-to-end
   A8  a signed build webhook creates a run; a replay deduplicates; a bad signature is 401
   A9  with the forge DOWN the hook fails CLOSED (exit 3) — no forge, no deployment
+  A10 a mutation without a deployment credential signature is 401 (tenant header alone
+      is NOT authorization)
 
 Writes artifacts/p6_acceptance.json (+ .summary.json). Exit 0 only if every check passed.
 """
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -39,6 +42,10 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 import uvicorn  # noqa: E402
 
 from echo_certification_forge.canonical import to_utc_iso, utc_now  # noqa: E402
+from echo_certification_forge.deployment_service import (  # noqa: E402
+    DEPLOY_SIGNATURE_HEADER,
+    DEPLOY_TIMESTAMP_HEADER,
+)
 from echo_certification_forge.evidence import EvidenceStore  # noqa: E402
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement  # noqa: E402
 from echo_certification_forge.models import (  # noqa: E402
@@ -61,6 +68,7 @@ from echo_certification_forge.signing import (  # noqa: E402
 
 TENANT = "tenant-alpha"
 WEBHOOK_SECRET = "p6-acceptance-webhook-secret-0001"
+DEPLOY_SECRET = "p6-acceptance-deploy-secret-0001"
 HOOK = REPO_ROOT / "scripts" / "deployment_admission_hook.py"
 
 
@@ -74,7 +82,8 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
-def http(method: str, url: str, body: dict | bytes | None = None, headers: dict | None = None):
+def http(method: str, url: str, body: dict | bytes | None = None, headers: dict | None = None,
+         sign: bool = False):
     data = None
     all_headers = {"X-Tenant-ID": TENANT, "Content-Type": "application/json"}
     if headers:
@@ -83,6 +92,10 @@ def http(method: str, url: str, body: dict | bytes | None = None, headers: dict 
         data = json.dumps(body).encode("utf-8")
     elif isinstance(body, bytes):
         data = body
+    if sign:
+        ts = to_utc_iso(utc_now())
+        all_headers[DEPLOY_TIMESTAMP_HEADER] = ts
+        all_headers[DEPLOY_SIGNATURE_HEADER] = sign_webhook(DEPLOY_SECRET, ts, data or b"")
     request = urllib.request.Request(url, data=data, method=method, headers=all_headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -109,6 +122,7 @@ def run_hook(base_url: str, artifact: str, env: str, env_digest: str, rule_diges
         capture_output=True,
         text=True,
         timeout=60,
+        env={**os.environ, "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET},
     )
     return proc.returncode, proc.stdout.strip()
 
@@ -189,6 +203,7 @@ def main() -> int:
             trusted_keys=trusted,
             deployment_ledger_path=tmp_path / "deployments.sqlite3",
             webhook_secrets=WebhookSecretRegistry(secrets={TENANT: WEBHOOK_SECRET}),
+            deployment_credentials=WebhookSecretRegistry(secrets={TENANT: DEPLOY_SECRET}),
         )
         app = create_app(context)
         port = free_port()
@@ -218,10 +233,10 @@ def main() -> int:
             check("A1", "uncertified artifact production deployment fails via hook",
                   code == 2 and "artifact_not_certified" in out, {"exit": code, "stdout": out})
 
-            # bind both certifications over live HTTP
-            status, body = http("POST", f"{base}/v1/certifications/cert-p6-v1/bindings")
+            # bind both certifications over live HTTP (signed with the deployment credential)
+            status, body = http("POST", f"{base}/v1/certifications/cert-p6-v1/bindings", sign=True)
             bound_v1 = status == 201 and body["artifact_sha256"] == v1.artifact_sha256
-            status, body = http("POST", f"{base}/v1/certifications/cert-p6-v2/bindings")
+            status, body = http("POST", f"{base}/v1/certifications/cert-p6-v2/bindings", sign=True)
             bound_v2 = status == 201 and body["artifact_sha256"] == v2.artifact_sha256
             check("A0", "certifications bind to exact artifact digests over live HTTP",
                   bound_v1 and bound_v2, {"v1": bound_v1, "v2": bound_v2})
@@ -251,6 +266,7 @@ def main() -> int:
                     "POST",
                     f"{base}/v1/deployments/admissions/{staging_admission}/outcome",
                     {"status": "SUCCEEDED", "detail": "staging smoke green"},
+                    sign=True,
                 )
                 outcome_ok = status == 201
                 code, out = run_hook(base, v1.artifact_sha256, "production",
@@ -269,12 +285,13 @@ def main() -> int:
                 "POST",
                 f"{base}/v1/deployments/admissions/{prod_admission}/outcome",
                 {"status": "SUCCEEDED", "detail": "v1 live in production"},
+                sign=True,
             )
             code, out = run_hook(base, v2.artifact_sha256, "staging",
                                  env_digest, rule_digest, "deploy-a6-stg")
             v2_staging = json.loads(out)["admission_id"]
             http("POST", f"{base}/v1/deployments/admissions/{v2_staging}/outcome",
-                 {"status": "SUCCEEDED", "detail": "v2 staging green"})
+                 {"status": "SUCCEEDED", "detail": "v2 staging green"}, sign=True)
             code, out = run_hook(base, v2.artifact_sha256, "production",
                                  env_digest, rule_digest, "deploy-a6-prd")
             v2_production = json.loads(out)["admission_id"]
@@ -282,6 +299,7 @@ def main() -> int:
                 "POST",
                 f"{base}/v1/deployments/admissions/{v2_production}/outcome",
                 {"status": "FAILED", "detail": "v2 production smoke red"},
+                sign=True,
             )
             candidate = (failure.get("payload") or {}).get("rollback_candidate") or {}
             status, rollback = http("GET", f"{base}/v1/deployments/rollback-target")
@@ -291,6 +309,7 @@ def main() -> int:
                 f"{base}/v1/deployments/admissions/{v2_production}/outcome",
                 {"status": "ROLLED_BACK", "detail": "restored v1",
                  "rollback_to": v1.artifact_sha256},
+                sign=True,
             )
             check("A6", "failed production deployment produces rollback evidence to last-known-good",
                   candidate.get("artifact_sha256") == v1.artifact_sha256
@@ -348,6 +367,22 @@ def main() -> int:
                   and second["run"]["run_id"] == first["run"]["run_id"]
                   and status3 == 401,
                   {"first": status1, "replay": status2, "bad_signature": status3})
+
+            # A10 — tenant header alone is NOT authorization for mutations (fail-closed 401)
+            status_unsigned, unsigned_body = http(
+                "POST",
+                f"{base}/v1/deployments/admissions",
+                {"artifact_sha256": v2.artifact_sha256,
+                 "deployment_environment": "staging",
+                 "environment_identity_digest": env_digest,
+                 "rule_manifest_digest": rule_digest,
+                 "deployment_id": "deploy-a10",
+                 "requested_by": "p6.acceptance"},
+            )
+            check("A10", "unsigned mutation with tenant header only is rejected 401",
+                  status_unsigned == 401
+                  and unsigned_body.get("detail") == "deployment_credential_signature_missing",
+                  {"status": status_unsigned, "body": unsigned_body})
         finally:
             server.should_exit = True
             thread.join(timeout=10)

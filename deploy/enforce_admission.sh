@@ -13,11 +13,14 @@
 #   CERTFORGE_ENV_IDENTITY_DIGEST     64-hex environment identity digest
 #   CERTFORGE_RULE_MANIFEST_DIGEST    64-hex active mandatory-rule manifest digest
 #   CERTFORGE_DEPLOYMENT_ID           unique id for this deployment attempt
+#   CERTFORGE_DEPLOY_SECRET           tenant deployment credential (HMAC secret) — the
+#                                     hook signs every admission request with it
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 for var in CERTFORGE_URL CERTFORGE_TENANT CERTFORGE_ARTIFACT_DIGEST CERTFORGE_ENVIRONMENT \
-           CERTFORGE_ENV_IDENTITY_DIGEST CERTFORGE_RULE_MANIFEST_DIGEST CERTFORGE_DEPLOYMENT_ID; do
+           CERTFORGE_ENV_IDENTITY_DIGEST CERTFORGE_RULE_MANIFEST_DIGEST CERTFORGE_DEPLOYMENT_ID \
+           CERTFORGE_DEPLOY_SECRET; do
   if [ -z "${!var:-}" ]; then
     echo "!! ADMISSION BLOCKED — $var is not set (fail-closed)" >&2
     exit 3

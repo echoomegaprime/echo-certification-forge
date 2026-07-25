@@ -2,13 +2,17 @@
 
 Installed additively onto the existing tenant-scoped API by ``install_deployment_api``.
 Every endpoint is fail-closed: a missing tenant header, unknown artifact, or unverifiable
-certification denies. Admission decisions are RECORDED (append-only, hash-chained) whether
-allowed or denied, so the deployment audit trail is complete by construction.
+certification denies. Mutation endpoints (binding, admission, outcome) additionally require
+an authenticated tenant-bound deployment credential — an HMAC signature over the exact
+request body proving possession of the tenant's deployment secret; the ``X-Tenant-ID``
+header alone never authorizes a mutation. Admission decisions are RECORDED (append-only,
+hash-chained) whether allowed or denied, so the deployment audit trail is complete by
+construction.
 """
 from __future__ import annotations
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .deployment import (
     PRODUCTION,
@@ -26,9 +30,13 @@ from .release_hooks import (
     WebhookError,
     WebhookSecretRegistry,
     ingest_webhook,
+    verify_webhook_signature,
 )
 
 _ACTOR = "certforge.deployment_api"
+
+DEPLOY_SIGNATURE_HEADER = "X-Certforge-Deploy-Signature"
+DEPLOY_TIMESTAMP_HEADER = "X-Certforge-Deploy-Timestamp"
 
 
 class AdmitBody(BaseModel):
@@ -52,6 +60,7 @@ def install_deployment_api(
     app: FastAPI,
     controller: DeploymentAdmissionController,
     webhook_secrets: WebhookSecretRegistry,
+    deployment_credentials: WebhookSecretRegistry,
 ) -> None:
     store = controller.store
 
@@ -60,13 +69,35 @@ def install_deployment_api(
             raise HTTPException(status_code=401, detail="X-Tenant-ID is required")
         return value
 
+    def authorize_mutation(tenant_id: str, request: Request, body: bytes) -> None:
+        """Require the tenant-bound deployment credential for any mutation.
+
+        The caller must prove possession of the tenant's deployment secret with an HMAC
+        signature over ``{timestamp}.{body}`` (same verified scheme as release webhooks).
+        Fail-closed on every path: unregistered tenant, missing/invalid headers, stale
+        timestamp, or a signature made with a different tenant's secret all yield 401.
+        """
+        try:
+            verify_webhook_signature(
+                deployment_credentials,
+                tenant_id,
+                request.headers.get(DEPLOY_SIGNATURE_HEADER),
+                request.headers.get(DEPLOY_TIMESTAMP_HEADER),
+                body,
+            )
+        except WebhookError as exc:
+            code = exc.code.replace("webhook_", "deployment_credential_", 1)
+            raise HTTPException(status_code=exc.status_code, detail=code) from exc
+
     @app.post("/v1/certifications/{run_id}/bindings", status_code=201)
-    def bind_certification(
+    async def bind_certification(
         run_id: str,
+        request: Request,
         response: Response,
         x_tenant_id: str | None = Header(default=None),
     ) -> dict[str, object]:
         tenant_id = tenant(x_tenant_id)
+        authorize_mutation(tenant_id, request, await request.body())
         try:
             record = controller.bind_certification(run_id, tenant_id, _ACTOR)
         except KeyError as exc:
@@ -84,13 +115,20 @@ def install_deployment_api(
         }
 
     @app.post("/v1/deployments/admissions")
-    def admit_deployment(
-        body: AdmitBody,
+    async def admit_deployment(
+        request: Request,
         x_tenant_id: str | None = Header(default=None),
     ) -> dict[str, object]:
         tenant_id = tenant(x_tenant_id)
+        raw = await request.body()
+        # The deployment credential is verified BEFORE the body is parsed.
+        authorize_mutation(tenant_id, request, raw)
         try:
-            request = AdmissionRequest(
+            body = AdmitBody.model_validate_json(raw)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail="admission_body_invalid") from exc
+        try:
+            admission = AdmissionRequest(
                 tenant_id=tenant_id,
                 artifact_sha256=body.artifact_sha256,
                 deployment_environment=body.deployment_environment,
@@ -101,16 +139,22 @@ def install_deployment_api(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        decision = controller.admit(request, _ACTOR)
+        decision = controller.admit(admission, _ACTOR)
         return decision.to_dict()
 
     @app.post("/v1/deployments/admissions/{admission_id}/outcome", status_code=201)
-    def report_outcome(
+    async def report_outcome(
         admission_id: str,
-        body: OutcomeBody,
+        request: Request,
         x_tenant_id: str | None = Header(default=None),
     ) -> dict[str, object]:
         tenant_id = tenant(x_tenant_id)
+        raw = await request.body()
+        authorize_mutation(tenant_id, request, raw)
+        try:
+            body = OutcomeBody.model_validate_json(raw)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail="outcome_body_invalid") from exc
         try:
             record = controller.report_outcome(
                 admission_id=admission_id,

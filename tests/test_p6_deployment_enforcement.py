@@ -17,6 +17,7 @@ import hashlib
 import json
 import sqlite3
 import sys
+import threading
 from datetime import timedelta
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from echo_certification_forge.deployment import (
     DeploymentAdmissionController,
     DeploymentLedger,
     DeploymentOutcomeStatus,
+    DeploymentRecordType,
     OutcomeError,
     normalize_artifact_digest,
 )
@@ -79,8 +81,8 @@ def trusted(signer: Ed25519VerdictSigner) -> TrustedPublicKeyRegistry:
 
 
 @pytest.fixture
-def controller(store, trusted, ledger) -> DeploymentAdmissionController:
-    return DeploymentAdmissionController(store, trusted, ledger)
+def controller(store, trusted, ledger, manifest) -> DeploymentAdmissionController:
+    return DeploymentAdmissionController(store, trusted, ledger, manifest.digest)
 
 
 def _certify(
@@ -270,7 +272,7 @@ def test_wrong_release_policy_or_environment_is_denied(
     )
     decision = controller.admit(wrong_policy, ACTOR)
     assert decision.allowed is False
-    assert "rule_manifest_mismatch" in decision.reasons
+    assert "rule_manifest_not_active" in decision.reasons
 
     wrong_environment = AdmissionRequest(
         tenant_id=TENANT,
@@ -495,3 +497,81 @@ def test_normalize_artifact_digest_accepts_registry_form():
     assert normalize_artifact_digest(bare.upper()) == bare
     with pytest.raises(ValueError):
         normalize_artifact_digest("sha256:not-a-digest")
+
+
+def test_concurrent_ledger_appends_yield_one_linear_valid_chain(ledger):
+    """Chain-tip reads happen under BEGIN IMMEDIATE — parallel writers cannot fork the chain."""
+    workers = 8
+    appends_per_worker = 5
+    errors: list[Exception] = []
+    barrier = threading.Barrier(workers)
+
+    def writer(worker: int) -> None:
+        try:
+            barrier.wait(timeout=30)
+            for i in range(appends_per_worker):
+                ledger.append(
+                    DeploymentRecordType.ADMISSION,
+                    TENANT,
+                    {"worker": worker, "attempt": i},
+                    ACTOR,
+                    deployment_environment="staging",
+                    allowed=False,
+                )
+        except Exception as exc:  # pragma: no cover — failure evidence
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(n,)) for n in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+    assert errors == []
+
+    rows = ledger.trail(TENANT)
+    assert len(rows) == workers * appends_per_worker
+    valid, broken = ledger.verify_chain()
+    assert valid is True and broken is None
+    # exactly one linear chain: hashes unique, each prev links the previous record
+    chain_hashes = [row["chain_hash"] for row in rows]
+    assert len(set(chain_hashes)) == len(chain_hashes)
+    prev = "0" * 64
+    for row in rows:
+        assert row["prev_chain_hash"] == prev
+        prev = row["chain_hash"]
+
+
+def test_policy_rollover_rejects_stale_caller_supplied_manifest_digest(
+    store, trusted, ledger, manifest, environment, signer, tmp_path
+):
+    """The controller is bound to the ACTIVE manifest digest — a caller cannot resurrect an
+    old policy by supplying its digest after rollover."""
+    target = _target("app-rollover")
+    _certify(store, manifest, signer, environment, tmp_path, "cert-rollover", target)
+
+    rolled = DeploymentAdmissionController(
+        store, trusted, ledger, _digest("rolled-over-manifest")
+    )
+    rolled.bind_certification("cert-rollover", TENANT, ACTOR)
+
+    # presenting the OLD (certified) digest after rollover is refused outright
+    stale = rolled.admit(
+        _admission(target.artifact_sha256, "staging", environment, manifest, "deploy-ro-1"),
+        ACTOR,
+    )
+    assert stale.allowed is False
+    assert "rule_manifest_not_active" in stale.reasons
+
+    # presenting the ACTIVE digest still fails closed: the verdict is bound to the old policy
+    active = AdmissionRequest(
+        tenant_id=TENANT,
+        artifact_sha256=target.artifact_sha256,
+        deployment_environment="staging",
+        environment_identity_digest=environment.identity_digest,
+        rule_manifest_digest=_digest("rolled-over-manifest"),
+        deployment_id="deploy-ro-2",
+        requested_by="ci.pipeline",
+    )
+    decision = rolled.admit(active, ACTOR)
+    assert decision.allowed is False
+    assert "rule_manifest_mismatch" in decision.reasons

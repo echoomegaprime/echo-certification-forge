@@ -21,6 +21,9 @@ _deployment_ledger = Path(
 _webhook_keys = Path(
     os.environ.get("ECHO_CERTFORGE_WEBHOOK_KEYS", _REPO_ROOT / "var" / "webhook-keys.json")
 )
+_deployment_keys = Path(
+    os.environ.get("ECHO_CERTFORGE_DEPLOYMENT_KEYS", _REPO_ROOT / "var" / "deployment-keys.json")
+)
 
 app = create_app(
     ServiceContext(
@@ -29,5 +32,6 @@ app = create_app(
         trusted_keys=TrustedPublicKeyRegistry.from_directory(_public_keys),
         deployment_ledger_path=_deployment_ledger,
         webhook_secrets=WebhookSecretRegistry.from_file(_webhook_keys),
+        deployment_credentials=WebhookSecretRegistry.from_file(_deployment_keys),
     )
 )

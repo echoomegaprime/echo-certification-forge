@@ -17,8 +17,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from echo_certification_forge.canonical import to_utc_iso, utc_now
+from echo_certification_forge.deployment_service import (
+    DEPLOY_SIGNATURE_HEADER,
+    DEPLOY_TIMESTAMP_HEADER,
+)
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
-from echo_certification_forge.models import EnvironmentIdentity, TargetIdentity
+from echo_certification_forge.models import EnvironmentIdentity, RunState, TargetIdentity
 from echo_certification_forge.release_hooks import (
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
@@ -31,6 +35,8 @@ from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublic
 TENANT = "tenant-alpha"
 OTHER_TENANT = "tenant-beta"
 SECRET = "p6-webhook-secret-0123456789abcdef"
+DEPLOY_SECRET = "p6-deploy-credential-alpha-0001"
+OTHER_DEPLOY_SECRET = "p6-deploy-credential-beta-0002"
 
 
 def _digest(label: str) -> str:
@@ -52,6 +58,9 @@ def context(tmp_path: Path, store, manifest, signer) -> ServiceContext:
         trusted_keys=trusted,
         deployment_ledger_path=tmp_path / "deployments.sqlite3",
         webhook_secrets=WebhookSecretRegistry(secrets={TENANT: SECRET}),
+        deployment_credentials=WebhookSecretRegistry(
+            secrets={TENANT: DEPLOY_SECRET, OTHER_TENANT: OTHER_DEPLOY_SECRET}
+        ),
     )
 
 
@@ -104,6 +113,27 @@ def _admit_body(
     }
 
 
+def _deploy_headers(
+    body: bytes = b"",
+    secret: str = DEPLOY_SECRET,
+    tenant: str = TENANT,
+    timestamp: str | None = None,
+) -> dict:
+    """Deployment-credential HMAC headers over the EXACT request body bytes."""
+    ts = timestamp or to_utc_iso(utc_now())
+    return {
+        "X-Tenant-ID": tenant,
+        DEPLOY_TIMESTAMP_HEADER: ts,
+        DEPLOY_SIGNATURE_HEADER: sign_webhook(secret, ts, body),
+        "Content-Type": "application/json",
+    }
+
+
+def _post_signed(client, url: str, body: dict | None = None, **header_kwargs):
+    raw = b"" if body is None else json.dumps(body).encode("utf-8")
+    return client.post(url, content=raw or None, headers=_deploy_headers(raw, **header_kwargs))
+
+
 # --------------------------------------------------------------------------------------
 # HTTP admission surface
 # --------------------------------------------------------------------------------------
@@ -113,20 +143,20 @@ def test_http_full_release_flow(client, certified_target, environment, manifest)
     headers = {"X-Tenant-ID": TENANT}
     artifact = certified_target.artifact_sha256
 
-    # bind certification to the exact artifact digest
-    response = client.post("/v1/certifications/cert-http-v1/bindings", headers=headers)
+    # bind certification to the exact artifact digest (signed with the deployment credential)
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
     assert response.status_code == 201
     assert response.json()["artifact_sha256"] == artifact
     # binding is idempotent
-    response = client.post("/v1/certifications/cert-http-v1/bindings", headers=headers)
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
     assert response.status_code == 200
     assert response.json()["created"] is False
 
     # production before staging -> denied
-    response = client.post(
+    response = _post_signed(
+        client,
         "/v1/deployments/admissions",
-        headers=headers,
-        json=_admit_body(artifact, "production", environment, manifest, "deploy-p0"),
+        _admit_body(artifact, "production", environment, manifest, "deploy-p0"),
     )
     assert response.status_code == 200
     body = response.json()
@@ -134,25 +164,25 @@ def test_http_full_release_flow(client, certified_target, environment, manifest)
     assert "staging_acceptance_missing" in body["reasons"]
 
     # registry-form digest is accepted for the same exact artifact
-    response = client.post(
+    response = _post_signed(
+        client,
         "/v1/deployments/admissions",
-        headers=headers,
-        json=_admit_body(f"sha256:{artifact}", "staging", environment, manifest, "deploy-s1"),
+        _admit_body(f"sha256:{artifact}", "staging", environment, manifest, "deploy-s1"),
     )
     staging = response.json()
     assert staging["allowed"] is True, staging["reasons"]
 
-    response = client.post(
+    response = _post_signed(
+        client,
         f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
-        headers=headers,
-        json={"status": "SUCCEEDED", "detail": "staging smoke green"},
+        {"status": "SUCCEEDED", "detail": "staging smoke green"},
     )
     assert response.status_code == 201
 
-    response = client.post(
+    response = _post_signed(
+        client,
         "/v1/deployments/admissions",
-        headers=headers,
-        json=_admit_body(artifact, "production", environment, manifest, "deploy-p1"),
+        _admit_body(artifact, "production", environment, manifest, "deploy-p1"),
     )
     production = response.json()
     assert production["allowed"] is True, production["reasons"]
@@ -177,14 +207,83 @@ def test_http_full_release_flow(client, certified_target, environment, manifest)
 
 def test_http_admission_requires_tenant_and_is_fail_closed(client, environment, manifest):
     body = _admit_body(_digest("nope"), "staging", environment, manifest, "deploy-x")
+    raw = json.dumps(body).encode("utf-8")
+
+    # no tenant header at all -> 401
     assert client.post("/v1/deployments/admissions", json=body).status_code == 401
 
+    # tenant header ALONE is not authorization -> 401 fail-closed
     response = client.post(
         "/v1/deployments/admissions", headers={"X-Tenant-ID": TENANT}, json=body
     )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_missing"
+
+    # properly signed but uncertified -> recorded fail-closed denial
+    response = client.post(
+        "/v1/deployments/admissions", content=raw, headers=_deploy_headers(raw)
+    )
+    assert response.status_code == 200
     decision = response.json()
     assert decision["allowed"] is False
     assert "artifact_not_certified" in decision["reasons"]
+
+
+def test_http_mutations_require_deployment_credentials(client, environment, manifest):
+    """Blocker 1 negatives: every mutation demands a tenant-bound HMAC credential."""
+    body = _admit_body(_digest("cred-check"), "staging", environment, manifest, "deploy-c1")
+    raw = json.dumps(body).encode("utf-8")
+
+    # wrong secret -> 401
+    response = client.post(
+        "/v1/deployments/admissions",
+        content=raw,
+        headers=_deploy_headers(raw, secret="wrong-deploy-secret"),
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_invalid"
+
+    # ANOTHER tenant's valid credential cannot authorize THIS tenant's mutation
+    response = client.post(
+        "/v1/deployments/admissions",
+        content=raw,
+        headers=_deploy_headers(raw, secret=OTHER_DEPLOY_SECRET),
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_invalid"
+
+    # stale timestamp -> 401
+    stale = to_utc_iso(utc_now() - timedelta(seconds=3600))
+    response = client.post(
+        "/v1/deployments/admissions", content=raw, headers=_deploy_headers(raw, timestamp=stale)
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_timestamp_stale"
+
+    # tenant with no registered deployment credential -> 401
+    response = client.post(
+        "/v1/deployments/admissions",
+        content=raw,
+        headers=_deploy_headers(raw, tenant="tenant-gamma"),
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_tenant_not_registered"
+
+    # unsigned binding mutation -> 401
+    response = client.post(
+        "/v1/certifications/cert-any/bindings", headers={"X-Tenant-ID": TENANT}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_missing"
+
+    # unsigned outcome mutation -> 401
+    response = client.post(
+        "/v1/deployments/admissions/dep-x/outcome",
+        headers={"X-Tenant-ID": TENANT},
+        json={"status": "SUCCEEDED", "detail": "x"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "deployment_credential_signature_missing"
 
 
 def test_http_binding_refuses_unsigned_run_and_foreign_tenant(
@@ -198,13 +297,14 @@ def test_http_binding_refuses_unsigned_run_and_foreign_tenant(
         source_commit="abc123def456",
     )
     store.register_run("cert-unsigned", target, environment, manifest.manifest_id, manifest.digest)
-    response = client.post(
-        "/v1/certifications/cert-unsigned/bindings", headers={"X-Tenant-ID": TENANT}
-    )
+    response = _post_signed(client, "/v1/certifications/cert-unsigned/bindings")
     assert response.status_code == 409
     assert response.json()["detail"] == "signed_verdict_missing"
-    response = client.post(
-        "/v1/certifications/cert-unsigned/bindings", headers={"X-Tenant-ID": OTHER_TENANT}
+    response = _post_signed(
+        client,
+        "/v1/certifications/cert-unsigned/bindings",
+        secret=OTHER_DEPLOY_SECRET,
+        tenant=OTHER_TENANT,
     )
     assert response.status_code == 404
 
@@ -216,10 +316,10 @@ def test_http_rollback_target_and_outcome_errors(client, certified_target, envir
     assert response.status_code == 200
     assert response.json()["rollback_target"] is None
     # unknown admission -> 404
-    response = client.post(
+    response = _post_signed(
+        client,
         "/v1/deployments/admissions/dep-doesnotexist/outcome",
-        headers=headers,
-        json={"status": "SUCCEEDED", "detail": "x"},
+        {"status": "SUCCEEDED", "detail": "x"},
     )
     assert response.status_code == 404
 
@@ -337,3 +437,198 @@ def test_webhook_tenant_mismatch_between_header_and_body(client, store, manifest
     response = client.post("/v1/hooks/build", content=body, headers=_signed_headers(body))
     assert response.status_code == 403
     assert response.json()["detail"] == "tenant_mismatch"
+
+
+# --------------------------------------------------------------------------------------
+# Blocker 4: webhook-declared runs reconcile to the acquired exact identity and deploy
+# --------------------------------------------------------------------------------------
+
+
+def _declared_event(artifact: str, environment, manifest, event_id: str = "evt-reconcile-01") -> dict:
+    return {
+        "event_id": event_id,
+        "event_type": "build.artifact.published",
+        "tenant_id": TENANT,
+        "artifact_sha256": artifact,
+        "source_commit": "abc123def456",
+        "repository": "https://github.com/echo/app",
+        "environment_identity_digest": environment.identity_digest,
+        "policy_version": manifest.manifest_id,
+    }
+
+
+def test_webhook_declared_run_reconciles_certifies_and_deploys_end_to_end(
+    client, context, store, manifest, environment, signer, tmp_path
+):
+    """A webhook-declared run is NOT a dead end: after acquisition reconciles the declared
+    commitment to the exact acquired identity, certification and deployment succeed."""
+    artifact = _digest("reconcile-artifact")
+    body = json.dumps(_declared_event(artifact, environment, manifest)).encode("utf-8")
+    response = client.post("/v1/hooks/build", content=body, headers=_signed_headers(body))
+    assert response.status_code == 201, response.text
+    run = response.json()["run"]
+    run_id = run["run_id"]
+    assert run["state"] == "QUEUED"
+    assert run["release_verdict"] == "NOT_READY"  # default-deny until certified
+
+    # worker acquisition produced the EXACT declared artifact -> reconciliation succeeds
+    acquired = TargetIdentity(
+        tenant_id=TENANT,
+        target_type="container",
+        canonical_ref="registry.echo/app@abc123def456",
+        artifact_sha256=artifact,
+        source_commit="abc123def456",
+    )
+    store.reconcile_declared_target(run_id, TENANT, acquired, environment)
+    row = store.get_run(run_id, TENANT)
+    assert row["target_identity_digest"] == acquired.identity_digest
+    assert "declared_identity_digest" not in json.loads(row["target_identity_json"])
+
+    # real certification of the reconciled run
+    workdir = tmp_path / "src-reconciled"
+    workdir.mkdir()
+    (workdir / "hello.py").write_text("print('ok')\n", encoding="utf-8")
+    result = RunExecutor(store, manifest, signer).execute(
+        run_id,
+        TENANT,
+        workdir,
+        entitlement=StaticEntitlement(frozenset({TENANT})),
+        journey=[sys.executable, "hello.py"],
+        control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+    )
+    assert result.release_verdict == "PRODUCTION_READY", result.blocking_findings
+
+    # the formerly-declared run now BINDS and passes staging -> production admission
+    response = _post_signed(client, f"/v1/certifications/{run_id}/bindings")
+    assert response.status_code == 201
+    assert response.json()["artifact_sha256"] == artifact
+
+    response = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "staging", environment, manifest, "deploy-rec-stg"),
+    )
+    staging = response.json()
+    assert staging["allowed"] is True, staging["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "staging green"},
+    )
+    assert response.status_code == 201
+    response = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "production", environment, manifest, "deploy-rec-prd"),
+    )
+    production = response.json()
+    assert production["allowed"] is True, production["reasons"]
+
+
+def test_reconciliation_refuses_mismatched_artifact_and_run_stays_undeployable(
+    client, store, manifest, environment
+):
+    artifact = _digest("declared-artifact")
+    body = json.dumps(
+        _declared_event(artifact, environment, manifest, event_id="evt-reconcile-02")
+    ).encode("utf-8")
+    response = client.post("/v1/hooks/build", content=body, headers=_signed_headers(body))
+    assert response.status_code == 201
+    run_id = response.json()["run"]["run_id"]
+
+    tampered = TargetIdentity(
+        tenant_id=TENANT,
+        target_type="container",
+        canonical_ref="registry.echo/app@abc123def456",
+        artifact_sha256=_digest("DIFFERENT-acquired-artifact"),
+        source_commit="abc123def456",
+    )
+    with pytest.raises(ValueError, match="target_declared_artifact_mismatch"):
+        store.reconcile_declared_target(run_id, TENANT, tampered, environment)
+
+    # the unreconciled declared run still cannot bind (fail-closed)
+    response = _post_signed(client, f"/v1/certifications/{run_id}/bindings")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "signed_verdict_missing"
+
+
+def test_reconciliation_window_closes_at_acquisition(client, store, manifest, environment):
+    artifact = _digest("window-artifact")
+    body = json.dumps(
+        _declared_event(artifact, environment, manifest, event_id="evt-reconcile-03")
+    ).encode("utf-8")
+    response = client.post("/v1/hooks/build", content=body, headers=_signed_headers(body))
+    assert response.status_code == 201
+    run_id = response.json()["run"]["run_id"]
+
+    store.transition_state(run_id, TENANT, RunState.ACQUIRING_TARGET, "test", "begin", "t4.p1")
+    acquired = TargetIdentity(
+        tenant_id=TENANT,
+        target_type="container",
+        canonical_ref="registry.echo/app@abc123def456",
+        artifact_sha256=artifact,
+        source_commit="abc123def456",
+    )
+    with pytest.raises(ValueError, match="target_reconciliation_window_closed"):
+        store.reconcile_declared_target(run_id, TENANT, acquired, environment)
+
+
+def test_run_worker_executes_webhook_declared_run_end_to_end(
+    client, store, manifest, signer, tmp_path
+):
+    """Full worker path: webhook declares the artifact -> run_worker acquires, reconciles,
+    and certifies the SAME run; a wrong declaration fails closed before execution."""
+    from echo_certification_forge import run_worker
+    from echo_certification_forge.acquisition import acquire_target
+
+    workdir = tmp_path / "src-worker"
+    workdir.mkdir()
+    (workdir / "hello.py").write_text("print('ok')\n", encoding="utf-8")
+    probe = acquire_target({"type": "local", "path": str(workdir)}, tmp_path / "probe")
+    worker_environment = run_worker._worker_environment()
+
+    body = json.dumps(
+        _declared_event(
+            probe.artifact_sha256, worker_environment, manifest, event_id="evt-worker-01"
+        )
+    ).encode("utf-8")
+    response = client.post("/v1/hooks/build", content=body, headers=_signed_headers(body))
+    assert response.status_code == 201
+    run_id = response.json()["run"]["run_id"]
+
+    outcome = run_worker.run(
+        run_id,
+        TENANT,
+        {"type": "local", "path": str(workdir)},
+        store=store,
+        manifest=manifest,
+        signer=signer,
+        entitled=frozenset({TENANT}),
+        journey=[sys.executable, "hello.py"],
+    )
+    assert outcome.get("error") is None, outcome
+    assert outcome["release_verdict"] == "PRODUCTION_READY"
+    assert outcome["target_identity_digest"] == store.get_run(run_id, TENANT)["target_identity_digest"]
+
+    # declaring a DIFFERENT artifact than what acquisition yields fails closed pre-execution
+    body = json.dumps(
+        _declared_event(
+            _digest("wrong-declared-artifact"), worker_environment, manifest,
+            event_id="evt-worker-02",
+        )
+    ).encode("utf-8")
+    response = client.post("/v1/hooks/build", content=body, headers=_signed_headers(body))
+    assert response.status_code == 201
+    bad_run_id = response.json()["run"]["run_id"]
+    outcome = run_worker.run(
+        bad_run_id,
+        TENANT,
+        {"type": "local", "path": str(workdir)},
+        store=store,
+        manifest=manifest,
+        signer=signer,
+        entitled=frozenset({TENANT}),
+        journey=[sys.executable, "hello.py"],
+    )
+    assert outcome["error"] == "target_reconciliation_failed"
+    assert "target_declared_artifact_mismatch" in outcome["detail"]

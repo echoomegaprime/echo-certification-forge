@@ -23,18 +23,31 @@ Usage:
         --requested-by ci.pipeline
 
 Only the standard library is used so any pipeline can vendor this file as-is.
+
+Authentication: the forge requires an HMAC deployment credential on every admission
+request. The shared secret is read from the CERTFORGE_DEPLOY_SECRET environment
+variable (never a CLI flag, so it cannot leak into process listings); a missing
+secret is a fail-closed error (exit 3).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 EXIT_ALLOWED = 0
 EXIT_DENIED = 2
 EXIT_ERROR = 3
+
+DEPLOY_SIGNATURE_HEADER = "X-Certforge-Deploy-Signature"
+DEPLOY_TIMESTAMP_HEADER = "X-Certforge-Deploy-Timestamp"
+SECRET_ENV = "CERTFORGE_DEPLOY_SECRET"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,7 +64,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def request_admission(args: argparse.Namespace) -> dict:
+def _signed_headers(secret: str, body: bytes) -> dict[str, str]:
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    digest = hmac.new(secret.encode("utf-8"), f"{timestamp}.".encode("utf-8") + body, hashlib.sha256)
+    return {
+        DEPLOY_TIMESTAMP_HEADER: timestamp,
+        DEPLOY_SIGNATURE_HEADER: f"sha256={digest.hexdigest()}",
+    }
+
+
+def request_admission(args: argparse.Namespace, secret: str) -> dict:
     body = json.dumps(
         {
             "artifact_sha256": args.artifact_digest,
@@ -62,11 +84,13 @@ def request_admission(args: argparse.Namespace) -> dict:
             "requested_by": args.requested_by,
         }
     ).encode("utf-8")
+    headers = {"Content-Type": "application/json", "X-Tenant-ID": args.tenant}
+    headers.update(_signed_headers(secret, body))
     request = urllib.request.Request(
         args.forge_url.rstrip("/") + "/v1/deployments/admissions",
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Tenant-ID": args.tenant},
+        headers=headers,
     )
     with urllib.request.urlopen(request, timeout=args.timeout) as response:
         if response.status != 200:
@@ -79,8 +103,12 @@ def main(argv: list[str] | None = None) -> int:
         args = build_parser().parse_args(argv)
     except SystemExit as exc:  # argparse exits itself on --help (0) or bad args (2)
         return EXIT_ALLOWED if exc.code == 0 else EXIT_ERROR
+    secret = os.environ.get(SECRET_ENV, "")
+    if not secret:
+        print(json.dumps({"allowed": False, "error": f"deployment_credential_missing: set {SECRET_ENV}"}))
+        return EXIT_ERROR
     try:
-        decision = request_admission(args)
+        decision = request_admission(args, secret)
     except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError, RuntimeError) as exc:
         print(json.dumps({"allowed": False, "error": f"admission_unavailable: {exc}"}))
         return EXIT_ERROR

@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .canonical import parse_utc_iso, sha256_json, utc_now
 from .evidence import EvidenceStore
+from .models import declared_target_identity_digest
 from .intake import (
     SubmitEnvironment,
     SubmitError,
@@ -144,14 +145,8 @@ def _map_event(event: BuildWebhookEvent | RegistryWebhookEvent) -> SubmitRequest
         target_type = "container"
         artifact = _bare_digest(event.image_digest)
         reference = f"{event.image_repository}@{event.source_commit}"
-    identity_digest = sha256_json(
-        {
-            "tenant_id": event.tenant_id,
-            "target_type": target_type,
-            "artifact_sha256": artifact,
-            "source_commit": event.source_commit,
-            "reference": reference,
-        }
+    identity_digest = declared_target_identity_digest(
+        event.tenant_id, target_type, artifact, event.source_commit, reference
     )
     idempotency_key = "hook-" + sha256_json(
         {
@@ -167,6 +162,10 @@ def _map_event(event: BuildWebhookEvent | RegistryWebhookEvent) -> SubmitRequest
             target_type=target_type,
             identity_digest=identity_digest,
             reference=reference,
+            # Declared artifact commitment: lets the queued run reconcile to the acquired
+            # exact TargetIdentity before execution and become deployable.
+            artifact_sha256=artifact,
+            source_commit=event.source_commit,
         ),
         environment=SubmitEnvironment(identity_digest=event.environment_identity_digest),
         policy_version=event.policy_version,

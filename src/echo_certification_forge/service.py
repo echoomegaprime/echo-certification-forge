@@ -28,6 +28,11 @@ class ServiceContext:
     webhook_secrets: WebhookSecretRegistry = field(
         default_factory=lambda: WebhookSecretRegistry(secrets={})
     )
+    # Tenant-bound deployment credentials for mutation endpoints (binding, admission,
+    # outcome). Empty by default => every mutation is refused with 401 (fail-closed).
+    deployment_credentials: WebhookSecretRegistry = field(
+        default_factory=lambda: WebhookSecretRegistry(secrets={})
+    )
 
 
 class DeployGateRequest(BaseModel):
@@ -248,7 +253,8 @@ def create_app(context: ServiceContext) -> FastAPI:
         store=context.store,
         trusted_keys=context.trusted_keys,
         ledger=DeploymentLedger(ledger_path),
+        active_rule_manifest_digest=context.manifest.digest,
     )
-    install_deployment_api(app, controller, context.webhook_secrets)
+    install_deployment_api(app, controller, context.webhook_secrets, context.deployment_credentials)
 
     return app

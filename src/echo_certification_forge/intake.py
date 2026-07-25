@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .canonical import sha256_json
 from .evidence import EvidenceStore
-from .models import ReleaseVerdict, RunState
+from .models import ReleaseVerdict, RunState, declared_target_identity_digest
 from .policy import RuleManifest
 
 # Internal fine-grained RunState -> coarse public state (contracts/schemas/certification-run.v1.json).
@@ -45,6 +45,11 @@ class SubmitTarget(BaseModel):
     target_type: str = Field(pattern=r"^(git|archive|container|package|deployment|mcp|sdk|cli)$")
     identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     reference: str = Field(min_length=1, max_length=2048)
+    # Optional DECLARED artifact commitment (platform webhooks): binds the run to the exact
+    # immutable artifact digest BEFORE acquisition so the run can later be reconciled to its
+    # acquired identity and become deployable. Without it, a declared run never reconciles.
+    artifact_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_commit: str | None = Field(default=None, min_length=7, max_length=64)
 
 
 class SubmitEnvironment(BaseModel):
@@ -66,7 +71,9 @@ class SubmitRequest(BaseModel):
         return sha256_json(
             {
                 "tenant_id": self.tenant_id,
-                "target": self.target.model_dump(),
+                # exclude_none keeps legacy 3-field target digests stable while making a
+                # declared artifact commitment part of the request's semantic identity.
+                "target": self.target.model_dump(exclude_none=True),
                 "environment": self.environment.model_dump(),
                 "policy_version": self.policy_version,
             }
@@ -132,6 +139,18 @@ def submit(
         raise SubmitError(403, "tenant_mismatch")
     if request.policy_version != manifest.manifest_id:
         raise SubmitError(422, "policy_unknown")
+    if request.target.artifact_sha256 is not None:
+        # A declared artifact commitment must be self-consistent with the declared identity
+        # digest, or the run could never reconcile to any acquired identity (fail-closed).
+        expected = declared_target_identity_digest(
+            request.tenant_id,
+            request.target.target_type,
+            request.target.artifact_sha256,
+            request.target.source_commit,
+            request.target.reference,
+        )
+        if expected != request.target.identity_digest:
+            raise SubmitError(422, "target_commitment_mismatch")
 
     request_digest = request.request_digest()
     existing = store.find_idempotent(request.tenant_id, request.idempotency_key)
@@ -155,6 +174,8 @@ def submit(
             policy_version=request.policy_version,
             manifest_id=manifest.manifest_id,
             manifest_digest=manifest.digest,
+            declared_artifact_sha256=request.target.artifact_sha256,
+            declared_source_commit=request.target.source_commit,
         )
     except sqlite3.IntegrityError:
         # A concurrent submit of the same (request, key) already created this run — return it as a

@@ -29,6 +29,7 @@ from .models import (
     TargetIdentity,
     VerdictLifecycleEvent,
     VerificationReport,
+    declared_target_identity_digest,
 )
 from .state_machine import validate_transition
 
@@ -269,12 +270,16 @@ class EvidenceStore:
         policy_version: str,
         manifest_id: str,
         manifest_digest: str,
+        declared_artifact_sha256: str | None = None,
+        declared_source_commit: str | None = None,
     ) -> None:
         """Register a run from a client-declared, pre-computed target identity digest.
 
         Intake (`echo.certforge.submit`) provides the immutable target binding as a digest, not
         the full canonical field set, so the digest is stored as the authoritative commitment;
-        target acquisition later verifies the acquired artifact hashes to this digest.
+        target acquisition later verifies the acquired artifact hashes to this digest. When a
+        declared artifact commitment is provided (platform webhooks), it is stored alongside
+        the digest so `reconcile_declared_target` can bind the run to its acquired identity.
         """
         require_identifier(run_id, "run_id")
         require_identifier(tenant_id, "tenant_id")
@@ -291,6 +296,11 @@ class EvidenceStore:
             "declared_identity_digest": target_identity_digest,
             "reference": target_reference,
         }
+        if declared_artifact_sha256 is not None:
+            require_sha256(declared_artifact_sha256, "declared_artifact_sha256")
+            target_json["declared_artifact_sha256"] = declared_artifact_sha256
+        if declared_source_commit is not None:
+            target_json["declared_source_commit"] = declared_source_commit
         now = to_utc_iso(utc_now())
         with self._connection() as connection:
             connection.execute(
@@ -317,6 +327,83 @@ class EvidenceStore:
                     now,
                     policy_version,
                     target_reference,
+                ),
+            )
+
+    def reconcile_declared_target(
+        self,
+        run_id: str,
+        tenant_id: str,
+        target: TargetIdentity,
+        environment: EnvironmentIdentity,
+    ) -> None:
+        """Bind a DECLARED run to its ACQUIRED exact identity — pre-execution, fail-closed.
+
+        A run registered from a declared commitment (webhook/intake) carries only a target
+        identity digest plus, when supplied, a declared artifact commitment. Before execution
+        the worker acquires the real artifact and calls this to replace the declared
+        commitment with the full canonical ``TargetIdentity`` — but ONLY when every declared
+        commitment matches the acquired identity exactly:
+
+        * the run must still be pending (CREATED/QUEUED) — the window closes at acquisition;
+        * a declared artifact commitment must exist and equal the acquired artifact digest
+          (a declared run WITHOUT an artifact commitment can never reconcile — fail-closed);
+        * a declared source commit, when present, must equal the acquired one;
+        * the stored commitment must re-hash to the stored identity digest (tamper check);
+        * the execution environment must match the declared environment identity digest.
+
+        Any violation raises ``ValueError`` and the run must not execute. The declared
+        ``target_type`` is a platform classification ("package"/"container"), not the
+        acquisition transport ("local"/"git"); the artifact digest is the semantic
+        commitment, so types are deliberately not compared.
+        """
+        row = self.get_run(run_id, tenant_id)  # KeyError -> unknown run (tenant-scoped)
+        target_data: dict[str, Any] = json.loads(str(row["target_identity_json"]))
+        if "declared_identity_digest" not in target_data:
+            # Already a full identity: idempotent when identical, refused otherwise.
+            if str(row["target_identity_digest"]) == target.identity_digest:
+                return
+            raise ValueError("target_already_reconciled_to_different_identity")
+        if row["state"] not in (RunState.CREATED.value, RunState.QUEUED.value):
+            raise ValueError("target_reconciliation_window_closed")
+        if target.tenant_id != tenant_id or target_data.get("tenant_id") != tenant_id:
+            raise ValueError("target_reconciliation_tenant_mismatch")
+        declared_artifact = target_data.get("declared_artifact_sha256")
+        if not isinstance(declared_artifact, str) or not declared_artifact:
+            raise ValueError("target_declared_artifact_commitment_missing")
+        if declared_artifact != target.artifact_sha256:
+            raise ValueError("target_declared_artifact_mismatch")
+        declared_commit = target_data.get("declared_source_commit")
+        if declared_commit is not None and declared_commit != target.source_commit:
+            raise ValueError("target_declared_source_commit_mismatch")
+        recomputed = declared_target_identity_digest(
+            tenant_id,
+            str(target_data.get("target_type")),
+            declared_artifact,
+            declared_commit,
+            str(target_data.get("reference")),
+        )
+        if recomputed != target_data.get("declared_identity_digest") or recomputed != str(
+            row["target_identity_digest"]
+        ):
+            raise ValueError("target_declared_commitment_integrity_failed")
+        if environment.identity_digest != str(row["environment_identity_digest"]):
+            raise ValueError("environment_identity_mismatch")
+        now = to_utc_iso(utc_now())
+        with self._connection() as connection:
+            connection.execute(
+                """
+                UPDATE runs SET target_identity_json = ?, target_identity_digest = ?,
+                    environment_identity_json = ?, updated_at = ?
+                WHERE run_id = ? AND tenant_id = ?
+                """,
+                (
+                    canonical_json(target.to_dict()),
+                    target.identity_digest,
+                    canonical_json(environment.to_dict()),
+                    now,
+                    run_id,
+                    tenant_id,
                 ),
             )
 

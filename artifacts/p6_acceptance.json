@@ -1,7 +1,7 @@
 {
   "phase": "P6",
   "title": "deployment enforcement and platform integration \u2014 live local acceptance",
-  "generated_at": "2026-07-25T08:23:05.627386Z",
+  "generated_at": "2026-07-25T09:17:01.102155Z",
   "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
   "passed": true,
   "checks": [
@@ -11,7 +11,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-68bbfff102bd21c4c23f8bb9734aa704\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"a9ff4f5f06fd3dc82fd4e084edde49100c2551ea214cae7d182ba64ff7574c13\", \"created_at\": \"2026-07-25T08:23:00.156196Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-ff4d61a3fd9ca433f43aaa8f84dae68b\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"a6b1d4dca3394a00b902ed7b2adac093585696186b672e62a1cac3839715c5ba\", \"created_at\": \"2026-07-25T09:16:56.629872Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -29,7 +29,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-237cfd939bd1610011d9947aaca83fa3\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"1f6d8b28f218ee80a0f18f40e2ee4ad663768deae39df2bac5060ce4f6062ab5\", \"created_at\": \"2026-07-25T08:23:00.513101Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-79c252401033543ce3afa225058b2c57\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"34e3a25435beab6f72b2504a6291a85e135e891b754c7738ca5e8eb109bb4d08\", \"created_at\": \"2026-07-25T09:16:56.879223Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -38,7 +38,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-cefb64bc6251759650ff427873f70db5\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"b90973f00caedda62672571b44f35bdadff494a002e319cc38db47a3c7975b4b\", \"created_at\": \"2026-07-25T08:23:00.892499Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-e842c91e9cdd4f0f795dee327b055704\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"db850490c5eef429f99add7008a6521e64ca65401c2ab5c1915b68b5393bc035\", \"created_at\": \"2026-07-25T09:16:57.061779Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -59,21 +59,21 @@
         "failure_candidate": {
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "run_id": "cert-p6-v1",
-          "admission_id": "dep-f9100ebae56c0718aac18d481ff09269",
+          "admission_id": "dep-6976950591a26e9fe05dcc4761780c99",
           "deployment_id": "deploy-a3-prd",
-          "admitted_at": "2026-07-25T08:23:01.646893Z"
+          "admitted_at": "2026-07-25T09:16:57.512824Z"
         },
         "rollback_target": {
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "run_id": "cert-p6-v1",
-          "admission_id": "dep-f9100ebae56c0718aac18d481ff09269",
+          "admission_id": "dep-6976950591a26e9fe05dcc4761780c99",
           "deployment_id": "deploy-a3-prd",
-          "admitted_at": "2026-07-25T08:23:01.646893Z"
+          "admitted_at": "2026-07-25T09:16:57.512824Z"
         },
         "rolled_back": {
           "status": "ROLLED_BACK",
           "detail": "restored v1",
-          "admission_id": "dep-f9f0123f9f43765925c0eb56b30f1d74",
+          "admission_id": "dep-76b1c864c27b3e002efd2b73f6768976",
           "artifact_sha256": "6cf9eb2e75fbaf4037393188b98be82a05499dcfc0c45a6eeeb840bd7f775c20",
           "deployment_environment": "production",
           "rollback_to": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0"
@@ -86,7 +86,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-353bbad0c224c31f7cbace254baf3adb\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"a7dbbf26570f0e8de7e2caa77ee586a1908ff1ffba66892818c67d0f0ecbc3a2\", \"created_at\": \"2026-07-25T08:23:02.925286Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-1ac57e54dd948973a8f114c1b62920d4\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"dbfc79db13465f65d6010de4b149bd79bd43f20ee72a61d800c310adbb368b59\", \"created_at\": \"2026-07-25T09:16:58.428470Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -107,6 +107,17 @@
         "first": 201,
         "replay": 200,
         "bad_signature": 401
+      }
+    },
+    {
+      "id": "A10",
+      "description": "unsigned mutation with tenant header only is rejected 401",
+      "passed": true,
+      "detail": {
+        "status": 401,
+        "body": {
+          "detail": "deployment_credential_signature_missing"
+        }
       }
     },
     {

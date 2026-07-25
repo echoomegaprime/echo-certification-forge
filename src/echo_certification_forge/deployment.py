@@ -144,7 +144,7 @@ class DeploymentLedger:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
@@ -210,42 +210,54 @@ class DeploymentLedger:
         require_identifier(actor, "actor")
         record_id = f"dep-{secrets.token_hex(16)}"
         created_at = to_utc_iso(utc_now())
-        with self._connection() as connection:
-            previous = connection.execute(
-                "SELECT ordinal, chain_hash FROM deployment_records ORDER BY ordinal DESC LIMIT 1"
-            ).fetchone()
-            prev_chain_hash = _ZERO_HASH if previous is None else str(previous["chain_hash"])
-            descriptor = {
-                "record_id": record_id,
-                "tenant_id": tenant_id,
-                "record_type": record_type.value,
-                "admission_id": admission_id,
-                "run_id": run_id,
-                "artifact_sha256": artifact_sha256,
-                "deployment_environment": deployment_environment,
-                "allowed": allowed,
-                "payload": payload,
-                "actor": actor,
-                "created_at": created_at,
-            }
-            record_hash = sha256_json(descriptor)
-            chain_hash = sha256_bytes(bytes.fromhex(prev_chain_hash) + bytes.fromhex(record_hash))
-            connection.execute(
-                """
-                INSERT INTO deployment_records(
-                    record_id, tenant_id, record_type, admission_id, run_id, artifact_sha256,
-                    deployment_environment, allowed, payload_json, actor, created_at,
-                    record_hash, prev_chain_hash, chain_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record_id, tenant_id, record_type.value, admission_id, run_id, artifact_sha256,
-                    deployment_environment,
-                    None if allowed is None else int(allowed),
-                    json.dumps(payload, sort_keys=True), actor, created_at,
-                    record_hash, prev_chain_hash, chain_hash,
-                ),
-            )
+        connection = self._connect()
+        try:
+            # Serialize appends: take the write lock BEFORE reading the chain tip so two
+            # concurrent appends can never observe the same tip and fork the hash chain.
+            connection.isolation_level = None
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                previous = connection.execute(
+                    "SELECT ordinal, chain_hash FROM deployment_records ORDER BY ordinal DESC LIMIT 1"
+                ).fetchone()
+                prev_chain_hash = _ZERO_HASH if previous is None else str(previous["chain_hash"])
+                descriptor = {
+                    "record_id": record_id,
+                    "tenant_id": tenant_id,
+                    "record_type": record_type.value,
+                    "admission_id": admission_id,
+                    "run_id": run_id,
+                    "artifact_sha256": artifact_sha256,
+                    "deployment_environment": deployment_environment,
+                    "allowed": allowed,
+                    "payload": payload,
+                    "actor": actor,
+                    "created_at": created_at,
+                }
+                record_hash = sha256_json(descriptor)
+                chain_hash = sha256_bytes(bytes.fromhex(prev_chain_hash) + bytes.fromhex(record_hash))
+                connection.execute(
+                    """
+                    INSERT INTO deployment_records(
+                        record_id, tenant_id, record_type, admission_id, run_id, artifact_sha256,
+                        deployment_environment, allowed, payload_json, actor, created_at,
+                        record_hash, prev_chain_hash, chain_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record_id, tenant_id, record_type.value, admission_id, run_id, artifact_sha256,
+                        deployment_environment,
+                        None if allowed is None else int(allowed),
+                        json.dumps(payload, sort_keys=True), actor, created_at,
+                        record_hash, prev_chain_hash, chain_hash,
+                    ),
+                )
+                connection.execute("COMMIT")
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+        finally:
+            connection.close()
         return {**descriptor, "record_hash": record_hash, "chain_hash": chain_hash}
 
     def _rows(self, sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
@@ -373,10 +385,16 @@ class DeploymentAdmissionController:
         store: EvidenceStore,
         trusted_keys: TrustedPublicKeyRegistry,
         ledger: DeploymentLedger,
+        active_rule_manifest_digest: str,
     ) -> None:
         self.store = store
         self.trusted_keys = trusted_keys
         self.ledger = ledger
+        # The controller is bound to the ACTIVE mandatory-rule manifest at construction:
+        # callers can never substitute a stale/rolled-over policy digest at admission time.
+        self.active_rule_manifest_digest = require_sha256(
+            active_rule_manifest_digest, "active_rule_manifest_digest"
+        )
         self._gate = DeployGate(store, trusted_keys)
 
     # -- certification binding -------------------------------------------------------------
@@ -428,6 +446,11 @@ class DeploymentAdmissionController:
         run_id: str | None = None
         gate_reasons: tuple[str, ...] = ()
 
+        if request.rule_manifest_digest != self.active_rule_manifest_digest:
+            # A caller pinning anything other than the ACTIVE mandatory manifest (stale
+            # pre-rollover digest, unknown digest) is denied outright — fail-closed.
+            reasons.append("rule_manifest_not_active")
+
         binding = self.ledger.find_binding(request.tenant_id, artifact_sha256)
         if binding is None:
             reasons.append("artifact_not_certified")
@@ -454,7 +477,10 @@ class DeploymentAdmissionController:
                         run_id=run_id,
                         target_identity_digest=str(run_row["target_identity_digest"]),
                         environment_identity_digest=request.environment_identity_digest,
-                        rule_manifest_digest=request.rule_manifest_digest,
+                        # The gate always evaluates against the ACTIVE manifest digest, never
+                        # a caller-supplied one: a certification issued under a superseded
+                        # policy fails with rule_manifest_mismatch.
+                        rule_manifest_digest=self.active_rule_manifest_digest,
                     )
                     gate_reasons = gate_decision.reasons
                     if not gate_decision.allowed:
@@ -565,8 +591,9 @@ class DeploymentAdmissionController:
         """Last-known-good production artifact whose certification is STILL valid right now.
 
         Scans succeeded production admissions newest-first and re-runs the deploy gate with
-        the digests each admission was granted under; a since-revoked or expired
-        certification is never offered as a rollback target (fail-closed)."""
+        the environment digest each admission was granted under and the CURRENTLY ACTIVE
+        rule manifest digest; a since-revoked, expired, or policy-rolled-over certification
+        is never offered as a rollback target (fail-closed)."""
         for admission in self.ledger.good_production_admissions(tenant_id):
             run_id = admission["run_id"]
             if run_id is None:
@@ -579,7 +606,7 @@ class DeploymentAdmissionController:
                     run_id=str(run_id),
                     target_identity_digest=str(run_row["target_identity_digest"]),
                     environment_identity_digest=str(payload["environment_identity_digest"]),
-                    rule_manifest_digest=str(payload["rule_manifest_digest"]),
+                    rule_manifest_digest=self.active_rule_manifest_digest,
                 )
             except KeyError:
                 continue
@@ -602,8 +629,9 @@ class DeploymentAdmissionController:
         environment_identity_digest: str | None = None,
         rule_manifest_digest: str | None = None,
     ) -> dict[str, Any]:
-        """Read-only release status check for CI (writes nothing). When the required release
-        digests are not supplied, the certification's own bound digests are used."""
+        """Read-only release status check for CI (writes nothing). The gate is always
+        evaluated against the ACTIVE rule manifest digest; a caller-supplied stale policy
+        digest is reported as not-active and can never make the release admissible."""
         digest = normalize_artifact_digest(artifact_sha256)
         binding = self.ledger.find_binding(tenant_id, digest)
         status: dict[str, Any] = {
@@ -620,7 +648,9 @@ class DeploymentAdmissionController:
         run_id = str(binding["run_id"])
         binding_payload = json.loads(str(binding["payload_json"]))
         env_digest = environment_identity_digest or str(binding_payload["environment_identity_digest"])
-        rule_digest = rule_manifest_digest or str(binding_payload["rule_manifest_digest"])
+        extra_reasons: list[str] = []
+        if rule_manifest_digest is not None and rule_manifest_digest != self.active_rule_manifest_digest:
+            extra_reasons.append("rule_manifest_not_active")
         try:
             run_row = self.store.get_run(run_id, tenant_id)
         except KeyError:
@@ -631,17 +661,18 @@ class DeploymentAdmissionController:
             run_id=run_id,
             target_identity_digest=str(run_row["target_identity_digest"]),
             environment_identity_digest=env_digest,
-            rule_manifest_digest=rule_digest,
+            rule_manifest_digest=self.active_rule_manifest_digest,
         )
+        gate_allowed = gate_decision.allowed and not extra_reasons
         staging_ok = self.ledger.staging_accepted(tenant_id, digest, run_id)
         status.update(
             {
                 "certified": True,
                 "run_id": run_id,
-                "gate_allowed": gate_decision.allowed,
-                "reasons": list(gate_decision.reasons),
+                "gate_allowed": gate_allowed,
+                "reasons": sorted(set(extra_reasons + list(gate_decision.reasons))),
                 "staging_accepted": staging_ok,
-                "production_admissible": gate_decision.allowed and staging_ok,
+                "production_admissible": gate_allowed and staging_ok,
             }
         )
         return status
