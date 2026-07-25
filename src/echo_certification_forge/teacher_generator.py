@@ -267,6 +267,7 @@ def _normalize_provider_response(
 
 
 def _request_payload(request: dict[str, Any]) -> bytes:
+    contract = _teacher_contract_reminder(request)
     payload = {
         "contents": [
             {
@@ -275,7 +276,7 @@ def _request_payload(request: dict[str, Any]) -> bytes:
             }
         ],
         "systemInstruction": {
-            "parts": [{"text": request["system"]}],
+            "parts": [{"text": request["system"] + contract}],
         },
         "generationConfig": {
             "candidateCount": 1,
@@ -286,7 +287,7 @@ def _request_payload(request: dict[str, Any]) -> bytes:
     return canonical_json(payload).encode("utf-8")
 
 
-def _xai_contract_reminder(adapter: str) -> str:
+def _base_contract_reminder(adapter: str) -> str:
     if adapter == "gs343":
         return (
             " Contract reminders: root_causes and repair_actions must be non-empty. "
@@ -306,20 +307,75 @@ def _xai_contract_reminder(adapter: str) -> str:
     )
 
 
-def _xai_request_payload(request: dict[str, Any], model: str) -> bytes:
-    contract = _xai_contract_reminder(str(request["adapter"]))
-    if request["adapter"] == "r2d2":
-        fact_blob = str(request["prompt"])[len("Verified finding envelope: ") :]
-        for suffix in (". Narrate without", ". Preserve the condition."):
-            if suffix in fact_blob:
-                fact_blob = fact_blob.split(suffix, 1)[0]
-                break
-        expected_facts = [item.strip() for item in fact_blob.split(";")]
+def _r2_exact_contract(prompt: str) -> dict[str, Any]:
+    prefix = "Verified finding envelope: "
+    if not prompt.startswith(prefix):
+        raise TeacherGenerationError("R2D2 teacher prompt lacks verified envelope")
+    body = prompt[len(prefix) :]
+    if "; closed_check_note=" in body:
+        fact_blob = body.split("; closed_check_note=", 1)[0]
+        facts = [item.strip() for item in fact_blob.split(";")]
+    elif ". Preserve the condition." in body:
+        fact_blob = body.split(". Preserve the condition.", 1)[0]
+        parts = [item.strip() for item in fact_blob.split(";")]
+        facts = parts[:4] + ["; ".join(parts[4:])]
+    elif ". Narrate without claiming recovery or readiness." in body:
+        fact_blob = body.split(
+            ". Narrate without claiming recovery or readiness.", 1
+        )[0]
+        facts = [item.strip() for item in fact_blob.split(";")]
+    else:
+        raise TeacherGenerationError("R2D2 teacher prompt has unknown envelope suffix")
+
+    fact_map = dict(item.split("=", 1) for item in facts)
+    component = fact_map["component"]
+    verdict = fact_map["release_verdict"]
+    if verdict == "PRODUCTION_READY":
+        summary = (
+            f"R2-D2 report: {component} is PRODUCTION_READY; the signed complete run "
+            "has no blocking findings. Beep-confirmed."
+        )
+        action = (
+            "Preserve the verified evidence bundle and proceed under the supplied verdict."
+        )
+    elif verdict == "CONDITIONALLY_READY":
+        condition = fact_map["condition"]
+        summary = (
+            f"R2-D2 report: {component} is CONDITIONALLY_READY with MEDIUM severity. "
+            f"Condition before external beta: {condition}. Diagnostic beep."
+        )
+        action = condition
+    elif verdict == "NOT_READY":
+        finding = fact_map["finding"]
+        summary = (
+            f"R2-D2 critical alert: {component} remains NOT_READY because {finding}; "
+            "recovery is unverified. Warning beep."
+        )
+        action = "Keep release blocked and require independently verified recovery evidence."
+    else:
+        raise TeacherGenerationError(f"unsupported R2D2 verdict: {verdict}")
+    return {"facts_preserved": facts, "summary": summary, "recommended_action": action}
+
+
+def _teacher_contract_reminder(request: dict[str, Any]) -> str:
+    adapter = str(request["adapter"])
+    contract = _base_contract_reminder(adapter)
+    if adapter == "r2d2":
+        expected = _r2_exact_contract(str(request["prompt"]))
         contract += (
             " The exact facts_preserved JSON array for this request is: "
-            + canonical_json(expected_facts)
+            + canonical_json(expected["facts_preserved"])
+            + ". The exact summary is: "
+            + canonical_json(expected["summary"])
+            + ". The exact recommended_action is: "
+            + canonical_json(expected["recommended_action"])
             + "."
         )
+    return contract
+
+
+def _xai_request_payload(request: dict[str, Any], model: str) -> bytes:
+    contract = _teacher_contract_reminder(request)
     payload = {
         "model": model,
         "messages": [

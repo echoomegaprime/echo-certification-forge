@@ -204,6 +204,39 @@ def test_builds_complete_leak_free_corpora(signed_corpora):
     assert validate_corpora(output, provenance, trusted)["passed"] is True
 
 
+def test_builds_versioned_contract_weighted_corpora(signed_corpora):
+    output, provenance, trusted, _ = signed_corpora
+    root = output.parent
+    v2_output = root / "output-v2"
+    report = build_corpora(
+        root / "gs343_curriculum_source.jsonl",
+        root / "r2d2_curriculum_source.jsonl",
+        v2_output,
+        provenance,
+        trusted,
+        curriculum_rows=1_800,
+        dataset_version="p5-v2",
+    )
+    for adapter in ("gs343", "r2d2"):
+        assert report[adapter]["train_rows"] == 3_400
+        manifest = json.loads(
+            (v2_output / f"{adapter}_p5_v2" / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert manifest["dataset_version"] == "p5-v2"
+        assert manifest["validation"]["verified_teacher_target_rows"] == 1_600
+    assert (
+        validate_corpora(
+            v2_output,
+            provenance,
+            trusted,
+            dataset_version="p5-v2",
+        )["passed"]
+        is True
+    )
+
+
 def test_exports_requests_from_separate_curriculum_ledgers(tmp_path: Path):
     provenance = tmp_path / "provenance"
     report = export_teacher_requests(
