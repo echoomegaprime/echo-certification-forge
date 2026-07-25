@@ -43,6 +43,24 @@ def test_recipe_matches_p5_v1_training_evidence():
     }
 
 
+def test_max_length_override_is_bounded_and_explicit():
+    parser = MODULE.build_parser()
+    required = [
+        "--adapter",
+        "r2d2",
+        "--train-jsonl",
+        "train.jsonl",
+        "--work-dir",
+        "work",
+        "--output-dir",
+        "out",
+    ]
+    assert parser.parse_args(required).max_length == 1024
+    assert parser.parse_args([*required, "--max-length", "896"]).max_length == 896
+    with pytest.raises(SystemExit):
+        parser.parse_args([*required, "--max-length", "900"])
+
+
 def test_load_training_rows_is_strict(tmp_path: Path):
     path = tmp_path / "train.jsonl"
     path.write_text(json.dumps(_row("a")) + "\n", encoding="utf-8")
