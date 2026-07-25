@@ -12,6 +12,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from echo_certification_forge.p5_qualification import (
+    QualificationArtifactDigests,
     QualificationConfig,
     QualificationModels,
     run_qualification,
@@ -37,6 +38,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--gs-incumbent-model", required=True)
     parser.add_argument("--r2-candidate-model", required=True)
     parser.add_argument("--r2-incumbent-model", required=True)
+    parser.add_argument(
+        "--gs-candidate-sha256",
+        required=True,
+        help="independently trusted SHA-256 of the corrective GS343 artifact",
+    )
+    parser.add_argument(
+        "--gs-incumbent-sha256",
+        required=True,
+        help="independently trusted SHA-256 of the incumbent GS343 artifact",
+    )
+    parser.add_argument(
+        "--r2-candidate-sha256",
+        required=True,
+        help="independently trusted SHA-256 of the corrective R2D2 artifact",
+    )
+    parser.add_argument(
+        "--r2-incumbent-sha256",
+        required=True,
+        help="independently trusted SHA-256 of the incumbent R2D2 artifact",
+    )
     parser.add_argument("--timeout-seconds", type=float, default=190.0)
     parser.add_argument("--max-tokens", type=int, default=512)
     args = parser.parse_args(argv)
@@ -52,6 +73,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             gs_incumbent=args.gs_incumbent_model,
             r2_candidate=args.r2_candidate_model,
             r2_incumbent=args.r2_incumbent_model,
+        ),
+        artifact_digests=QualificationArtifactDigests(
+            gs_candidate=args.gs_candidate_sha256,
+            gs_incumbent=args.gs_incumbent_sha256,
+            r2_candidate=args.r2_candidate_sha256,
+            r2_incumbent=args.r2_incumbent_sha256,
         ),
         timeout_seconds=args.timeout_seconds,
         max_tokens=args.max_tokens,

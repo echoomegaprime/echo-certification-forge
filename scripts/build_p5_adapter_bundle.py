@@ -28,17 +28,34 @@ def main() -> int:
     parser.add_argument("--qualification-report", required=True, type=Path)
     parser.add_argument("--gs343-r5-evidence", required=True, type=Path)
     parser.add_argument("--r2d2-r5-evidence", required=True, type=Path)
+    parser.add_argument("--gs343-model")
+    parser.add_argument("--r2d2-model")
     parser.add_argument("--gs343-quality-mode", default="gs_adapter_context")
     parser.add_argument("--r2d2-quality-mode", default="r2_adapter_context")
     parser.add_argument("--output-directory", required=True, type=Path)
     args = parser.parse_args()
 
+    qualification_report = load_json(args.qualification_report)
+    if qualification_report.get("schema") == "echo.certification-forge.p5-qualification/v1":
+        try:
+            gs343_model = qualification_report["models"]["gs343"]["candidate"]
+            r2d2_model = qualification_report["models"]["r2d2"]["candidate"]
+        except (KeyError, TypeError) as exc:
+            raise SystemExit("new P5 qualification report lacks candidate model bindings") from exc
+        if args.gs343_model and args.gs343_model != gs343_model:
+            raise SystemExit("--gs343-model differs from qualification report candidate")
+        if args.r2d2_model and args.r2d2_model != r2d2_model:
+            raise SystemExit("--r2d2-model differs from qualification report candidate")
+    else:
+        gs343_model = args.gs343_model or "echo-gs343"
+        r2d2_model = args.r2d2_model or "echo-r2d2"
+
     records = build_records_from_evidence(
         (
-            AdapterEvidenceSource("gs343", "echo-gs343", args.gs343_r5_evidence, args.gs343_quality_mode),
-            AdapterEvidenceSource("r2d2", "echo-r2d2", args.r2d2_r5_evidence, args.r2d2_quality_mode),
+            AdapterEvidenceSource("gs343", gs343_model, args.gs343_r5_evidence, args.gs343_quality_mode),
+            AdapterEvidenceSource("r2d2", r2d2_model, args.r2d2_r5_evidence, args.r2d2_quality_mode),
         ),
-        qualification_report=load_json(args.qualification_report),
+        qualification_report=qualification_report,
     )
     policy = default_p5_policy(records)
     signed = sign_adapter_bundle(records, run_id=args.run_id, tenant_id=args.tenant_id)

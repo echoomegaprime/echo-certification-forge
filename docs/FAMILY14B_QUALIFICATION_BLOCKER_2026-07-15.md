@@ -44,10 +44,16 @@ python scripts/qualify_family_adapters.py `
   --gs-incumbent-model <current-gs-model> `
   --r2-candidate-model <corrective-r2-model> `
   --r2-incumbent-model <current-r2-model> `
+  --gs-candidate-sha256 <trusted-corrective-gs-artifact-sha256> `
+  --gs-incumbent-sha256 <trusted-current-gs-artifact-sha256> `
+  --r2-candidate-sha256 <trusted-corrective-r2-artifact-sha256> `
+  --r2-incumbent-sha256 <trusted-current-r2-artifact-sha256> `
   --output-directory artifacts/p5/qualification/<run-id>
 ```
 
 Reuse the same output directory to resume; successfully checkpointed rows are verified and skipped. A changed eval digest, model set, attestation, or inference configuration requires a new output directory.
+
+The four artifact digests are mandatory operator trust inputs. Obtain them from the independently verified adapter artifact manifests or the expected identities used by the successful R5 controls, never from the completion response being qualified. The harness binds these pins into its state, checkpoint, report, and every routing-receipt verification; a label match or merely different candidate/incumbent digests cannot pass.
 
 ## Discovery note
 

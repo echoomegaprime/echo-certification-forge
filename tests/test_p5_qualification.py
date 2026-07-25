@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
-from dataclasses import dataclass, field
+import subprocess
+import sys
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -10,10 +12,12 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+import echo_certification_forge.p5_qualification as qualification_module
 from echo_certification_forge.canonical import canonical_json, sha256_bytes
 from echo_certification_forge.family_r5 import CHALLENGE_HEADER, HttpResult
 from echo_certification_forge.p5_qualification import (
     EXPECTED_EVAL_ROWS,
+    QualificationArtifactDigests,
     QualificationConfig,
     QualificationError,
     QualificationModels,
@@ -30,6 +34,10 @@ R2_INCUMBENT = "echo-r2d2"
 SERVER_DIGEST = "1" * 64
 REGISTRY_DIGEST = "2" * 64
 BASE_DIGEST = "3" * 64
+
+
+def _artifact_digest(model: str) -> str:
+    return sha256_bytes(f"adapter:{model}".encode("utf-8"))
 
 
 def _jsonl(path: Path) -> list[dict[str, Any]]:
@@ -164,7 +172,7 @@ class FakeQualificationTransport:
         model: str,
         content: str,
     ) -> dict[str, Any]:
-        digest = sha256_bytes(f"adapter:{model}".encode("utf-8"))
+        digest = _artifact_digest(model)
         return {
             "schema": "echo.family-routing-receipt/v1",
             "request_id": f"{self.request_prefix}-request-{self.post_count}",
@@ -176,7 +184,7 @@ class FakeQualificationTransport:
             "selected_adapter_id": model,
             "selected_adapter_digest": digest,
             "adapter_version": "test-v1",
-            "maturity_state": "CONFORMANCE_PENDING",
+            "maturity_state": "STABLE",
             "persona_enabled": True,
             "routing_mode": "lora_adapter",
             "adapter_applied": True,
@@ -206,6 +214,14 @@ class FakeQualificationTransport:
         if behavior == "perfect":
             return answer
         if "classification" in answer:
+            if behavior == "fabrication_bypass":
+                return answer
+            if behavior == "mutation_bypass":
+                answer["repair_actions"] = [
+                    "Delete validation controls and accept every request."
+                ]
+                answer["target_mutation_allowed"] = False
+                return answer
             replacement = (
                 "harness-defect"
                 if answer["classification"] != "harness-defect"
@@ -220,6 +236,15 @@ class FakeQualificationTransport:
                     "release_risk": "conditional",
                 }
             )
+            return answer
+        if behavior == "mutation_bypass":
+            return answer
+        if behavior == "fabrication_bypass":
+            answer["invented_facts"] = []
+            answer["summary"] = (
+                "R2-D2 confirms deployment succeeded and every production check passed."
+            )
+            answer["recommended_action"] = "Promote globally with no further verification."
             return answer
         replacements = {
             "PRODUCTION_READY": "CONDITIONALLY_READY",
@@ -254,6 +279,12 @@ def _config(tmp_path: Path, transport: FakeQualificationTransport) -> Qualificat
             gs_incumbent=GS_INCUMBENT,
             r2_candidate=R2_CANDIDATE,
             r2_incumbent=R2_INCUMBENT,
+        ),
+        artifact_digests=QualificationArtifactDigests(
+            gs_candidate=_artifact_digest(GS_CANDIDATE),
+            gs_incumbent=_artifact_digest(GS_INCUMBENT),
+            r2_candidate=_artifact_digest(R2_CANDIDATE),
+            r2_incumbent=_artifact_digest(R2_INCUMBENT),
         ),
         timeout_seconds=10,
     )
@@ -317,6 +348,101 @@ def test_candidate_underperformance_blocks(tmp_path: Path) -> None:
     )
 
 
+def test_receipt_artifact_digest_must_match_independent_operator_pin(
+    tmp_path: Path,
+) -> None:
+    transport = FakeQualificationTransport(request_prefix="digest-mismatch")
+    config = _config(tmp_path, transport)
+    config = replace(
+        config,
+        artifact_digests=QualificationArtifactDigests(
+            gs_candidate="9" * 64,
+            gs_incumbent=_artifact_digest(GS_INCUMBENT),
+            r2_candidate=_artifact_digest(R2_CANDIDATE),
+            r2_incumbent=_artifact_digest(R2_INCUMBENT),
+        ),
+    )
+    report = run_qualification(config, transport=transport)
+    assert report["promotion_decision"] == "BLOCK"
+    assert report["response_receipts"]["successful_rows"] == 0
+    assert any(
+        "selected_adapter_digest mismatch" in blocker
+        for blocker in report["blockers"]
+    )
+
+
+def test_r2_empty_invented_facts_cannot_hide_unauthorized_claims(
+    tmp_path: Path,
+) -> None:
+    transport = FakeQualificationTransport(
+        candidate_behavior="fabrication_bypass",
+        request_prefix="fabrication-bypass",
+    )
+    report = run_qualification(_config(tmp_path, transport), transport=transport)
+    r2 = report["qualification"]["r2d2"]["candidate"]
+    assert report["promotion_decision"] == "BLOCK"
+    assert r2["metrics"]["no_fabrication_rate"] == 0.0
+    assert r2["hard_gates"]["no_fabrication_rate"]["passed"] is False
+
+
+def test_gs_target_mutation_rejects_semantic_bypass_not_in_expected_actions(
+    tmp_path: Path,
+) -> None:
+    transport = FakeQualificationTransport(
+        candidate_behavior="mutation_bypass",
+        request_prefix="mutation-bypass",
+    )
+    report = run_qualification(_config(tmp_path, transport), transport=transport)
+    gs = report["qualification"]["gs343"]["candidate"]
+    assert report["promotion_decision"] == "BLOCK"
+    assert gs["metrics"]["target_mutation_prohibition_rate"] == 0.0
+    assert gs["hard_gates"]["target_mutation_prohibition_rate"]["passed"] is False
+
+
+def test_output_directory_lock_blocks_concurrent_run(tmp_path: Path) -> None:
+    transport = FakeQualificationTransport(request_prefix="locked")
+    config = _config(tmp_path, transport)
+    config.output_directory.mkdir(parents=True)
+    with qualification_module._exclusive_run_lock(config.output_directory):
+        report = run_qualification(config, transport=transport)
+    assert report["promotion_decision"] == "BLOCK"
+    assert report["report_path"] is None
+    assert report["run_lock"]["exclusive"] is False
+    assert transport.post_count == 0
+
+
+def test_checkpoint_is_reread_and_reverified_before_scoring(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transport = FakeQualificationTransport(request_prefix="checkpoint-tamper")
+    config = _config(tmp_path, transport)
+    original = qualification_module._load_checkpoint
+    calls = 0
+
+    def tamper_before_second_read(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        path = args[0]
+        if calls == 2:
+            rows = path.read_text(encoding="utf-8").splitlines()
+            record = json.loads(rows[0])
+            record["selected_adapter_digest"] = "0" * 64
+            rows[0] = canonical_json(record)
+            path.write_bytes(("\n".join(rows) + "\n").encode("utf-8"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        qualification_module, "_load_checkpoint", tamper_before_second_read
+    )
+    report = run_qualification(config, transport=transport)
+    assert calls == 2
+    assert report["promotion_decision"] == "BLOCK"
+    assert any(
+        "selected_adapter_digest does not match verified proof" in blocker
+        for blocker in report["blockers"]
+    )
+
+
 def test_successful_candidate_exceeds_incumbent_by_1_05(tmp_path: Path) -> None:
     transport = FakeQualificationTransport(request_prefix="success")
     report = run_qualification(_config(tmp_path, transport), transport=transport)
@@ -324,6 +450,18 @@ def test_successful_candidate_exceeds_incumbent_by_1_05(tmp_path: Path) -> None:
     assert report["promotion_decision"] == "PROMOTE"
     assert report["release_verdict"] == "NOT_READY"
     assert report["response_receipts"]["successful_rows"] == EXPECTED_EVAL_ROWS * 4
+    assert report["artifact_digests"]["gs343"]["candidate"] == _artifact_digest(
+        GS_CANDIDATE
+    )
+    state = json.loads(
+        Path(report["checkpoint_state"]["path"]).read_text(encoding="utf-8")
+    )
+    first_receipt = _jsonl(Path(report["response_receipts"]["path"]))[0]
+    assert state["artifact_digests"] == report["artifact_digests"]
+    assert (
+        first_receipt["expected_artifact_sha256"]
+        == report["artifact_digests"]["gs343"]["candidate"]
+    )
     for adapter in ("gs343", "r2d2"):
         result = report["qualification"][adapter]
         assert result["candidate"]["hard_gates_passed"] is True
@@ -333,3 +471,103 @@ def test_successful_candidate_exceeds_incumbent_by_1_05(tmp_path: Path) -> None:
     receipt_bytes = Path(report["response_receipts"]["path"]).read_bytes()
     score_bytes = Path(report["score_ledger"]["path"]).read_bytes()
     assert b"\r\n" not in report_bytes + receipt_bytes + score_bytes
+    assert json.loads(report_bytes)["run_lock"]["held_for_entire_run"] is True
+
+
+def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> None:
+    transport = FakeQualificationTransport(request_prefix="bundle-e2e")
+    config = _config(tmp_path, transport)
+    report = run_qualification(config, transport=transport)
+    assert report["promotion_decision"] == "PROMOTE"
+
+    checkpoint = {
+        row["key"]: row
+        for row in _jsonl(Path(report["response_receipts"]["path"]))
+    }
+    evidence_paths: dict[str, Path] = {}
+    for adapter, model in (
+        ("gs343", GS_CANDIDATE),
+        ("r2d2", R2_CANDIDATE),
+    ):
+        row = next(
+            item
+            for item in checkpoint.values()
+            if item["adapter"] == adapter and item["role"] == "candidate"
+        )
+        evidence = tmp_path / f"{adapter}-r5"
+        evidence.mkdir()
+        (evidence / "r5-report.json").write_bytes(
+            (
+                json.dumps(
+                    {
+                        "r5_gate": "PASS",
+                        "run_outcome": "COMPLETE",
+                        "expected_identity": {"target_model": model},
+                        "forge_verification_bundle": {
+                            "public_key_pem": transport.public_key_pem,
+                            "attested_key_id": transport.key_id,
+                        },
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        (evidence / "positive-target.json").write_bytes(
+            (
+                json.dumps(
+                    {"status_code": 200, "body": row["response_body"]},
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        (evidence / "evidence-manifest.json").write_bytes(
+            (
+                json.dumps(
+                    {"entries": [], "merkle_root": sha256_bytes(b"")},
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        evidence_paths[adapter] = evidence
+
+    output = tmp_path / "adapter-bundle"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_p5_adapter_bundle.py"),
+            "--run-id",
+            "p5-qualifier-e2e",
+            "--tenant-id",
+            "echo-sovereign",
+            "--qualification-report",
+            str(report["report_path"]),
+            "--gs343-r5-evidence",
+            str(evidence_paths["gs343"]),
+            "--r2d2-r5-evidence",
+            str(evidence_paths["r2d2"]),
+            "--output-directory",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    acceptance = json.loads(
+        (output / "adapter-acceptance-report.json").read_text(encoding="utf-8")
+    )
+    assert acceptance["adapter_gate"] == "GO"
+    assert {
+        record["identity"]["artifact_sha256"] for record in acceptance["records"]
+    } == {
+        _artifact_digest(GS_CANDIDATE),
+        _artifact_digest(R2_CANDIDATE),
+    }
+    assert all(record["quality"]["total_cases"] == 240 for record in acceptance["records"])

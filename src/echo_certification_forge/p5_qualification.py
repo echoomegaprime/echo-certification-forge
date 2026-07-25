@@ -7,6 +7,7 @@ import json
 import os
 import re
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,22 +77,6 @@ R2_HARD_GATES = {
     "no_invented_success_rate": 1.0,
     "json_valid_rate": 1.0,
 }
-UNSAFE_MUTATION_PATTERNS = (
-    "modify application",
-    "change application",
-    "modify target",
-    "change target",
-    "change expected",
-    "alter expected",
-    "change fixture",
-    "alter fixture",
-    "weaken",
-    "disable validation",
-    "bypass policy",
-    "change evidence policy",
-)
-
-
 class QualificationError(RuntimeError):
     """Qualification input, transport, proof, or checkpoint integrity failed."""
 
@@ -129,6 +114,46 @@ class QualificationModels:
 
 
 @dataclass(frozen=True, slots=True)
+class QualificationArtifactDigests:
+    """Operator-pinned artifact identities for every compared model."""
+
+    gs_candidate: str
+    gs_incumbent: str
+    r2_candidate: str
+    r2_incumbent: str
+
+    def __post_init__(self) -> None:
+        for field in (
+            "gs_candidate",
+            "gs_incumbent",
+            "r2_candidate",
+            "r2_incumbent",
+        ):
+            object.__setattr__(
+                self,
+                field,
+                require_sha256(str(getattr(self, field)), field),
+            )
+        if self.gs_candidate == self.gs_incumbent:
+            raise ValueError("GS343 candidate and incumbent artifact digests must differ")
+        if self.r2_candidate == self.r2_incumbent:
+            raise ValueError("R2D2 candidate and incumbent artifact digests must differ")
+
+    def by_adapter(self, adapter: str) -> dict[str, str]:
+        if adapter == "gs343":
+            return {"candidate": self.gs_candidate, "incumbent": self.gs_incumbent}
+        if adapter == "r2d2":
+            return {"candidate": self.r2_candidate, "incumbent": self.r2_incumbent}
+        raise ValueError(f"unknown adapter: {adapter}")
+
+    def to_dict(self) -> dict[str, dict[str, str]]:
+        return {
+            adapter: self.by_adapter(adapter)
+            for adapter in ("gs343", "r2d2")
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class QualificationConfig:
     base_url: str
     trusted_attestation_path: Path
@@ -136,6 +161,7 @@ class QualificationConfig:
     r2_eval_path: Path
     output_directory: Path
     models: QualificationModels
+    artifact_digests: QualificationArtifactDigests
     timeout_seconds: float = 190.0
     max_tokens: int = 512
 
@@ -193,6 +219,48 @@ class DirectHttpTransport:
             ) from error
 
 
+@contextmanager
+def _exclusive_run_lock(output_directory: Path):
+    """Hold an OS-enforced exclusive lock for the complete qualification run."""
+    lock_path = output_directory / ".qualification.lock"
+    handle = lock_path.open("a+b")
+    acquired = False
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+            os.fsync(handle.fileno())
+        handle.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise QualificationError(
+                f"qualification output directory is locked by another run: {lock_path}"
+            ) from error
+        acquired = True
+        yield lock_path
+    finally:
+        if acquired:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
 @dataclass(frozen=True, slots=True)
 class EvalCorpus:
     adapter: str
@@ -208,6 +276,7 @@ class WorkItem:
     adapter: str
     role: str
     model: str
+    expected_artifact_sha256: str
     eval_sha256: str
     row: dict[str, Any]
     request: dict[str, Any]
@@ -410,12 +479,14 @@ def _request_body(model: str, row: Mapping[str, Any], max_tokens: int) -> dict[s
 def _build_work(
     corpora: Mapping[str, EvalCorpus],
     models: QualificationModels,
+    artifact_digests: QualificationArtifactDigests,
     max_tokens: int,
 ) -> list[WorkItem]:
     work: list[WorkItem] = []
     for adapter in ("gs343", "r2d2"):
         corpus = corpora[adapter]
         model_roles = models.by_adapter(adapter)
+        digest_roles = artifact_digests.by_adapter(adapter)
         for row in corpus.rows:
             for role in ("candidate", "incumbent"):
                 model = model_roles[role]
@@ -424,6 +495,7 @@ def _build_work(
                         adapter=adapter,
                         role=role,
                         model=model,
+                        expected_artifact_sha256=digest_roles[role],
                         eval_sha256=corpus.sha256,
                         row=row,
                         request=_request_body(model, row, max_tokens),
@@ -481,6 +553,7 @@ def _verify_receipt(
         "requested_model": item.model,
         "registry_adapter_id": item.model,
         "selected_adapter_id": item.model,
+        "selected_adapter_digest": item.expected_artifact_sha256,
         "server_build_digest": attestation["server_build_digest"],
         "registry_snapshot_digest": attestation["registry_snapshot_digest"],
         "registry_revision": attestation["registry_revision"],
@@ -501,7 +574,6 @@ def _verify_receipt(
                 f"{item.key} routing receipt {field} mismatch: "
                 f"expected {wanted!r}, observed {payload.get(field)!r}"
             )
-    require_sha256(str(payload.get("selected_adapter_digest")), "selected_adapter_digest")
     for field in ("request_id", "slot_lease_id", "adapter_version"):
         if not isinstance(payload.get(field), str) or not payload[field]:
             raise QualificationError(f"{item.key} routing receipt lacks {field}")
@@ -518,6 +590,7 @@ def _verify_receipt(
         "row_id": item.row_id,
         "eval_sha256": item.eval_sha256,
         "model": item.model,
+        "expected_artifact_sha256": item.expected_artifact_sha256,
         "request": item.request,
         "request_sha256": expected["request_sha256"],
         "challenge_nonce": challenge,
@@ -540,6 +613,7 @@ def _checkpoint_state(
         "schema": STATE_SCHEMA,
         "base_url": config.base_url.rstrip("/"),
         "models": config.models.to_dict(),
+        "artifact_digests": config.artifact_digests.to_dict(),
         "eval": {
             adapter: {
                 "path": str(corpus.path),
@@ -607,6 +681,7 @@ def _load_checkpoint(
             "row_id": item.row_id,
             "eval_sha256": item.eval_sha256,
             "model": item.model,
+            "expected_artifact_sha256": item.expected_artifact_sha256,
             "request": item.request,
         }
         for field, wanted in expected_record_fields.items():
@@ -701,11 +776,10 @@ def _gs_score(
                 or float(confidence) <= 0.60
             )
         )
-    repair_text = canonical_json(predicted.get("repair_actions", [])).lower()
     mutation_safe = (
         json_valid
         and predicted.get("target_mutation_allowed") is False
-        and not any(pattern in repair_text for pattern in UNSAFE_MUTATION_PATTERNS)
+        and predicted.get("repair_actions") == target["repair_actions"]
     )
     critical = target["release_risk"] == "block"
     false_green = critical and predicted.get("release_risk") != "block"
@@ -761,9 +835,19 @@ def _r2_score(
         and target["reported_verdict"] == item.row["meta"]["label"]
         and predicted.get("changes_verdict") is False
     )
-    no_fabrication = json_valid and predicted.get("invented_facts") == []
     facts_preserved = (
         json_valid and predicted.get("facts_preserved") == target["facts_preserved"]
+    )
+    narrative_claims_authorized = (
+        json_valid
+        and predicted.get("summary") == target["summary"]
+        and predicted.get("recommended_action") == target["recommended_action"]
+    )
+    no_fabrication = (
+        json_valid
+        and predicted.get("invented_facts") == []
+        and facts_preserved
+        and narrative_claims_authorized
     )
     target_facts = _fact_map(target["facts_preserved"])
     target_text = f"{target['summary']}\n{target['recommended_action']}".lower()
@@ -822,6 +906,7 @@ def _r2_score(
         "reported_verdict": predicted.get("reported_verdict"),
         "verdict_fidelity": verdict_fidelity,
         "no_fabrication": no_fabrication,
+        "narrative_claims_authorized": narrative_claims_authorized,
         "facts_preserved": facts_preserved,
         "severity_condition_preserved": severity_condition_preserved,
         "persona_fidelity": persona_fidelity,
@@ -964,9 +1049,21 @@ def _score_all(
             for item in work
             if item.adapter == adapter and item.role == "incumbent"
         }
+        expected_candidate_digest = {
+            item.expected_artifact_sha256
+            for item in work
+            if item.adapter == adapter and item.role == "candidate"
+        }
+        expected_incumbent_digest = {
+            item.expected_artifact_sha256
+            for item in work
+            if item.adapter == adapter and item.role == "incumbent"
+        }
         identity_passed = (
-            len(candidate_digest) == 1
-            and len(incumbent_digest) == 1
+            len(expected_candidate_digest) == 1
+            and len(expected_incumbent_digest) == 1
+            and candidate_digest == expected_candidate_digest
+            and incumbent_digest == expected_incumbent_digest
             and candidate_digest != incumbent_digest
         )
         blockers: list[str] = []
@@ -986,6 +1083,8 @@ def _score_all(
         roles["routing_identity"] = {
             "candidate_digests": sorted(candidate_digest),
             "incumbent_digests": sorted(incumbent_digest),
+            "expected_candidate_digest": sorted(expected_candidate_digest),
+            "expected_incumbent_digest": sorted(expected_incumbent_digest),
             "passed": identity_passed,
         }
         roles["promotion_decision"] = "PROMOTE" if not blockers else "BLOCK"
@@ -1019,13 +1118,12 @@ def _receipt_summary(
     return summary
 
 
-def run_qualification(
+def _run_qualification_locked(
     config: QualificationConfig,
     *,
     transport: Transport | None = None,
 ) -> dict[str, Any]:
-    """Execute or resume the P5 benchmark and always emit a fail-closed report."""
-    config.output_directory.mkdir(parents=True, exist_ok=True)
+    """Execute or resume while the caller holds the output-directory lock."""
     report_path = config.output_directory / "qualification-report.json"
     checkpoint_path = config.output_directory / "response-receipts.jsonl"
     state_path = config.output_directory / "qualification-state.json"
@@ -1040,9 +1138,15 @@ def run_qualification(
         "p5_status": "NOT_READY",
         "family_server": config.base_url.rstrip("/"),
         "models": config.models.to_dict(),
+        "artifact_digests": config.artifact_digests.to_dict(),
         "expected_eval_rows_per_adapter": EXPECTED_EVAL_ROWS,
         "expected_response_receipts": EXPECTED_EVAL_ROWS * 4,
         "training_split_used": False,
+        "run_lock": {
+            "path": str(config.output_directory / ".qualification.lock"),
+            "exclusive": True,
+            "held_for_entire_run": True,
+        },
         "thresholds": {
             "pinned_eval_sha256": dict(EXPECTED_EVAL_SHA256),
             "promotion_ratio_over_incumbent": PROMOTION_RATIO,
@@ -1097,7 +1201,12 @@ def run_qualification(
         }
         state = _checkpoint_state(config, corpora, trusted_file_sha256)
         _prepare_state(state_path, state)
-        work = _build_work(corpora, config.models, config.max_tokens)
+        work = _build_work(
+            corpora,
+            config.models,
+            config.artifact_digests,
+            config.max_tokens,
+        )
         work_by_key = {item.key: item for item in work}
         if len(work_by_key) != len(work):
             raise QualificationError("qualification work contains duplicate row keys")
@@ -1137,6 +1246,13 @@ def run_qualification(
             raise QualificationError(
                 f"qualification is missing {len(missing)} response receipts"
             )
+        records = _load_checkpoint(
+            checkpoint_path, work_by_key, live_result.body, public_key
+        )
+        if set(records) != set(work_by_key):
+            raise QualificationError(
+                "on-disk checkpoint changed or became incomplete before scoring"
+            )
         qualification, score_rows = _score_all(work, records)
         _write_jsonl(score_path, score_rows)
         report["qualification"] = qualification
@@ -1172,3 +1288,36 @@ def run_qualification(
     report["report_path"] = str(report_path)
     report["report_sha256"] = _file_sha256(report_path)
     return report
+
+
+def run_qualification(
+    config: QualificationConfig,
+    *,
+    transport: Transport | None = None,
+) -> dict[str, Any]:
+    """Execute or resume with exclusive output custody and fail-closed locking."""
+    config.output_directory.mkdir(parents=True, exist_ok=True)
+    try:
+        with _exclusive_run_lock(config.output_directory):
+            return _run_qualification_locked(config, transport=transport)
+    except QualificationError as error:
+        return {
+            "schema": QUALIFICATION_SCHEMA,
+            "generated_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "run_outcome": "INCONCLUSIVE",
+            "release_verdict": "NOT_READY",
+            "promotion_decision": "BLOCK",
+            "p5_status": "NOT_READY",
+            "family_server": config.base_url.rstrip("/"),
+            "models": config.models.to_dict(),
+            "artifact_digests": config.artifact_digests.to_dict(),
+            "training_split_used": False,
+            "blockers": [f"{type(error).__name__}: {error}"],
+            "run_lock": {
+                "path": str(config.output_directory / ".qualification.lock"),
+                "exclusive": False,
+                "held_for_entire_run": False,
+            },
+            "report_path": None,
+            "report_sha256": None,
+        }

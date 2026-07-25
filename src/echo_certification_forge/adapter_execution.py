@@ -285,6 +285,8 @@ def _record_from_source(
         source.adapter_id,
         source.quality_mode,
         qualification_report,
+        target_model=source.target_model,
+        artifact_sha256=selected_digest,
         manifest_sha256=sha256_json(manifest),
     )
     result_payload = {
@@ -352,8 +354,18 @@ def _quality_report(
     mode_name: str,
     qualification_report: Mapping[str, Any],
     *,
+    target_model: str,
+    artifact_sha256: str,
     manifest_sha256: str,
 ) -> AdapterQualityReport:
+    if qualification_report.get("schema") == "echo.certification-forge.p5-qualification/v1":
+        return _candidate_quality_report(
+            adapter_id,
+            qualification_report,
+            target_model=target_model,
+            artifact_sha256=artifact_sha256,
+            manifest_sha256=manifest_sha256,
+        )
     qualifications = _object(qualification_report.get("qualification"), "qualification")
     mode_scores = _object(qualification_report.get("mode_scores"), "mode_scores")
     qualification = _object(qualifications.get(mode_name), f"qualification.{mode_name}")
@@ -388,6 +400,127 @@ def _quality_report(
             }
         ),
         evidence_ids=(f"{adapter_id}-r5-evidence", f"{adapter_id}-{mode_name}-quality"),
+    )
+
+
+def _candidate_quality_report(
+    adapter_id: str,
+    qualification_report: Mapping[str, Any],
+    *,
+    target_model: str,
+    artifact_sha256: str,
+    manifest_sha256: str,
+) -> AdapterQualityReport:
+    if qualification_report.get("run_outcome") != "COMPLETE":
+        raise AdapterExecutionError("candidate qualification run is not COMPLETE")
+    if qualification_report.get("promotion_decision") not in {"PROMOTE", "BLOCK"}:
+        raise AdapterExecutionError("candidate qualification promotion decision is invalid")
+    models = _object(qualification_report.get("models"), "models")
+    adapter_models = _object(models.get(adapter_id), f"models.{adapter_id}")
+    if adapter_models.get("candidate") != target_model:
+        raise AdapterExecutionError(
+            f"candidate qualification model mismatch for {adapter_id}"
+        )
+    artifact_digests = _object(
+        qualification_report.get("artifact_digests"), "artifact_digests"
+    )
+    adapter_digests = _object(
+        artifact_digests.get(adapter_id), f"artifact_digests.{adapter_id}"
+    )
+    expected_artifact = require_sha256(
+        str(adapter_digests.get("candidate")),
+        f"{adapter_id} candidate artifact digest",
+    )
+    if expected_artifact != artifact_sha256:
+        raise AdapterExecutionError(
+            f"candidate qualification artifact digest mismatch for {adapter_id}"
+        )
+    qualifications = _object(
+        qualification_report.get("qualification"), "qualification"
+    )
+    qualification = _object(
+        qualifications.get(adapter_id), f"qualification.{adapter_id}"
+    )
+    candidate = _object(
+        qualification.get("candidate"), f"qualification.{adapter_id}.candidate"
+    )
+    routing_identity = _object(
+        qualification.get("routing_identity"),
+        f"qualification.{adapter_id}.routing_identity",
+    )
+    promotion_threshold = _object(
+        qualification.get("promotion_threshold"),
+        f"qualification.{adapter_id}.promotion_threshold",
+    )
+    if routing_identity.get("candidate_digests") != [artifact_sha256]:
+        raise AdapterExecutionError(
+            f"candidate qualification routing digest mismatch for {adapter_id}"
+        )
+    if routing_identity.get("expected_candidate_digest") != [artifact_sha256]:
+        raise AdapterExecutionError(
+            f"candidate qualification expected digest mismatch for {adapter_id}"
+        )
+    if routing_identity.get("passed") is not True:
+        raise AdapterExecutionError(
+            f"candidate qualification routing identity failed for {adapter_id}"
+        )
+    if not isinstance(candidate.get("row_count"), int) or candidate["row_count"] <= 0:
+        raise AdapterExecutionError(
+            f"candidate qualification row count is invalid for {adapter_id}"
+        )
+    for field in ("hard_gates_passed",):
+        if not isinstance(candidate.get(field), bool):
+            raise AdapterExecutionError(
+                f"candidate qualification {field} must be boolean for {adapter_id}"
+            )
+    if not isinstance(promotion_threshold.get("passed"), bool):
+        raise AdapterExecutionError(
+            f"candidate qualification threshold result must be boolean for {adapter_id}"
+        )
+    adapter_decision = qualification.get("promotion_decision")
+    if adapter_decision not in {"PROMOTE", "BLOCK"}:
+        raise AdapterExecutionError(
+            f"candidate qualification adapter decision is invalid for {adapter_id}"
+        )
+    blockers = qualification.get("blockers")
+    if not isinstance(blockers, list) or any(not isinstance(item, str) for item in blockers):
+        raise AdapterExecutionError(
+            f"candidate qualification blockers are invalid for {adapter_id}"
+        )
+    promoted = (
+        adapter_decision == "PROMOTE"
+        and candidate["hard_gates_passed"] is True
+        and promotion_threshold["passed"] is True
+        and not blockers
+    )
+    total = candidate["row_count"]
+    return AdapterQualityReport(
+        adapter_id=adapter_id,
+        passed_cases=total if promoted else 0,
+        total_cases=total,
+        critical_failures=() if promoted else ("qualification_blocked",),
+        suite_sha256=sha256_json(
+            {
+                "schema": qualification_report["schema"],
+                "adapter": adapter_id,
+                "target_model": target_model,
+                "artifact_sha256": artifact_sha256,
+                "candidate": candidate,
+                "promotion_threshold": promotion_threshold,
+                "routing_identity": routing_identity,
+                "blockers": blockers,
+                "eval": qualification_report.get("eval", {}).get(adapter_id),
+                "score_ledger": qualification_report.get("score_ledger"),
+                "response_receipts": qualification_report.get(
+                    "response_receipts", {}
+                ).get("by_adapter_and_role", {}).get(adapter_id),
+                "r5_evidence_manifest_sha256": manifest_sha256,
+            }
+        ),
+        evidence_ids=(
+            f"{adapter_id}-r5-evidence",
+            f"{adapter_id}-candidate-qualification",
+        ),
     )
 
 
