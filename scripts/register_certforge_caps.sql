@@ -157,3 +157,9 @@ WHERE id = 'echo.certforge.admin.lifecycle';
 UPDATE arcanum_sdk.sdk_capabilities
 SET health_status = 'green', updated_at = now()
 WHERE id = 'echo.certforge.admin.evidence_artifact';
+
+-- Promoted only after the tenant-scoped telemetry crossed the live SDK path
+-- with bounded timelines and explicit UNKNOWN/UNAVAILABLE source truth.
+UPDATE arcanum_sdk.sdk_capabilities
+SET health_status = 'green', updated_at = now()
+WHERE id = 'echo.certforge.telemetry';

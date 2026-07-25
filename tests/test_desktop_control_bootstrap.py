@@ -100,3 +100,9 @@ def test_live_accepted_lifecycle_cap_is_durably_green():
     assert "expiry" not in lifecycle
     assert "15, 'active', 'green'" in lifecycle
     assert "WHERE id = 'echo.certforge.admin.lifecycle'" in sql
+
+
+def test_live_accepted_telemetry_cap_is_durably_green():
+    sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
+    assert "explicit UNKNOWN/UNAVAILABLE source truth" in sql
+    assert "WHERE id = 'echo.certforge.telemetry'" in sql
