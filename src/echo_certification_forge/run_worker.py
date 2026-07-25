@@ -10,6 +10,7 @@ adapter-set digest is committed into EnvironmentIdentity before the run is regis
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import shutil
@@ -261,6 +262,27 @@ def run(
         shutil.rmtree(workdir, ignore_errors=True)
         return {"run_id": run_id, "error": "acquisition_failed", "detail": str(exc)}
 
+    sandbox_effective = sandbox
+    if acquired.target_type == "oci" and journey:
+        # Image code NEVER executes in the control plane. An OCI journey requires an
+        # isolated sandbox and it MUST run inside the certified image itself, pinned to
+        # the exact acquired digest — fail closed before any run-state mutation.
+        if sandbox is None:
+            return {
+                "run_id": run_id,
+                "error": "oci_journey_requires_sandbox",
+                "detail": (
+                    "image journeys execute only inside an isolated container pinned to "
+                    "the exact image digest; the control plane never runs image code on "
+                    "the host"
+                ),
+            }
+        image_ref = acquired.canonical_ref
+        for scheme in ("https://", "http://"):
+            if image_ref.startswith(scheme):
+                image_ref = image_ref[len(scheme):]
+        sandbox_effective = dataclasses.replace(sandbox, image=image_ref)
+
     try:
         existing = store.get_run(run_id, tenant)
     except KeyError:
@@ -409,8 +431,8 @@ def run(
         completion_callback = lambda envelope: subscribers.complete_worker_execution(
             claim, envelope
         )
-    if sandbox is not None:
-        journey_runner = sandboxed_journey_runner(sandbox, execution_guard)
+    if sandbox_effective is not None:
+        journey_runner = sandboxed_journey_runner(sandbox_effective, execution_guard)
     try:
         try:
             result = executor.execute(
@@ -476,7 +498,7 @@ def run(
         "adapter_set_sha256": environment.adapter_set_sha256,
         "adapter_bundle_response_sha256": adapter_bundle_response_sha256,
         "signer_public_key_id": signer.key_id,
-        "journey_isolation": "docker" if sandbox is not None else "none",
+        "journey_isolation": "docker" if sandbox_effective is not None else "none",
     }
 
 

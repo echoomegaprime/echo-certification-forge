@@ -1,7 +1,7 @@
 {
   "phase": "P6",
   "title": "deployment enforcement and platform integration \u2014 live local acceptance",
-  "generated_at": "2026-07-25T12:22:11.021287Z",
+  "generated_at": "2026-07-25T14:10:06.811405Z",
   "python": "3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]",
   "passed": true,
   "checks": [
@@ -11,7 +11,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-47af02078656670139904511536b1e7c\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"75535a715d8cde0dc8029b4afe5406f3e7fb213fbc6ad26bd45b23478220ee1a\", \"created_at\": \"2026-07-25T12:22:05.253942Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"rollback_candidate\": null, \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-ec53776d35faf8730df5fe96e2cc06a6\", \"allowed\": false, \"artifact_sha256\": \"cc9a65d96c25c8f96ba720e01628b734d6df4f5a1057238506ab6d504fb998fd\", \"chain_hash\": \"5774e0a8dd87e9a7ecfcf501a887a4e73ef29561a2fba01c52b415d95864d599\", \"created_at\": \"2026-07-25T14:09:59.389337Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a1\", \"reasons\": [\"artifact_not_certified\", \"staging_acceptance_missing\"], \"rollback_candidate\": null, \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -29,7 +29,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-254b405066a1edf8fb05cd62c8c169e0\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"57c88748a7a5bb1ec0e08a1ad78610424ea15a3fb32a60df571ca264a0b9a7cc\", \"created_at\": \"2026-07-25T12:22:05.557661Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"rollback_candidate\": null, \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-90a42cbd6263fe99a36a097abb5ab8ee\", \"allowed\": false, \"artifact_sha256\": \"11d7d626a19af7cf0b64c0862b3214a15fac77e3aa1400d70e6902f1a77fdb86\", \"chain_hash\": \"8b412fdf87a18ff45a17056d3d888d0b20ef2975ccdf52ec4ba35690678b67ae\", \"created_at\": \"2026-07-25T14:09:59.805019Z\", \"deployment_environment\": \"staging\", \"deployment_id\": \"deploy-a2\", \"reasons\": [\"artifact_not_certified\"], \"rollback_candidate\": null, \"run_id\": null, \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -38,7 +38,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-26ed576b4323514839e13df3b1409ee8\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"3462722ac7caf2d517d33181c6dcc376aba422ed1e0913512c1b5e7e676aba7d\", \"created_at\": \"2026-07-25T12:22:05.858830Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"rollback_candidate\": null, \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-7f6d75e6c467efdef19949241aac9660\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"9771abd0cc790ee8eafe40ed5fb049aa84f2b5a8c592c5a317df20c1ae94253b\", \"created_at\": \"2026-07-25T14:10:00.204642Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a4\", \"reasons\": [\"staging_acceptance_missing\"], \"rollback_candidate\": null, \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {
@@ -57,8 +57,8 @@
       "passed": true,
       "detail": {
         "failure_candidate": {
-          "admission_id": "dep-1df6b6cd52ee114d28f274780ab913bd",
-          "admitted_at": "2026-07-25T12:22:06.700087Z",
+          "admission_id": "dep-27909aee7d0116f9de152ad07c7e1699",
+          "admitted_at": "2026-07-25T14:10:01.297340Z",
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "deployment_id": "deploy-a3-prd",
           "run_id": "cert-p6-v1"
@@ -66,12 +66,12 @@
         "rollback_target": {
           "artifact_sha256": "67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0",
           "run_id": "cert-p6-v1",
-          "admission_id": "dep-1df6b6cd52ee114d28f274780ab913bd",
+          "admission_id": "dep-27909aee7d0116f9de152ad07c7e1699",
           "deployment_id": "deploy-a3-prd",
-          "admitted_at": "2026-07-25T12:22:06.700087Z"
+          "admitted_at": "2026-07-25T14:10:01.297340Z"
         },
         "rolled_back": {
-          "admission_id": "dep-76c59462f51f0566a1ffbb99e05b7b41",
+          "admission_id": "dep-1c5c5c64b7888be93d26d5d1fbfc4d7e",
           "artifact_sha256": "6cf9eb2e75fbaf4037393188b98be82a05499dcfc0c45a6eeeb840bd7f775c20",
           "deployment_environment": "production",
           "detail": "restored v1",
@@ -87,7 +87,7 @@
       "passed": true,
       "detail": {
         "exit": 2,
-        "stdout": "{\"admission_id\": \"dep-f70f20b3335eb459f6b2ffad51b67acd\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"c2272d8263b416ac5cb0ce381ea863f07414d43c8f075266e93503d51d39d631\", \"created_at\": \"2026-07-25T12:22:08.471502Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"rollback_candidate\": null, \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
+        "stdout": "{\"admission_id\": \"dep-f450aa68164b8aae256f4b9ac5798b55\", \"allowed\": false, \"artifact_sha256\": \"67b7548d601f8ca9e8689fced7d40d8f407894ac7d6a2c09d2e524ee5514e7b0\", \"chain_hash\": \"d45d8ebab6bd7244518e12c203b2029ab55b0421b5a4b53b12240cb21c9222d6\", \"created_at\": \"2026-07-25T14:10:04.101576Z\", \"deployment_environment\": \"production\", \"deployment_id\": \"deploy-a5\", \"reasons\": [\"verdict_revoked\"], \"rollback_candidate\": null, \"run_id\": \"cert-p6-v1\", \"tenant_id\": \"tenant-alpha\"}"
       }
     },
     {

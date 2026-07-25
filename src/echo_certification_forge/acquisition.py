@@ -4,20 +4,25 @@ Targets are hostile until proven otherwise (SPEC 2.x). Acquisition therefore exe
 the target: git clone runs with hooks disabled and the file:// protocol denied (blocks malicious
 submodule/hook execution and local-path exfiltration), no build/install/lifecycle scripts run, and
 OCI images are pulled by IMMUTABLE DIGEST ONLY over the registry HTTP API (mutable tags are
-rejected outright; every manifest and blob byte is hash-verified against its declared digest and
-nothing is extracted or executed). The acquired tree is then handed to the RunExecutor whose
-hostile/supply-chain gates scan it before any journey execution.
+rejected outright; every manifest and blob byte is hash-verified against its declared digest).
+The image rootfs is then materialized with a hardened extractor (whiteouts honored; traversal,
+device nodes and unsafe names rejected; symlinks never created on the host) so scanning gates
+see REAL image contents — but nothing from any target is ever executed in the control plane.
+The acquired tree is handed to the RunExecutor whose hostile/supply-chain gates scan it before
+any journey execution, and OCI journeys run only inside a sandbox pinned to the exact digest.
 """
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
 import subprocess
+import tarfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .canonical import sha256_bytes
 
@@ -46,6 +51,8 @@ _OCI_MANIFEST_ACCEPT = ", ".join(
 )
 _OCI_MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 _OCI_MAX_BLOB_BYTES = 512 * 1024 * 1024
+_OCI_MAX_EXTRACT_BYTES = 1024 * 1024 * 1024  # expanded-rootfs budget (decompression-bomb guard)
+_OCI_SYMLINK_PLACEHOLDER = "@certforge-symlink:"
 _OCI_INDEX_MEDIA_TYPES = frozenset(
     (
         "application/vnd.oci.image.index.v1+json",
@@ -106,6 +113,113 @@ def _oci_write_blob(blobs_dir: Path, digest: str, body: bytes) -> None:
     path.write_bytes(body)
 
 
+def _oci_safe_rel(name: str, *, kind: str) -> PurePosixPath | None:
+    """Normalize a layer tar member path — fail closed on ANY escape vector.
+
+    Backslashes and colons are rejected outright (on Windows they act as separators /
+    drive designators and would let a hostile member path escape the rootfs), absolute
+    paths are rejected, and any ``..`` component is rejected as traversal.
+    """
+    raw = name.strip()
+    if "\\" in raw or ":" in raw:
+        raise AcquisitionError(f"oci layer {kind} has an unsafe name: {raw!r}")
+    if raw.startswith("/"):
+        raise AcquisitionError(f"oci layer {kind} has an absolute path: {raw!r}")
+    parts = [part for part in PurePosixPath(raw).parts if part != "."]
+    if any(part == ".." for part in parts):
+        raise AcquisitionError(f"oci layer {kind} escapes the rootfs (path traversal): {raw!r}")
+    if not parts:
+        return None
+    return PurePosixPath(*parts)
+
+
+def _oci_dest(rootfs: Path, rel: PurePosixPath) -> Path:
+    """Resolve a verified-relative member path under the rootfs, defending in depth:
+    even though this extractor NEVER materializes symlinks, the resolved parent must
+    still real-path inside the rootfs before anything is written through it."""
+    dest = rootfs.joinpath(*rel.parts)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    root_real = rootfs.resolve(strict=False)
+    parent_real = dest.parent.resolve(strict=False)
+    if root_real != parent_real and root_real not in parent_real.parents:
+        raise AcquisitionError(f"oci layer member resolves outside the rootfs: {rel}")
+    return dest
+
+
+def _oci_remove(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _oci_apply_layer(blob: bytes, rootfs: Path, budget: list[int]) -> None:
+    """Apply ONE image layer diff onto the rootfs — safely.
+
+    * whiteouts (``.wh.<name>`` / ``.wh..wh..opq``) are applied as deletions, never
+      written into the rootfs;
+    * device/char/block/fifo members are rejected (never materialized on the host);
+    * symlink members are recorded as inert ``@certforge-symlink:<target>`` marker
+      files — the control plane NEVER creates a real symlink, so no later member can
+      traverse through one, and journeys run against the REAL image in the sandbox;
+    * hardlink members are copied from their (rootfs-internal, traversal-checked)
+      target;
+    * a total extraction budget rejects decompression bombs.
+    """
+    try:
+        archive = tarfile.open(fileobj=io.BytesIO(blob), mode="r:*")
+    except (tarfile.TarError, OSError, EOFError, ValueError) as exc:
+        raise AcquisitionError("oci layer is not a readable tar archive") from exc
+    with archive:
+        for member in archive:
+            rel = _oci_safe_rel(member.name, kind="member")
+            if rel is None:
+                continue
+            base = rel.name
+            if base == ".wh..wh..opq":
+                target_dir = rootfs.joinpath(*rel.parent.parts)
+                if target_dir.is_dir():
+                    for child in target_dir.iterdir():
+                        _oci_remove(child)
+                continue
+            if base.startswith(".wh."):
+                victim = rel.parent / base[len(".wh."):]
+                _oci_remove(rootfs.joinpath(*victim.parts))
+                continue
+            if member.ischr() or member.isblk() or member.isfifo():
+                raise AcquisitionError(
+                    f"oci layer contains a device/fifo node (refused): {member.name!r}"
+                )
+            dest = _oci_dest(rootfs, rel)
+            if member.isdir():
+                dest.mkdir(parents=True, exist_ok=True)
+                continue
+            if member.issym():
+                data = (_OCI_SYMLINK_PLACEHOLDER + member.linkname).encode("utf-8")
+            elif member.islnk():
+                link_rel = _oci_safe_rel(member.linkname, kind="hardlink target")
+                source = rootfs.joinpath(*link_rel.parts) if link_rel is not None else None
+                if source is None or not source.is_file():
+                    raise AcquisitionError(
+                        f"oci layer hardlink target missing or unsafe: {member.linkname!r}"
+                    )
+                data = source.read_bytes()
+            elif member.isreg():
+                handle = archive.extractfile(member)
+                if handle is None:
+                    raise AcquisitionError(f"oci layer member is unreadable: {member.name!r}")
+                data = handle.read(_OCI_MAX_EXTRACT_BYTES + 1)
+            else:
+                raise AcquisitionError(
+                    f"oci layer member has an unsupported type: {member.name!r}"
+                )
+            budget[0] -= len(data)
+            if budget[0] < 0:
+                raise AcquisitionError("oci rootfs exceeds the extraction size budget")
+            _oci_remove(dest)
+            dest.write_bytes(data)
+
+
 def _acquire_oci(spec: dict, dest: Path, timeout_s: float) -> AcquiredTarget:
     """Pull an OCI image by immutable digest into an OCI image layout — verify everything.
 
@@ -114,8 +228,11 @@ def _acquire_oci(spec: dict, dest: Path, timeout_s: float) -> AcquiredTarget:
       tag that a registry could re-point after certification.
     * The manifest bytes, every referenced child manifest (image index), the config blob
       and every layer blob are fetched by digest and hash-verified before being written.
-    * Nothing is extracted, decompressed, or executed — the layout is inert evidence for
-      the executor's scanning gates.
+    * The image rootfs is materialized SAFELY (whiteout semantics honored; path
+      traversal, unsafe names, and device nodes rejected; symlinks never created on the
+      host — recorded as inert markers; extraction budget enforced) so scanning gates
+      see real image contents. Nothing from the image is executed in the control plane —
+      journeys run only inside an isolated sandbox pinned to this exact digest.
     * ``artifact_sha256`` is the BARE manifest digest hex, preserving the image's native
       registry identity so a webhook-declared image digest reconciles exactly.
     """
@@ -170,6 +287,12 @@ def _acquire_oci(spec: dict, dest: Path, timeout_s: float) -> AcquiredTarget:
     else:
         image_manifests.append(manifest)
 
+    if len(image_manifests) != 1:
+        raise AcquisitionError(
+            "oci index must resolve to exactly ONE platform image for certification; "
+            "pin the platform-specific image manifest digest"
+        )
+
     for image in image_manifests:
         descriptors = [image.get("config", {})] + list(image.get("layers", []))
         for descriptor in descriptors:
@@ -203,10 +326,24 @@ def _acquire_oci(spec: dict, dest: Path, timeout_s: float) -> AcquiredTarget:
     (dest / "index.json").write_text(
         json.dumps(index, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+    # Materialize the REAL image rootfs (safely) so the executor's hostile/supply-chain
+    # gates scan actual image contents — never opaque layer blobs. Nothing is executed;
+    # journeys run only inside the sandbox against the digest-pinned image itself.
+    rootfs = dest / "rootfs"
+    rootfs.mkdir(parents=True, exist_ok=True)
+    budget = [_OCI_MAX_EXTRACT_BYTES]
+    image = image_manifests[0]
+    for descriptor in image.get("layers", []):
+        blob_digest = str(descriptor.get("digest", ""))
+        blob_path = blobs_dir / blob_digest.split(":", 1)[1]
+        _oci_apply_layer(blob_path.read_bytes(), rootfs, budget)
+
     canonical = f"{repository}@{raw_digest}"
     # The image's NATIVE identity — the bare manifest digest — is the artifact identity,
-    # exactly matching the digest a registry webhook declares.
-    return AcquiredTarget(dest, "oci", canonical, raw_digest.split(":", 1)[1])
+    # exactly matching the digest a registry webhook declares. The scanned source root is
+    # the materialized rootfs; the verified OCI layout lives beside it as evidence.
+    return AcquiredTarget(rootfs, "oci", canonical, raw_digest.split(":", 1)[1])
 
 
 def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) -> AcquiredTarget:

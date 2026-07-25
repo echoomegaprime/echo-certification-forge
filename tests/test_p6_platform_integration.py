@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import http.server
+import io
 import json
 import os
 import secrets as _secrets
@@ -16,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 from datetime import timedelta
@@ -42,6 +44,7 @@ from echo_certification_forge.release_hooks import (
     sign_webhook,
 )
 from echo_certification_forge.service import ServiceContext, create_app
+from echo_certification_forge.sandbox import DockerSandbox
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 
 TENANT = "tenant-alpha"
@@ -1580,14 +1583,69 @@ class _LocalOciRegistry:
         self._thread.join(timeout=5)
 
 
-_OCI_LAYER = b"certforge oci integration layer contents\n"
+def _tar_layer(
+    entries: dict[str, bytes | None] | None = None,
+    *,
+    symlinks: tuple[tuple[str, str], ...] = (),
+    hardlinks: tuple[tuple[str, str], ...] = (),
+    devices: tuple[str, ...] = (),
+) -> bytes:
+    """Build a deterministic in-memory tar layer (real image-layer bytes, not opaque)."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        for name, data in (entries or {}).items():
+            info = tarfile.TarInfo(name)
+            info.mtime = 0
+            if data is None:
+                info.type = tarfile.DIRTYPE
+                tar.addfile(info)
+            else:
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        for name, target in symlinks:
+            info = tarfile.TarInfo(name)
+            info.mtime = 0
+            info.type = tarfile.SYMTYPE
+            info.linkname = target
+            tar.addfile(info)
+        for name, target in hardlinks:
+            info = tarfile.TarInfo(name)
+            info.mtime = 0
+            info.type = tarfile.LNKTYPE
+            info.linkname = target
+            tar.addfile(info)
+        for name in devices:
+            info = tarfile.TarInfo(name)
+            info.mtime = 0
+            info.type = tarfile.CHRTYPE
+            info.devmajor = 1
+            info.devminor = 3
+            tar.addfile(info)
+    return buffer.getvalue()
 
 
-def _push_test_image(registry: _LocalOciRegistry, name: str = "testapp") -> str:
-    """Register a tiny single-arch OCI image; returns its sha256:<hex> manifest digest."""
+_OCI_HELLO_SOURCE = b"print('hello from the certified image layer')\n"
+_OCI_LAYER = _tar_layer({"app/hello.py": _OCI_HELLO_SOURCE})
+
+
+def _push_image(
+    registry: _LocalOciRegistry, layers: list[bytes], name: str = "testapp"
+) -> str:
+    """Register a single-arch OCI image built from REAL tar layers; returns its
+    sha256:<hex> manifest digest."""
     config = json.dumps({"architecture": "amd64", "os": "linux"}).encode("utf-8")
     config_digest = "sha256:" + hashlib.sha256(config).hexdigest()
-    layer_digest = "sha256:" + hashlib.sha256(_OCI_LAYER).hexdigest()
+    descriptors = []
+    for layer in layers:
+        layer_digest = "sha256:" + hashlib.sha256(layer).hexdigest()
+        registry.put(f"/v2/{name}/blobs/{layer_digest}", layer)
+        descriptors.append(
+            {
+                "mediaType": "application/vnd.oci.image.layer.v1.tar",
+                "digest": layer_digest,
+                "size": len(layer),
+            }
+        )
     manifest_bytes = json.dumps(
         {
             "schemaVersion": 2,
@@ -1597,28 +1655,27 @@ def _push_test_image(registry: _LocalOciRegistry, name: str = "testapp") -> str:
                 "digest": config_digest,
                 "size": len(config),
             },
-            "layers": [
-                {
-                    "mediaType": "application/vnd.oci.image.layer.v1.tar",
-                    "digest": layer_digest,
-                    "size": len(_OCI_LAYER),
-                }
-            ],
+            "layers": descriptors,
         },
         sort_keys=True,
     ).encode("utf-8")
     manifest_digest = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
     registry.put(f"/v2/{name}/manifests/{manifest_digest}", manifest_bytes)
     registry.put(f"/v2/{name}/blobs/{config_digest}", config)
-    registry.put(f"/v2/{name}/blobs/{layer_digest}", _OCI_LAYER)
     return manifest_digest
+
+
+def _push_test_image(registry: _LocalOciRegistry, name: str = "testapp") -> str:
+    """Register the standard tiny single-arch OCI image; returns its manifest digest."""
+    return _push_image(registry, [_OCI_LAYER], name)
 
 
 def test_oci_acquisition_is_digest_pinned_and_fail_closed(tmp_path):
     """The OCI path NEVER trusts a mutable tag and hash-verifies every byte it pulls:
     tag specs and unverifiable manifests/blobs fail acquisition BEFORE any run state
-    could be created, while the digest-pinned pull produces an inert OCI layout whose
-    artifact identity is the image's NATIVE manifest digest."""
+    could be created, while the digest-pinned pull materializes the REAL image rootfs
+    (scanned contents, not opaque blobs) whose artifact identity is the image's NATIVE
+    manifest digest."""
     registry = _LocalOciRegistry()
     try:
         manifest_digest = _push_test_image(registry)
@@ -1652,21 +1709,60 @@ def test_oci_acquisition_is_digest_pinned_and_fail_closed(tmp_path):
         assert acquired.target_type == "oci"
         assert acquired.canonical_ref == f"{repo}@{manifest_digest}"
         assert acquired.artifact_sha256 == manifest_digest.split(":", 1)[1]
-        assert (acquired.source_root / "oci-layout").exists()
-        assert (acquired.source_root / "index.json").exists()
-        assert (acquired.source_root / "blobs" / "sha256" / acquired.artifact_sha256).exists()
+        # the scanned source root is the MATERIALIZED image rootfs (real contents) ...
+        assert acquired.source_root.name == "rootfs"
+        hello = acquired.source_root / "app" / "hello.py"
+        assert hello.read_bytes() == _OCI_HELLO_SOURCE
+        # ... with the verified OCI layout preserved beside it as evidence
+        layout = acquired.source_root.parent
+        assert (layout / "oci-layout").exists()
+        assert (layout / "index.json").exists()
+        assert (layout / "blobs" / "sha256" / acquired.artifact_sha256).exists()
     finally:
         registry.stop()
 
 
+_DOCKER_STUB_SOURCE = r'''
+import json, os, subprocess, sys
+
+argv = sys.argv[1:]
+if not argv or argv[0] != "run":
+    sys.exit(64)
+workdir = None
+image = None
+cmd = []
+for index, arg in enumerate(argv):
+    if arg == "-v" and argv[index + 1].endswith(":/work:ro"):
+        workdir = argv[index + 1][: -len(":/work:ro")]
+    if arg == "-w":
+        cursor = index + 2
+        while argv[cursor] == "--env":
+            cursor += 2
+        image = argv[cursor]
+        cmd = argv[cursor + 1 :]
+with open(os.environ["CERTFORGE_TEST_DOCKER_LOG"], "a", encoding="utf-8") as log:
+    log.write(json.dumps({"argv": argv, "image": image, "workdir": workdir}) + "\n")
+if workdir is None or image is None or not cmd:
+    sys.exit(64)
+executable = sys.executable if cmd[0] in ("python", "python3") else cmd[0]
+sys.exit(subprocess.run([executable, *cmd[1:]], cwd=workdir).returncode)
+'''
+
+
 def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
-    client, store, manifest, signer
+    client, store, manifest, signer, tmp_path
 ):
     """A registry-image webhook is NOT a dead end: the worker acquires the image from
-    the registry BY THE DECLARED IMMUTABLE DIGEST (no tag trust, nothing executed from
-    the image), the acquisition reconciles exactly to the declared native identity, the
-    run certifies, binds, and admits — end to end through the real surfaces."""
+    the registry BY THE DECLARED IMMUTABLE DIGEST (no tag trust), materializes and scans
+    the REAL image rootfs, executes the journey INSIDE the sandbox pinned to the exact
+    image digest (the journey runs code shipped in the image layer — never on the host),
+    reconciles exactly to the declared native identity, certifies, binds, and admits —
+    end to end through the real surfaces."""
     registry = _LocalOciRegistry()
+    stub = tmp_path / "docker_stub.py"
+    stub.write_text(_DOCKER_STUB_SOURCE, encoding="utf-8")
+    docker_log = tmp_path / "docker_invocations.jsonl"
+    os.environ["CERTFORGE_TEST_DOCKER_LOG"] = str(docker_log)
     try:
         manifest_digest = _push_test_image(registry)
         repo = f"http://127.0.0.1:{registry.port}/testapp"
@@ -1689,7 +1785,8 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
         assert run["state"] == "QUEUED"
         assert run["release_verdict"] == "NOT_READY"  # default-deny until certified
 
-        # the worker pulls the image BY DIGEST and reconciles the declared commitment
+        # the worker pulls the image BY DIGEST and reconciles the declared commitment;
+        # the journey executes code FROM THE IMAGE LAYER inside the (stubbed) sandbox
         result = run_worker.run(
             run_id,
             TENANT,
@@ -1698,12 +1795,25 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
             manifest=manifest,
             signer=signer,
             entitled=frozenset({TENANT}),
-            journey=[sys.executable, "-c", "print('oci journey ok')"],
+            journey=["python3", "app/hello.py"],
+            sandbox=DockerSandbox(docker=(sys.executable, str(stub))),
         )
     finally:
+        os.environ.pop("CERTFORGE_TEST_DOCKER_LOG", None)
         registry.stop()
     assert "error" not in result, result
     assert result["release_verdict"] == "PRODUCTION_READY", result["blocking_findings"]
+    assert result["journey_isolation"] == "docker"
+
+    # the sandbox ran EXACTLY ONE journey, pinned to the certified image digest (native
+    # registry reference, scheme stripped) with networking disabled — never a host image
+    invocations = [
+        json.loads(line) for line in docker_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(invocations) == 1
+    assert invocations[0]["image"] == f"127.0.0.1:{registry.port}/testapp@{manifest_digest}"
+    assert "--network" in invocations[0]["argv"]
+    assert invocations[0]["argv"][invocations[0]["argv"].index("--network") + 1] == "none"
 
     bare = manifest_digest.split(":", 1)[1]
     row = store.get_run(run_id, TENANT)
@@ -1730,3 +1840,286 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
     ).json()
     assert admit["allowed"] is True, admit["reasons"]
     assert admit["run_id"] == run_id
+
+def test_oci_rootfs_whiteouts_and_symlink_containment(tmp_path):
+    """Materialization applies REAL layer semantics safely: whiteouts delete (and are
+    never written into the rootfs), later layers overlay earlier ones, and symlink
+    members are recorded as inert marker files — the control plane never creates a
+    symlink on the host, so no member can traverse out of the destination tree."""
+    registry = _LocalOciRegistry()
+    try:
+        base_layer = _tar_layer(
+            {
+                "app/hello.py": _OCI_HELLO_SOURCE,
+                "app/secret.txt": b"to be whiteout-deleted\n",
+            },
+            symlinks=(("app/link", "../../../../outside"),),
+        )
+        top_layer = _tar_layer(
+            {"app/.wh.secret.txt": b"", "app/extra.txt": b"added by layer 2\n"}
+        )
+        digest = _push_image(registry, [base_layer, top_layer], name="layered")
+        repo = f"http://127.0.0.1:{registry.port}/layered"
+        acquired = acquire_target(
+            {"type": "oci", "repository": repo, "digest": digest}, tmp_path / "dst"
+        )
+    finally:
+        registry.stop()
+    rootfs = acquired.source_root
+    assert (rootfs / "app" / "hello.py").read_bytes() == _OCI_HELLO_SOURCE
+    # the whiteout deleted the base-layer file and was itself never materialized
+    assert not (rootfs / "app" / "secret.txt").exists()
+    assert not any(p.name.startswith(".wh.") for p in rootfs.rglob("*"))
+    assert (rootfs / "app" / "extra.txt").read_bytes() == b"added by layer 2\n"
+    # the symlink member became an inert REGULAR marker file, not a host symlink
+    link = rootfs / "app" / "link"
+    assert link.is_file()
+    assert not link.is_symlink()
+    assert link.read_text(encoding="utf-8") == "@certforge-symlink:../../../../outside"
+    # nothing escaped the destination tree
+    assert not (tmp_path / "outside").exists()
+    assert not (tmp_path.parent / "outside").exists()
+
+
+def test_oci_malicious_layers_fail_closed(tmp_path):
+    """Hostile layer archives are refused during acquisition — path traversal, absolute
+    paths, separator smuggling, device nodes, unreadable archives, hardlink escapes and
+    ambiguous multi-platform indexes all fail closed BEFORE any content is certified."""
+    registry = _LocalOciRegistry()
+    try:
+        repo_base = f"http://127.0.0.1:{registry.port}"
+        cases = [
+            ("traversal", _tar_layer({"../evil.txt": b"x"}), "path traversal"),
+            ("absolute", _tar_layer({"/evil.txt": b"x"}), "absolute path"),
+            ("backslash", _tar_layer({"app\\evil.txt": b"x"}), "unsafe name"),
+            ("device", _tar_layer(devices=("app/dev0",)), "device/fifo"),
+            ("nottar", b"this is not a tar archive", "not a readable tar archive"),
+            (
+                "hardlink",
+                _tar_layer(hardlinks=(("app/hl", "../../etc/passwd"),)),
+                "hardlink target",
+            ),
+        ]
+        for name, layer, pattern in cases:
+            digest = _push_image(registry, [layer], name=name)
+            with pytest.raises(AcquisitionError, match=pattern):
+                acquire_target(
+                    {"type": "oci", "repository": f"{repo_base}/{name}", "digest": digest},
+                    tmp_path / name,
+                )
+            # fail-closed means no partially-materialized rootfs content survives use
+            assert not (tmp_path / name / "rootfs" / "evil.txt").exists()
+
+        # a multi-platform index is ambiguous — certification requires pinning the ONE
+        # platform-specific image manifest digest
+        child_a = _push_image(registry, [_tar_layer({"a.txt": b"a"})], name="multi")
+        child_b = _push_image(registry, [_tar_layer({"b.txt": b"b"})], name="multi")
+        index_bytes = json.dumps(
+            {
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.oci.image.index.v1+json",
+                "manifests": [
+                    {
+                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                        "digest": child_a,
+                        "size": 1,
+                    },
+                    {
+                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                        "digest": child_b,
+                        "size": 1,
+                    },
+                ],
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+        index_digest = "sha256:" + hashlib.sha256(index_bytes).hexdigest()
+        registry.put(f"/v2/multi/manifests/{index_digest}", index_bytes)
+        with pytest.raises(AcquisitionError, match="exactly ONE platform image"):
+            acquire_target(
+                {"type": "oci", "repository": f"{repo_base}/multi", "digest": index_digest},
+                tmp_path / "multi",
+            )
+    finally:
+        registry.stop()
+
+
+def test_registry_webhook_oci_journey_without_sandbox_fails_closed(
+    client, store, manifest, signer
+):
+    """An OCI journey with NO isolated runtime configured must not certify: image code
+    never executes in the control plane, so the worker fails closed BEFORE any run-state
+    mutation and the run stays uncertified and unbindable."""
+    registry = _LocalOciRegistry()
+    try:
+        manifest_digest = _push_test_image(registry, name="nosandbox")
+        repo = f"http://127.0.0.1:{registry.port}/nosandbox"
+        event = {
+            "event_id": "evt-oci-0002",
+            "event_type": "registry.image.pushed",
+            "tenant_id": TENANT,
+            "image_digest": manifest_digest,
+            "image_repository": repo,
+            "source_commit": "abc123def456",
+            "environment_identity_digest": run_worker._worker_environment().identity_digest,
+            "policy_version": manifest.manifest_id,
+        }
+        body = json.dumps(event).encode("utf-8")
+        response = client.post("/v1/hooks/registry", content=body, headers=_signed_headers(body))
+        assert response.status_code == 201, response.text
+        run_id = response.json()["run"]["run_id"]
+
+        result = run_worker.run(
+            run_id,
+            TENANT,
+            {"type": "oci", "repository": repo, "digest": manifest_digest},
+            store=store,
+            manifest=manifest,
+            signer=signer,
+            entitled=frozenset({TENANT}),
+            journey=["python3", "app/hello.py"],
+            sandbox=None,
+        )
+    finally:
+        registry.stop()
+    assert result["error"] == "oci_journey_requires_sandbox"
+    # the refusal happened BEFORE any run-state mutation — the run is still pending
+    row = store.get_run(run_id, TENANT)
+    assert row["state"] == RunState.QUEUED.value
+    # an uncertified run has no signed verdict and cannot be bound
+    response = _post_signed(client, f"/v1/certifications/{run_id}/bindings")
+    assert response.status_code >= 400
+
+
+@pytest.mark.skipif(_bash_executable() is None, reason="no usable bash for the .sh integration")
+def test_enforce_admission_sh_rolls_back_when_success_cannot_be_ledgered(
+    context, certified_target, environment, manifest, tmp_path
+):
+    """A production deploy that SUCCEEDS but whose SUCCEEDED outcome cannot be durably
+    recorded must NOT stay live: the wrapper attempts a FAILED record, then executes the
+    admission-bound rollback target, attempts ROLLED_BACK reporting, and exits fail-closed
+    (exit 3) — no artifact the ledger cannot account for remains in production."""
+    import urllib.request
+
+    import uvicorn
+
+    app = create_app(context)
+    client = TestClient(app)
+    artifact = certified_target.artifact_sha256
+    response = _post_signed(client, "/v1/certifications/cert-http-v1/bindings")
+    assert response.status_code == 201
+
+    # staging accepted + a good production deployment establish the last-known-good
+    # that the wrapper's admission will freeze as its rollback target
+    staging = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "staging", environment, manifest, "deploy-unledgered-s1"),
+    ).json()
+    assert staging["allowed"] is True, staging["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{staging['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "staging green"},
+    )
+    assert response.status_code == 201
+    good_prod = _post_signed(
+        client,
+        "/v1/deployments/admissions",
+        _admit_body(artifact, "production", environment, manifest, "deploy-unledgered-p0"),
+    ).json()
+    assert good_prod["allowed"] is True, good_prod["reasons"]
+    response = _post_signed(
+        client,
+        f"/v1/deployments/admissions/{good_prod['admission_id']}/outcome",
+        {"status": "SUCCEEDED", "detail": "prod green"},
+    )
+    assert response.status_code == 201
+
+    port = _free_port()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=2) as live:
+                if live.status == 200:
+                    break
+        except OSError:
+            time.sleep(0.2)
+    else:
+        raise RuntimeError("live service never became healthy")
+
+    proxy = _OneShotProxy(port)
+    deploy_marker = tmp_path / "deploy-succeeded.marker"
+    rollback_marker = tmp_path / "rollback-executed.marker"
+    bash = _bash_executable()
+    script = str(Path(__file__).parents[1] / "deploy" / "enforce_admission.sh").replace("\\", "/")
+    deploy_marker_posix = str(deploy_marker).replace("\\", "/")
+    rollback_marker_posix = str(rollback_marker).replace("\\", "/")
+    try:
+        proc = subprocess.run(
+            [bash, script, "touch", deploy_marker_posix],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={
+                **os.environ,
+                # admission goes through the proxy's ONE forwarded connection; every
+                # outcome request afterwards is refused (acknowledgement outage)
+                "CERTFORGE_URL": f"http://127.0.0.1:{proxy.port}",
+                "CERTFORGE_TENANT": TENANT,
+                "CERTFORGE_ARTIFACT_DIGEST": artifact,
+                "CERTFORGE_ENVIRONMENT": "production",
+                "CERTFORGE_ENV_IDENTITY_DIGEST": environment.identity_digest,
+                "CERTFORGE_RULE_MANIFEST_DIGEST": manifest.digest,
+                "CERTFORGE_DEPLOYMENT_ID": "deploy-unledgered-p1",
+                "CERTFORGE_DEPLOY_SECRET": DEPLOY_SECRET,
+                "CERTFORGE_PYTHON": sys.executable.replace("\\", "/"),
+                "CERTFORGE_ROLLBACK_CMD":
+                    f"printf %s \"$CERTFORGE_ROLLBACK_TARGET\" > '{rollback_marker_posix}'",
+            },
+        )
+    finally:
+        proxy.stop()
+        server.should_exit = True
+        thread.join(timeout=10)
+
+    # the deploy command itself SUCCEEDED ...
+    assert deploy_marker.exists(), proc.stdout + proc.stderr
+    # ... but the ledger could not record it, so the wrapper failed closed (exit 3)
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "outcome recording attempt 3/3 failed" in proc.stderr
+    assert "OUTCOME NOT RECORDED (SUCCEEDED)" in proc.stderr
+    assert "UNLEDGERED PRODUCTION ARTIFACT" in proc.stderr
+    # the ACTUAL rollback executed with the EXACT admission-bound target, restoring the
+    # previous known-good release even though every reporting attempt failed
+    assert rollback_marker.exists(), proc.stdout + proc.stderr
+    assert rollback_marker.read_text(encoding="utf-8").strip() == artifact
+    assert "EXECUTING ROLLBACK (admission-bound last-known-good" in proc.stderr
+    assert "ROLLED_BACK outcome NOT RECORDED" in proc.stderr
+    assert "DEPLOYMENT REPORTING INCOMPLETE" in proc.stderr
+    assert proxy.forwarded == 1
+    # 3 SUCCEEDED + 3 FAILED + 3 ROLLED_BACK attempts were all refused
+    assert proxy.refused >= 9
+
+    # the ledger holds the wrapper's admission with NO outcome rows (acknowledgement was
+    # down) and the chain is still valid — nothing unledgered was left live
+    audit = client.get("/v1/deployments/audit", headers={"X-Tenant-ID": TENANT}).json()
+    assert audit["chain_valid"] is True
+    sh_admissions = [
+        row
+        for row in audit["records"]
+        if row["record_type"] == "ADMISSION"
+        and row["deployment_environment"] == "production"
+        and row["record_id"] != good_prod["admission_id"]
+    ]
+    assert len(sh_admissions) == 1
+    admission_id = sh_admissions[0]["record_id"]
+    outcomes = [
+        row
+        for row in audit["records"]
+        if row["record_type"] == "OUTCOME" and row["admission_id"] == admission_id
+    ]
+    assert outcomes == []

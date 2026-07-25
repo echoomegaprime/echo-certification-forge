@@ -28,11 +28,14 @@
 #                                     missing rollback command fails closed (exit 3)
 #                                     BEFORE any admission is requested. It is ALWAYS run
 #                                     after a FAILED production deployment (even when
-#                                     outcome recording is completely down); it receives
-#                                     the exact rollback target BOUND INTO THE ADMISSION
-#                                     RECORD in CERTFORGE_ROLLBACK_TARGET and, when it
-#                                     succeeds, a ROLLED_BACK outcome naming that exact
-#                                     bound digest is recorded. Incomplete outcome
+#                                     outcome recording is completely down) AND after a
+#                                     SUCCESSFUL production deployment whose SUCCEEDED
+#                                     outcome could not be durably recorded — an artifact
+#                                     the ledger cannot account for never stays live. It
+#                                     receives the exact rollback target BOUND INTO THE
+#                                     ADMISSION RECORD in CERTFORGE_ROLLBACK_TARGET and,
+#                                     when it succeeds, a ROLLED_BACK outcome naming that
+#                                     exact bound digest is recorded. Incomplete outcome
 #                                     reporting fails the pipeline closed (exit 3) AFTER
 #                                     the rollback has executed.
 # Optional environment:
@@ -182,12 +185,43 @@ set -e
 
 if [ "$DEPLOY_STATUS" -eq 0 ]; then
   SUCCESS_OUT=""
-  if ! record_outcome_retry SUCCESS_OUT SUCCEEDED "deployment command succeeded: $*"; then
-    echo "!! OUTCOME NOT RECORDED (SUCCEEDED) — the ledger has no record of this deployment result" >&2
+  if record_outcome_retry SUCCESS_OUT SUCCEEDED "deployment command succeeded: $*"; then
+    echo "== DEPLOYMENT SUCCEEDED — outcome recorded against $ADMISSION_ID =="
+    exit 0
+  fi
+  # The deploy command succeeded but NO SUCCEEDED outcome could be durably recorded
+  # (the idempotent operation-id retry above already recovers a committed-but-response-
+  # lost record, so reaching here means the ledger truly holds no success). An artifact
+  # the ledger cannot account for must never stay live in production — fail closed by
+  # rolling back to the admission-bound target before exiting.
+  echo "!! OUTCOME NOT RECORDED (SUCCEEDED) — the ledger has no record of this deployment result" >&2
+  if [ "$CERTFORGE_ENVIRONMENT" != "production" ]; then
     exit 3
   fi
-  echo "== DEPLOYMENT SUCCEEDED — outcome recorded against $ADMISSION_ID =="
-  exit 0
+  echo "!! UNLEDGERED PRODUCTION ARTIFACT — rolling back to the admission-bound target (fail-closed)" >&2
+  FAILED_OUT=""
+  record_outcome_retry FAILED_OUT FAILED \
+    "deployment succeeded but the SUCCEEDED outcome could not be durably recorded; failing closed and rolling back" \
+    || true
+  echo "== EXECUTING ROLLBACK (admission-bound last-known-good: $ROLLBACK_TARGET) ==" >&2
+  set +e
+  CERTFORGE_ROLLBACK_TARGET="$ROLLBACK_TARGET" bash -c "$CERTFORGE_ROLLBACK_CMD"
+  ROLLBACK_STATUS=$?
+  set -e
+  if [ "$ROLLBACK_STATUS" -ne 0 ]; then
+    echo "!! ROLLBACK COMMAND FAILED (exit $ROLLBACK_STATUS) after unledgered success" >&2
+  else
+    ROLLED_BACK_OUT=""
+    if record_outcome_retry ROLLED_BACK_OUT ROLLED_BACK \
+        "rolled back to admission-bound last-known-good after deployment success could not be durably recorded" \
+        "$ROLLBACK_TARGET"; then
+      echo "== ROLLBACK RECORDED against $ADMISSION_ID ==" >&2
+    else
+      echo "!! ROLLBACK EXECUTED but ROLLED_BACK outcome NOT RECORDED — failing closed" >&2
+    fi
+  fi
+  echo "!! DEPLOYMENT REPORTING INCOMPLETE — the ledger does not reflect reality (fail-closed)" >&2
+  exit 3
 fi
 
 # ---------------------------------------------------------------------------------------
