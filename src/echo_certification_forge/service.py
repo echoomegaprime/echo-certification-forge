@@ -31,8 +31,14 @@ from .models import (
     SignedVerdictEnvelope,
     VerdictLifecycleEvent,
 )
+from .operational_telemetry import (
+    OperationalTelemetryError,
+    OperationalTelemetryRegistry,
+    SignedOperationalReport,
+)
 from .platform import ApiPrincipal, CertificationPlatform, PlatformError
 from .policy import RuleManifest
+from .runner import TrustedTransportRegistry
 from .signing import TrustedPublicKeyRegistry
 
 
@@ -53,10 +59,16 @@ class ServiceContext:
     trusted_keys: TrustedPublicKeyRegistry
     platform: CertificationPlatform | None = None
     billing_webhook_secret: str = ""
+    transport_registry: TrustedTransportRegistry | None = None
+    operational_registry: OperationalTelemetryRegistry | None = None
 
     def __post_init__(self) -> None:
         if self.platform is None:
             self.platform = CertificationPlatform(self.store.db_path)
+        if self.transport_registry is None:
+            self.transport_registry = TrustedTransportRegistry.empty()
+        if self.operational_registry is None:
+            self.operational_registry = OperationalTelemetryRegistry(self.store.db_path)
 
 
 class DeployGateRequest(BaseModel):
@@ -131,6 +143,8 @@ class LifecycleRequest(BaseModel):
 def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version="0.7.0")
     assert context.platform is not None
+    assert context.transport_registry is not None
+    assert context.operational_registry is not None
 
     def tenant(value: str | None) -> str:
         if value is None or not value.strip():
@@ -538,6 +552,24 @@ def create_app(context: ServiceContext) -> FastAPI:
         actor = principal(x_certforge_api_key)
         return context.platform.usage_summary(actor)
 
+    @app.post("/v1/internal/worker-heartbeats")
+    def ingest_worker_heartbeat(report: SignedOperationalReport) -> dict[str, Any]:
+        try:
+            return context.operational_registry.ingest_worker_heartbeat(
+                report, context.transport_registry
+            )
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+    @app.post("/v1/internal/adapter-inventory")
+    def ingest_adapter_inventory(report: SignedOperationalReport) -> dict[str, Any]:
+        try:
+            return context.operational_registry.ingest_adapter_inventory(
+                report, context.transport_registry
+            )
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
     @app.get("/v1/subscriber/telemetry")
     def subscriber_telemetry(
         x_certforge_api_key: str | None = Header(default=None),
@@ -551,6 +583,7 @@ def create_app(context: ServiceContext) -> FastAPI:
             recent_run_rows = context.store.list_runs(
                 actor.tenant_id, limit=_TELEMETRY_RUN_LIMIT
             )
+            authenticated = context.operational_registry.snapshot(actor.tenant_id)
         except PlatformError as exc:
             raise platform_error(exc) from exc
 
@@ -597,9 +630,10 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "concurrent_run_limit": concurrent_limit,
                 "active_runs": active_runs,
                 "quota_slots_remaining": max(concurrent_limit - active_runs, 0),
-                "runner_health": "UNKNOWN",
-                "runner_health_reason": "No authenticated worker-heartbeat contract is available.",
+                "runner_health": authenticated["runner"]["health"],
+                "runner_health_reason": authenticated["runner"]["reason"],
                 "capacity_basis": "subscription_quota_only",
+                "authenticated_runner_source": authenticated["runner"],
             },
             "subscription": {
                 "plan_id": usage["plan_id"],
@@ -615,11 +649,8 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "recent_runs": recent_runs,
                 "recent_runs_limit": _TELEMETRY_RUN_LIMIT,
             },
-            "adapters": {
-                "inventory_status": "UNAVAILABLE",
-                "maturity_status": "UNAVAILABLE",
-                "reason": "No authenticated adapter-registry telemetry contract is available.",
-            },
+            "adapters": authenticated["adapters"],
+            "authenticated_source_snapshot_sha256": authenticated["snapshot_sha256"],
         }
 
     @app.get("/v1/subscriber/audit")

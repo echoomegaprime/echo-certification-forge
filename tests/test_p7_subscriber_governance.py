@@ -211,21 +211,22 @@ def test_subscriber_telemetry_is_bounded_tenant_scoped_and_truthful(store, manif
     body = response.json()
     assert body["queue"]["queued"] == body["queue"]["active"] == 1
     assert body["queue"]["total"] == 1
-    assert body["capacity"] == {
-        "concurrent_run_limit": 8,
-        "active_runs": 1,
-        "quota_slots_remaining": 7,
-        "runner_health": "UNKNOWN",
-        "runner_health_reason": "No authenticated worker-heartbeat contract is available.",
-        "capacity_basis": "subscription_quota_only",
-    }
+    assert body["capacity"]["concurrent_run_limit"] == 8
+    assert body["capacity"]["active_runs"] == 1
+    assert body["capacity"]["quota_slots_remaining"] == 7
+    assert body["capacity"]["runner_health"] == "NO_AUTHENTICATED_HEARTBEATS"
+    assert body["capacity"]["capacity_basis"] == "subscription_quota_only"
+    assert body["capacity"]["authenticated_runner_source"]["registered"] == 0
+    assert body["capacity"]["authenticated_runner_source"]["source"] == "authenticated_ed25519_worker_reports"
     assert body["budgets"]["worker_minutes"] == {
         "used": 7,
         "limit": 20_000,
         "remaining": 19_993,
     }
-    assert body["adapters"]["inventory_status"] == "UNAVAILABLE"
+    assert body["adapters"]["inventory_status"] == "EMPTY"
     assert body["adapters"]["maturity_status"] == "UNAVAILABLE"
+    assert body["adapters"]["source"] == "authenticated_signed_adapter_bundles"
+    assert len(body["authenticated_source_snapshot_sha256"]) == 64
     recent = body["state_machine"]["recent_runs"]
     assert len(recent) == 1 and recent[0]["run_id"] == run_id
     timeline = recent[0]["timeline"]

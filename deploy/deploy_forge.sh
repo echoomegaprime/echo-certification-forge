@@ -40,7 +40,8 @@ RELEASE_DIR="$RELEASE_ROOT/$RELEASE_ID"
 RELEASE_TMP="$RELEASE_DIR.tmp.$$"
 echo "   candidate=$NEW_SHA"
 
-mkdir -p "$RELEASE_ROOT" "$STATE_ROOT/evidence" "$STATE_ROOT/trusted-public-keys"
+mkdir -p "$RELEASE_ROOT" "$STATE_ROOT/evidence" "$STATE_ROOT/trusted-public-keys" \
+  "$STATE_ROOT/trusted-transport-keys"
 trap 'rm -rf "$RELEASE_TMP"' EXIT
 mkdir "$RELEASE_TMP"
 git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
@@ -85,6 +86,7 @@ export ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3"
 export ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence"
 export ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v1.json"
 export ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys"
+export ECHO_CERTFORGE_TRANSPORT_KEYS="$STATE_ROOT/trusted-transport-keys"
 "$RELEASE_DIR/.venv/bin/python" -m uvicorn echo_certification_forge.app:app \
   --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning \
   >"$STAGING_ROOT/service.log" 2>&1 &
@@ -280,6 +282,7 @@ Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v1.json
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
+Environment=ECHO_CERTFORGE_TRANSPORT_KEYS=$STATE_ROOT/trusted-transport-keys
 ExecStart=$CURRENT_LINK/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5

@@ -43,6 +43,7 @@ from .runner import (
     RunnerCommand,
     RunnerEphemeralIdentity,
     RunnerResponse,
+    SignedRunCredential,
     create_transport_request,
 )
 
@@ -68,7 +69,9 @@ class AdapterEvidenceSource:
 
 @dataclass(frozen=True, slots=True)
 class SignedAdapterBundle:
+    credential: SignedRunCredential
     response: RunnerResponse
+    control_plane_public_key_pem: str
     runner_public_key_pem: str
     adapter_set_sha256: str
 
@@ -153,7 +156,9 @@ def sign_adapter_bundle(
         issued_at=issued_at,
     )
     return SignedAdapterBundle(
+        credential=credential,
         response=response,
+        control_plane_public_key_pem=authority.public_key_pem,
         runner_public_key_pem=runner.public_key_pem,
         adapter_set_sha256=adapter_set_digest(records),
     )
