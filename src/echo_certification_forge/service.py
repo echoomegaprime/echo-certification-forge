@@ -104,15 +104,51 @@ class MemberRoleUpdateRequest(BaseModel):
 def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version="0.4.0")
 
+    @app.middleware("http")
+    async def audit_final_request_outcome(request: Request, call_next):
+        audit_actor = None
+        if context.subscribers is not None:
+            authorization = request.headers.get("Authorization")
+            if authorization is not None and authorization.startswith("Bearer "):
+                token = authorization.removeprefix("Bearer ").strip()
+                if token:
+                    try:
+                        audit_actor = context.subscribers.resolve_request_audit_actor(token)
+                    except sqlite3.Error:
+                        return JSONResponse(
+                            status_code=503,
+                            content={"detail": "subscriber_governance_unavailable"},
+                        )
+        response = await call_next(request)
+        audit_reason = response.headers.get("X-Certforge-Audit-Code")
+        if audit_reason is not None:
+            del response.headers["X-Certforge-Audit-Code"]
+        if context.subscribers is not None and audit_actor is not None:
+            try:
+                context.subscribers.audit_request_outcome(
+                    organization_id=audit_actor["organization_id"],
+                    actor_ref=audit_actor["actor_ref"],
+                    key_id=audit_actor["key_id"],
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    tenant_hint=request.headers.get("X-Tenant-ID"),
+                    reason=audit_reason,
+                )
+            except sqlite3.Error:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "subscriber_governance_unavailable"},
+                )
+        return response
+
     @app.exception_handler(SubscriberError)
     async def handle_subscriber_error(
         _request: Request, exc: SubscriberError
     ) -> JSONResponse:
-        headers = (
-            {"Retry-After": str(exc.retry_after)}
-            if exc.retry_after is not None
-            else None
-        )
+        headers = {"X-Certforge-Audit-Code": exc.code}
+        if exc.retry_after is not None:
+            headers["Retry-After"] = str(exc.retry_after)
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": exc.code},
@@ -140,7 +176,9 @@ def create_app(context: ServiceContext) -> FastAPI:
         return value
 
     def subscriber_error(exc: SubscriberError) -> HTTPException:
-        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
+        headers = {"X-Certforge-Audit-Code": exc.code}
+        if exc.retry_after is not None:
+            headers["Retry-After"] = str(exc.retry_after)
         return HTTPException(status_code=exc.status_code, detail=exc.code, headers=headers)
 
     def authorize(

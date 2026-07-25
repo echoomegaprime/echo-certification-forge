@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from .policy import RuleManifest
 from .runner import RunnerResponse
 from .sandbox import DEFAULT_IMAGE, DockerSandbox, sandboxed_journey_runner
 from .signing import Ed25519VerdictSigner
+from .subscriber import SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
 _ADAPTER_RULE = "adapter_identity_and_quality"
@@ -84,8 +86,9 @@ def run(
     store: EvidenceStore,
     manifest: RuleManifest,
     signer: Ed25519VerdictSigner,
-    entitled: frozenset[str],
-    journey: list[str] | None,
+    entitled: frozenset[str] | None = None,
+    subscribers: SubscriberGovernance | None = None,
+    journey: list[str] | None = None,
     sandbox: DockerSandbox | None = None,
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
@@ -115,12 +118,58 @@ def run(
 
     executor = RunExecutor(store, manifest, signer)
     journey_runner = sandboxed_journey_runner(sandbox) if sandbox is not None else None
+    entitlement = StaticEntitlement(entitled or frozenset())
+    retention = RetentionPolicy()
+    if subscribers is not None:
+        try:
+            allowed, reason = subscribers.entitlement(tenant)
+            retention_days = subscribers.retention_days(tenant)
+            if retention_days <= 0:
+                raise ValueError("subscriber retention must be positive")
+        except (OSError, sqlite3.Error, SubscriberError, TypeError, ValueError):
+            allowed = False
+            reason = "subscriber_governance_lookup_failed"
+            retention_days = 1
+        entitlement = StaticEntitlement(
+            frozenset({tenant}) if allowed else frozenset(),
+            denied_reason=reason,
+        )
+        retention = RetentionPolicy(
+            retention_class=f"subscriber-{retention_days}d",
+            ttl_seconds=retention_days * 24 * 3600,
+        )
+    else:
+        try:
+            with sqlite3.connect(store.db_path) as connection:
+                subscriber_table = connection.execute(
+                    """
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'subscriber_organizations'
+                    """
+                ).fetchone()
+                subscriber_tenant = bool(
+                    subscriber_table
+                    and connection.execute(
+                        """
+                        SELECT 1 FROM subscriber_organizations
+                        WHERE organization_id = ?
+                        """,
+                        (tenant,),
+                    ).fetchone()
+                )
+        except sqlite3.Error:
+            subscriber_tenant = True
+        if subscriber_tenant:
+            entitlement = StaticEntitlement(
+                frozenset(),
+                denied_reason="subscriber_governance_required",
+            )
     result = executor.execute(
         run_id,
         tenant,
         acquired.source_root,
-        entitlement=StaticEntitlement(entitled),
-        retention=RetentionPolicy(),
+        entitlement=entitlement,
+        retention=retention,
         journey=journey,
         journey_runner=journey_runner,
         control_attestations={
@@ -194,6 +243,16 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.get(
                 "ECHO_CERTFORGE_POLICY",
                 _REPO / "policies" / "mandatory-rules.v1.json",
+            )
+        ),
+    )
+    parser.add_argument(
+        "--subscriber-policy",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "ECHO_CERTFORGE_SUBSCRIBER_POLICY",
+                _REPO / "policies" / "subscriber-governance.v1.json",
             )
         ),
     )
@@ -292,6 +351,17 @@ def main(argv: list[str] | None = None) -> int:
     signer = _load_signer(args.signing_key)
     entitled_raw = os.environ.get("ECHO_CERTFORGE_ENTITLED_TENANTS") or args.tenant
     entitled = frozenset(item.strip() for item in entitled_raw.split(",") if item.strip())
+    subscribers = None
+    if os.environ.get("ECHO_CERTFORGE_SUBSCRIBERS_ENABLED", "0") == "1":
+        pepper = os.environ.get("ECHO_CERTFORGE_API_KEY_PEPPER")
+        if not pepper:
+            print(json.dumps({"error": "subscriber_governance_pepper_missing"}))
+            return 2
+        subscribers = SubscriberGovernance(
+            args.db,
+            SubscriberPolicy.load(args.subscriber_policy),
+            pepper.encode("utf-8"),
+        )
     target_spec = json.loads(args.target_json)
     journey = json.loads(args.journey_json) if args.journey_json else None
     sandbox = None
@@ -309,6 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest=manifest,
         signer=signer,
         entitled=entitled,
+        subscribers=subscribers,
         journey=journey,
         sandbox=sandbox,
         adapter_records=adapter_records,

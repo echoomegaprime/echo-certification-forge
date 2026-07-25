@@ -1,7 +1,7 @@
 {
   "contract_id": "certforge.subscriber-governance.v1",
-  "contract_sha256": "93fe32117333ebe8727fe42e47cc9b6eccb7d122823169047262598c13ba41f8",
-  "generated_at_utc": "2026-07-25T08:30:43.133460Z",
+  "contract_sha256": "4be9523fc451324a96cb6a0f4150fdfd00a398063d6d89290e4829b48fdfc33b",
+  "generated_at_utc": "2026-07-25T09:27:02.407968Z",
   "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
   "manifest_id": "certforge.release-strict.v1",
   "passed": true,
@@ -18,6 +18,25 @@
       "passed": true,
       "status_code": 401
     },
+    "authoritative_billing_period_quota": {
+      "detail": "monthly_run_quota_exceeded",
+      "passed": true,
+      "rollover_created": true,
+      "usage": {
+        "active_run_reservations": 0,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 25
+        },
+        "organization_id": "org_17fdf63847e0c8d59996c579",
+        "period_ended_at": "2026-09-03T09:27:02.346036Z",
+        "period_started_at": "2026-06-29T00:00:00Z"
+      }
+    },
     "authorization_scope": {
       "detail": "permission_denied",
       "passed": true,
@@ -32,6 +51,15 @@
       "passed": true,
       "status_code": 402
     },
+    "billing_provider_ordering": {
+      "detail": "billing_event_stale",
+      "organization_status": "SUSPENDED",
+      "passed": true,
+      "rejected_event": [
+        10,
+        "REJECTED_STALE"
+      ]
+    },
     "concurrent_quota": {
       "detail": "concurrent_run_quota_exceeded",
       "passed": true,
@@ -43,10 +71,50 @@
       "read_status": 200,
       "write_status": 402
     },
+    "final_request_outcome_audit": {
+      "denied_outcomes": [
+        [
+          "/v1/certifications",
+          429,
+          "concurrent_run_quota_exceeded"
+        ],
+        [
+          "/v1/subscriber/governance",
+          403,
+          "private_workers_not_entitled"
+        ],
+        [
+          "/v1/subscriber/governance",
+          409,
+          "governance_version_conflict"
+        ],
+        [
+          "/v1/subscriber/me",
+          404,
+          "tenant_not_found"
+        ],
+        [
+          "/v1/subscriber/projects",
+          401,
+          "api_key_revoked"
+        ],
+        [
+          "/v1/subscriber/projects",
+          402,
+          "subscription_past_due"
+        ],
+        [
+          "/v1/subscriber/projects",
+          403,
+          "permission_denied"
+        ]
+      ],
+      "passed": true
+    },
     "global_api_key_rate_limit": {
       "detail": "rate_limit_exceeded",
       "passed": true,
-      "retry_after": "60",
+      "retry_after": "59",
       "status_code": 429
     },
     "governed_intake_default_block": {
@@ -54,13 +122,13 @@
       "passed": true,
       "release_verdict": "NOT_READY",
       "replay_status": 200,
-      "run_id": "cert_605683131fe1ebed57a8875515acb2904dc83bf7"
+      "run_id": "cert_06696b4b7ae4f6f326c1991856105d2a3560deca"
     },
     "immutable_audit_chain": {
-      "chain_tip": "75ba55d540b86dd74724d0a243ea46a5e9121f39b84a0a7f64902109fd18b58b",
+      "chain_tip": "19f5d5f4c810bc076cb8104edced386c71ba7932d5712ace0d11d6df34d0aaea",
       "delete_blocked": true,
       "denied_audits": 3,
-      "event_count": 19,
+      "event_count": 27,
       "passed": true,
       "update_blocked": true
     },
@@ -82,8 +150,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_0dede8a066800da6bd5f7c73",
-        "period_started_at": "2026-07-01T00:00:00Z"
+        "organization_id": "org_74f3c29e1dab3446907ee95f",
+        "period_ended_at": "2026-08-24T09:26:59.185471Z",
+        "period_started_at": "2026-07-25T09:26:59.185471Z"
       }
     },
     "resource_lifecycle_revocation": {
@@ -118,8 +187,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_771d30a7f8f9d41f98065b41",
-        "period_started_at": "2026-07-01T00:00:00Z"
+        "organization_id": "org_870b49c3af09e593c8a5d28e",
+        "period_ended_at": "2026-08-24T09:27:00.176312Z",
+        "period_started_at": "2026-07-25T09:27:00.176312Z"
       }
     },
     "tenant_isolation": {
@@ -131,6 +201,14 @@
       "contract_id": "certforge.subscriber-governance.v1",
       "passed": true,
       "schema_version": "1.0.0"
+    },
+    "worker_entitlement_and_plan_retention": {
+      "active_state": "COMPLETED",
+      "passed": true,
+      "retention_classes": [
+        "subscriber-7d"
+      ],
+      "suspended_state": "INFRASTRUCTURE_FAILURE"
     }
   },
   "schema_version": "1.0.0"

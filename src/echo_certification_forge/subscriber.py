@@ -273,6 +273,9 @@ class SubscriberGovernance:
             provider_customer_ref TEXT,
             current_period_start TEXT NOT NULL,
             current_period_end TEXT NOT NULL,
+            last_provider_occurred_at TEXT,
+            last_provider_sequence INTEGER,
+            last_provider_event_id TEXT,
             cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -281,6 +284,10 @@ class SubscriberGovernance:
             provider_event_id TEXT PRIMARY KEY,
             organization_id TEXT NOT NULL,
             event_type TEXT NOT NULL,
+            provider_occurred_at TEXT NOT NULL,
+            provider_sequence INTEGER NOT NULL CHECK(provider_sequence >= 0),
+            processing_outcome TEXT NOT NULL DEFAULT 'APPLIED'
+                CHECK(processing_outcome IN ('APPLIED','REJECTED_STALE')),
             payload_sha256 TEXT NOT NULL,
             payload_json TEXT NOT NULL,
             created_at TEXT NOT NULL
@@ -458,6 +465,118 @@ class SubscriberGovernance:
                     WHERE status IS NULL
                     """
                 )
+            subscription_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(subscriber_subscriptions)"
+                ).fetchall()
+            }
+            for column_name, column_type in (
+                ("last_provider_occurred_at", "TEXT"),
+                ("last_provider_sequence", "INTEGER"),
+                ("last_provider_event_id", "TEXT"),
+            ):
+                if column_name not in subscription_columns:
+                    connection.execute(
+                        f"ALTER TABLE subscriber_subscriptions "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+            billing_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(subscriber_billing_events)"
+                ).fetchall()
+            }
+            missing_billing_columns = {
+                "provider_occurred_at",
+                "provider_sequence",
+                "processing_outcome",
+            } - billing_columns
+            if missing_billing_columns:
+                connection.execute("DROP TRIGGER IF EXISTS no_update_subscriber_billing_events")
+                if "provider_occurred_at" in missing_billing_columns:
+                    connection.execute(
+                        "ALTER TABLE subscriber_billing_events "
+                        "ADD COLUMN provider_occurred_at TEXT"
+                    )
+                if "provider_sequence" in missing_billing_columns:
+                    connection.execute(
+                        "ALTER TABLE subscriber_billing_events "
+                        "ADD COLUMN provider_sequence INTEGER"
+                    )
+                if "processing_outcome" in missing_billing_columns:
+                    connection.execute(
+                        "ALTER TABLE subscriber_billing_events "
+                        "ADD COLUMN processing_outcome TEXT"
+                    )
+                connection.execute(
+                    """
+                    UPDATE subscriber_billing_events
+                    SET provider_occurred_at = COALESCE(provider_occurred_at, created_at),
+                        provider_sequence = COALESCE(
+                            provider_sequence,
+                            (
+                                SELECT COUNT(*)
+                                FROM subscriber_billing_events prior
+                                WHERE prior.organization_id =
+                                      subscriber_billing_events.organization_id
+                                  AND prior.rowid <= subscriber_billing_events.rowid
+                            )
+                        ),
+                        processing_outcome = COALESCE(processing_outcome, 'APPLIED')
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TRIGGER no_update_subscriber_billing_events
+                    BEFORE UPDATE ON subscriber_billing_events
+                    BEGIN
+                        SELECT RAISE(ABORT, 'subscriber_billing_events are append-only');
+                    END
+                    """
+                )
+            connection.execute(
+                """
+                UPDATE subscriber_subscriptions
+                SET last_provider_occurred_at = (
+                        SELECT e.provider_occurred_at
+                        FROM subscriber_billing_events e
+                        WHERE e.organization_id =
+                              subscriber_subscriptions.organization_id
+                          AND e.processing_outcome = 'APPLIED'
+                        ORDER BY e.provider_sequence DESC,
+                                 e.provider_occurred_at DESC
+                        LIMIT 1
+                    ),
+                    last_provider_sequence = (
+                        SELECT e.provider_sequence
+                        FROM subscriber_billing_events e
+                        WHERE e.organization_id =
+                              subscriber_subscriptions.organization_id
+                          AND e.processing_outcome = 'APPLIED'
+                        ORDER BY e.provider_sequence DESC,
+                                 e.provider_occurred_at DESC
+                        LIMIT 1
+                    ),
+                    last_provider_event_id = (
+                        SELECT e.provider_event_id
+                        FROM subscriber_billing_events e
+                        WHERE e.organization_id =
+                              subscriber_subscriptions.organization_id
+                          AND e.processing_outcome = 'APPLIED'
+                        ORDER BY e.provider_sequence DESC,
+                                 e.provider_occurred_at DESC
+                        LIMIT 1
+                    )
+                WHERE last_provider_sequence IS NULL
+                  AND EXISTS (
+                      SELECT 1 FROM subscriber_billing_events e
+                      WHERE e.organization_id =
+                            subscriber_subscriptions.organization_id
+                        AND e.processing_outcome = 'APPLIED'
+                  )
+                """
+            )
             for plan in self.policy.plans:
                 definition = plan.model_dump(mode="json")
                 encoded = canonical_json(definition)
@@ -916,6 +1035,64 @@ class SubscriberGovernance:
                         details=denied_audit["details"],
                     )
             raise
+
+    def resolve_request_audit_actor(self, token: str) -> dict[str, str] | None:
+        if not token.startswith("ecf_live_key_") or "." not in token:
+            return None
+        key_id = token.removeprefix("ecf_live_").split(".", 1)[0]
+        try:
+            require_identifier(key_id, "key_id")
+        except ValueError:
+            return None
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT key_id, organization_id, user_id, token_digest
+                FROM subscriber_api_keys
+                WHERE key_id = ?
+                """,
+                (key_id,),
+            ).fetchone()
+        if row is None or not hmac.compare_digest(
+            str(row["token_digest"]), self._token_digest(token)
+        ):
+            return None
+        return {
+            "organization_id": str(row["organization_id"]),
+            "actor_ref": str(row["user_id"]),
+            "key_id": str(row["key_id"]),
+        }
+
+    def audit_request_outcome(
+        self,
+        *,
+        organization_id: str,
+        actor_ref: str,
+        key_id: str,
+        method: str,
+        path: str,
+        status_code: int,
+        tenant_hint: str | None,
+        reason: str | None = None,
+    ) -> None:
+        outcome = "allowed" if status_code < 400 else "denied"
+        with self._connection(immediate=True) as connection:
+            self._append_audit(
+                connection,
+                organization_id=organization_id,
+                actor_ref=actor_ref,
+                action="request.outcome",
+                resource_type="api_key",
+                resource_id=key_id,
+                outcome=outcome,
+                details={
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "tenant_hint_matches": tenant_hint == organization_id,
+                    "reason": reason or f"http_{status_code}",
+                },
+            )
 
     def require(self, principal: SubscriberPrincipal, permission: Permission) -> None:
         with self._connection() as connection:
@@ -1504,10 +1681,21 @@ class SubscriberGovernance:
         provider_event_id: str,
         event_type: str,
         payload: Mapping[str, Any],
+        provider_occurred_at: datetime,
+        provider_sequence: int,
         plan_code: str | None = None,
     ) -> OrganizationStatus:
         require_identifier(organization_id, "organization_id")
         require_identifier(provider_event_id, "provider_event_id")
+        if not isinstance(provider_occurred_at, datetime) or provider_occurred_at.tzinfo is None:
+            raise SubscriberError(422, "billing_event_timestamp_invalid")
+        if (
+            isinstance(provider_sequence, bool)
+            or not isinstance(provider_sequence, int)
+            or provider_sequence < 0
+        ):
+            raise SubscriberError(422, "billing_event_sequence_invalid")
+        occurred_at = to_utc_iso(provider_occurred_at)
         event_statuses = {
             "subscription.activated": OrganizationStatus.ACTIVE,
             "payment.failed": OrganizationStatus.PAST_DUE,
@@ -1524,6 +1712,8 @@ class SubscriberGovernance:
                 "organization_id": organization_id,
                 "event_type": event_type,
                 "plan_code": plan_code,
+                "provider_occurred_at": occurred_at,
+                "provider_sequence": provider_sequence,
                 "payload": json.loads(encoded),
             }
         )
@@ -1545,10 +1735,13 @@ class SubscriberGovernance:
             period_start = to_utc_iso(parsed_start)
             period_end = to_utc_iso(parsed_end)
         now = to_utc_iso(self._now())
+        stale_event = False
+        target = event_statuses[event_type]
         with self._connection(immediate=True) as connection:
             existing = connection.execute(
                 """
-                SELECT organization_id, event_type, payload_sha256
+                SELECT organization_id, event_type, payload_sha256,
+                       provider_occurred_at, provider_sequence, processing_outcome
                 FROM subscriber_billing_events
                 WHERE provider_event_id = ?
                 """,
@@ -1559,8 +1752,12 @@ class SubscriberGovernance:
                     existing["organization_id"] != organization_id
                     or existing["event_type"] != event_type
                     or existing["payload_sha256"] != digest
+                    or existing["provider_occurred_at"] != occurred_at
+                    or existing["provider_sequence"] != provider_sequence
                 ):
                     raise SubscriberError(409, "billing_event_conflict")
+                if existing["processing_outcome"] == "REJECTED_STALE":
+                    raise SubscriberError(409, "billing_event_stale")
                 row = connection.execute(
                     "SELECT status FROM subscriber_organizations WHERE organization_id = ?",
                     (organization_id,),
@@ -1569,123 +1766,163 @@ class SubscriberGovernance:
                     raise SubscriberError(404, "organization_not_found")
                 return OrganizationStatus(str(row["status"]))
             row = connection.execute(
-                "SELECT status FROM subscriber_organizations WHERE organization_id = ?",
+                """
+                SELECT o.status, s.last_provider_occurred_at, s.last_provider_sequence
+                FROM subscriber_organizations o
+                JOIN subscriber_subscriptions s
+                  ON s.organization_id = o.organization_id
+                WHERE o.organization_id = ?
+                """,
                 (organization_id,),
             ).fetchone()
             if row is None:
                 raise SubscriberError(404, "organization_not_found")
             current = OrganizationStatus(str(row["status"]))
-            target = event_statuses[event_type]
-            allowed = {
-                OrganizationStatus.TRIALING: {
-                    OrganizationStatus.ACTIVE,
-                    OrganizationStatus.PAST_DUE,
-                    OrganizationStatus.SUSPENDED,
-                    OrganizationStatus.CANCELLED,
-                },
-                OrganizationStatus.ACTIVE: {
-                    OrganizationStatus.PAST_DUE,
-                    OrganizationStatus.SUSPENDED,
-                    OrganizationStatus.CANCELLED,
-                },
-                OrganizationStatus.PAST_DUE: {
-                    OrganizationStatus.ACTIVE,
-                    OrganizationStatus.SUSPENDED,
-                    OrganizationStatus.CANCELLED,
-                },
-                OrganizationStatus.SUSPENDED: {
-                    OrganizationStatus.ACTIVE,
-                    OrganizationStatus.CANCELLED,
-                },
-                OrganizationStatus.CANCELLED: set(),
-            }
-            if target != current and target not in allowed[current]:
-                raise SubscriberError(409, "subscription_transition_invalid")
-            connection.execute(
-                """
-                INSERT INTO subscriber_billing_events(
-                    provider_event_id, organization_id, event_type, payload_sha256,
-                    payload_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (provider_event_id, organization_id, event_type, digest, encoded, now),
+            last_sequence = row["last_provider_sequence"]
+            last_occurred_at = row["last_provider_occurred_at"]
+            stale_event = last_sequence is not None and (
+                provider_sequence <= int(last_sequence)
+                or (
+                    last_occurred_at is not None
+                    and parse_utc_iso(occurred_at) < parse_utc_iso(str(last_occurred_at))
+                )
             )
-            connection.execute(
-                """
-                UPDATE subscriber_organizations SET status = ?, updated_at = ?
-                WHERE organization_id = ?
-                """,
-                (target.value, now, organization_id),
-            )
-            if plan_code is None:
-                if period_start is None:
-                    connection.execute(
-                        """
-                        UPDATE subscriber_subscriptions SET status = ?, updated_at = ?
-                        WHERE organization_id = ?
-                        """,
-                        (target.value, now, organization_id),
-                    )
-                else:
-                    connection.execute(
-                        """
-                        UPDATE subscriber_subscriptions
-                        SET status = ?, current_period_start = ?,
-                            current_period_end = ?, updated_at = ?
-                        WHERE organization_id = ?
-                        """,
-                        (
-                            target.value,
-                            period_start,
-                            period_end,
-                            now,
-                            organization_id,
-                        ),
-                    )
+            if stale_event:
+                connection.execute(
+                    """
+                    INSERT INTO subscriber_billing_events(
+                        provider_event_id, organization_id, event_type,
+                        provider_occurred_at, provider_sequence, processing_outcome,
+                        payload_sha256, payload_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, 'REJECTED_STALE', ?, ?, ?)
+                    """,
+                    (
+                        provider_event_id,
+                        organization_id,
+                        event_type,
+                        occurred_at,
+                        provider_sequence,
+                        digest,
+                        encoded,
+                        now,
+                    ),
+                )
+                self._append_audit(
+                    connection,
+                    organization_id=organization_id,
+                    actor_ref="billing-provider",
+                    action="subscription.transition",
+                    resource_type="subscription",
+                    resource_id=organization_id,
+                    outcome="denied",
+                    details={
+                        "reason": "billing_event_stale",
+                        "event_type": event_type,
+                        "provider_event_id": provider_event_id,
+                        "provider_occurred_at": occurred_at,
+                        "provider_sequence": provider_sequence,
+                        "last_provider_occurred_at": last_occurred_at,
+                        "last_provider_sequence": last_sequence,
+                    },
+                )
             else:
-                if period_start is None:
-                    connection.execute(
-                        """
-                        UPDATE subscriber_subscriptions
-                        SET status = ?, plan_code = ?, updated_at = ?
-                        WHERE organization_id = ?
-                        """,
-                        (target.value, plan_code, now, organization_id),
-                    )
-                else:
-                    connection.execute(
-                        """
-                        UPDATE subscriber_subscriptions
-                        SET status = ?, plan_code = ?, current_period_start = ?,
-                            current_period_end = ?, updated_at = ?
-                        WHERE organization_id = ?
-                        """,
-                        (
-                            target.value,
-                            plan_code,
-                            period_start,
-                            period_end,
-                            now,
-                            organization_id,
-                        ),
-                    )
-            self._append_audit(
-                connection,
-                organization_id=organization_id,
-                actor_ref="billing-provider",
-                action="subscription.transition",
-                resource_type="subscription",
-                resource_id=organization_id,
-                outcome="allowed",
-                details={
-                    "from": current.value,
-                    "to": target.value,
-                    "event_type": event_type,
-                    "provider_event_id": provider_event_id,
-                    "plan_code": plan_code,
-                },
-            )
-            return target
+                allowed = {
+                    OrganizationStatus.TRIALING: {
+                        OrganizationStatus.ACTIVE,
+                        OrganizationStatus.PAST_DUE,
+                        OrganizationStatus.SUSPENDED,
+                        OrganizationStatus.CANCELLED,
+                    },
+                    OrganizationStatus.ACTIVE: {
+                        OrganizationStatus.PAST_DUE,
+                        OrganizationStatus.SUSPENDED,
+                        OrganizationStatus.CANCELLED,
+                    },
+                    OrganizationStatus.PAST_DUE: {
+                        OrganizationStatus.ACTIVE,
+                        OrganizationStatus.SUSPENDED,
+                        OrganizationStatus.CANCELLED,
+                    },
+                    OrganizationStatus.SUSPENDED: {
+                        OrganizationStatus.ACTIVE,
+                        OrganizationStatus.CANCELLED,
+                    },
+                    OrganizationStatus.CANCELLED: set(),
+                }
+                if target != current and target not in allowed[current]:
+                    raise SubscriberError(409, "subscription_transition_invalid")
+                connection.execute(
+                    """
+                    INSERT INTO subscriber_billing_events(
+                        provider_event_id, organization_id, event_type,
+                        provider_occurred_at, provider_sequence, processing_outcome,
+                        payload_sha256, payload_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, 'APPLIED', ?, ?, ?)
+                    """,
+                    (
+                        provider_event_id,
+                        organization_id,
+                        event_type,
+                        occurred_at,
+                        provider_sequence,
+                        digest,
+                        encoded,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE subscriber_organizations SET status = ?, updated_at = ?
+                    WHERE organization_id = ?
+                    """,
+                    (target.value, now, organization_id),
+                )
+                connection.execute(
+                    """
+                    UPDATE subscriber_subscriptions
+                    SET status = ?,
+                        plan_code = COALESCE(?, plan_code),
+                        current_period_start = COALESCE(?, current_period_start),
+                        current_period_end = COALESCE(?, current_period_end),
+                        last_provider_occurred_at = ?,
+                        last_provider_sequence = ?,
+                        last_provider_event_id = ?,
+                        updated_at = ?
+                    WHERE organization_id = ?
+                    """,
+                    (
+                        target.value,
+                        plan_code,
+                        period_start,
+                        period_end,
+                        occurred_at,
+                        provider_sequence,
+                        provider_event_id,
+                        now,
+                        organization_id,
+                    ),
+                )
+                self._append_audit(
+                    connection,
+                    organization_id=organization_id,
+                    actor_ref="billing-provider",
+                    action="subscription.transition",
+                    resource_type="subscription",
+                    resource_id=organization_id,
+                    outcome="allowed",
+                    details={
+                        "from": current.value,
+                        "to": target.value,
+                        "event_type": event_type,
+                        "provider_event_id": provider_event_id,
+                        "provider_occurred_at": occurred_at,
+                        "provider_sequence": provider_sequence,
+                        "plan_code": plan_code,
+                    },
+                )
+        if stale_event:
+            raise SubscriberError(409, "billing_event_stale")
+        return target
 
     def governance_config(self, principal: SubscriberPrincipal) -> dict[str, Any]:
         self.require(principal, Permission.GOVERNANCE_READ)
@@ -2022,8 +2259,15 @@ class SubscriberGovernance:
                 outcome="allowed",
             )
 
-    def _period_start(self, now: datetime) -> str:
-        return to_utc_iso(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    def _billing_period(self, subscription: sqlite3.Row) -> tuple[str, str]:
+        try:
+            parsed_start = parse_utc_iso(str(subscription["current_period_start"]))
+            parsed_end = parse_utc_iso(str(subscription["current_period_end"]))
+        except (TypeError, ValueError) as exc:
+            raise SubscriberError(503, "billing_period_invalid") from exc
+        if parsed_end <= parsed_start:
+            raise SubscriberError(503, "billing_period_invalid")
+        return to_utc_iso(parsed_start), to_utc_iso(parsed_end)
 
     def _reconcile_run_reservations(
         self, connection: sqlite3.Connection, organization_id: str, now: str
@@ -2039,7 +2283,16 @@ class SubscriberGovernance:
         )
         stale = connection.execute(
             """
-            SELECT r.idempotency_key, r.request_digest, r.run_id
+            SELECT r.idempotency_key, r.request_digest, r.run_id, r.created_at,
+                   (
+                       SELECT u.occurred_at
+                       FROM subscriber_usage_events u
+                       WHERE u.organization_id = r.organization_id
+                         AND u.meter = 'certification_runs'
+                         AND u.idempotency_key = r.idempotency_key
+                         AND u.quantity > 0
+                       LIMIT 1
+                   ) AS metered_at
             FROM subscriber_run_reservations r
             WHERE r.organization_id = ?
               AND r.state IN ('RESERVED', 'BOUND')
@@ -2083,7 +2336,7 @@ class SubscriberGovernance:
                             "run_id": row["run_id"],
                         }
                     ),
-                    now,
+                    row["metered_at"] or row["created_at"],
                 ),
             )
             self._append_audit(
@@ -2153,6 +2406,9 @@ class SubscriberGovernance:
                 OrganizationStatus.ACTIVE,
             }:
                 raise SubscriberError(402, "subscription_not_writable")
+            period_start, period_end = self._billing_period(subscription)
+            if not parse_utc_iso(period_start) <= now < parse_utc_iso(period_end):
+                raise SubscriberError(402, "subscription_period_inactive")
             self._reconcile_run_reservations(connection, principal.organization_id, now_text)
             active = int(
                 connection.execute(
@@ -2170,9 +2426,9 @@ class SubscriberGovernance:
                     """
                     SELECT COALESCE(SUM(quantity), 0) FROM subscriber_usage_events
                     WHERE organization_id = ? AND meter = 'certification_runs'
-                      AND occurred_at >= ?
+                      AND occurred_at >= ? AND occurred_at < ?
                     """,
-                    (principal.organization_id, self._period_start(now)),
+                    (principal.organization_id, period_start, period_end),
                 ).fetchone()[0]
             )
             if used >= plan.monthly_certification_runs:
@@ -2261,8 +2517,18 @@ class SubscriberGovernance:
         with self._connection(immediate=True) as connection:
             row = connection.execute(
                 """
-                SELECT state FROM subscriber_run_reservations
-                WHERE organization_id = ? AND idempotency_key = ?
+                SELECT r.state, r.created_at,
+                       (
+                           SELECT u.occurred_at
+                           FROM subscriber_usage_events u
+                           WHERE u.organization_id = r.organization_id
+                             AND u.meter = 'certification_runs'
+                             AND u.idempotency_key = r.idempotency_key
+                             AND u.quantity > 0
+                           LIMIT 1
+                       ) AS metered_at
+                FROM subscriber_run_reservations r
+                WHERE r.organization_id = ? AND r.idempotency_key = ?
                 """,
                 (reservation.organization_id, reservation.idempotency_key),
             ).fetchone()
@@ -2287,7 +2553,7 @@ class SubscriberGovernance:
                         reservation.organization_id,
                         f"release:{reservation.idempotency_key}",
                         canonical_json({"reason": reason}),
-                        now,
+                        row["metered_at"] or row["created_at"],
                     ),
                 )
             self._append_audit(
@@ -2303,17 +2569,17 @@ class SubscriberGovernance:
 
     def usage_summary(self, principal: SubscriberPrincipal) -> dict[str, Any]:
         self.require(principal, Permission.USAGE_READ)
-        now = self._now()
         with self._connection() as connection:
-            plan, _ = self._plan_for_org(connection, principal.organization_id)
+            plan, subscription = self._plan_for_org(connection, principal.organization_id)
+            period_start, period_end = self._billing_period(subscription)
             rows = connection.execute(
                 """
                 SELECT meter, COALESCE(SUM(quantity), 0) AS quantity
                 FROM subscriber_usage_events
-                WHERE organization_id = ? AND occurred_at >= ?
+                WHERE organization_id = ? AND occurred_at >= ? AND occurred_at < ?
                 GROUP BY meter ORDER BY meter
                 """,
-                (principal.organization_id, self._period_start(now)),
+                (principal.organization_id, period_start, period_end),
             ).fetchall()
             active = int(
                 connection.execute(
@@ -2327,7 +2593,8 @@ class SubscriberGovernance:
         meters = {str(row["meter"]): int(row["quantity"]) for row in rows}
         return {
             "organization_id": principal.organization_id,
-            "period_started_at": self._period_start(now),
+            "period_started_at": period_start,
+            "period_ended_at": period_end,
             "meters": meters,
             "limits": {
                 "monthly_certification_runs": plan.monthly_certification_runs,

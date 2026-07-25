@@ -17,9 +17,11 @@ from fastapi.testclient import TestClient
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from echo_certification_forge.canonical import parse_utc_iso
 from echo_certification_forge.evidence import EvidenceStore
+from echo_certification_forge.run_worker import run
 from echo_certification_forge.service import ServiceContext, create_app
-from echo_certification_forge.signing import TrustedPublicKeyRegistry
+from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.subscriber import (
     MemberRole,
     OrganizationStatus,
@@ -203,11 +205,14 @@ def main() -> int:
         detail=write_denied.json().get("detail"),
     )
 
+    billing_base = datetime.now(UTC)
     governance.apply_billing_event(
         organization_id=alpha.organization_id,
         provider_event_id="p7-payment-failed",
         event_type="payment.failed",
         payload={"invoice": "p7-invoice"},
+        provider_occurred_at=billing_base,
+        provider_sequence=1,
     )
     past_due_write = client.post(
         "/v1/subscriber/projects",
@@ -231,6 +236,8 @@ def main() -> int:
         provider_event_id="p7-payment-recovered",
         event_type="subscription.activated",
         payload={"invoice": "p7-invoice", "paid": True},
+        provider_occurred_at=billing_base + timedelta(seconds=1),
+        provider_sequence=2,
     )
 
     audit = client.get("/v1/subscriber/audit/verify", headers=alpha_headers)
@@ -483,6 +490,10 @@ def main() -> int:
         request_digest=digest("p7-stale-request"),
         policy_version=manifest.manifest_id,
     )
+    stale_reservation_at = (
+        datetime.now(UTC)
+        - timedelta(seconds=policy.reservation_ttl_seconds + 1)
+    ).isoformat().replace("+00:00", "Z")
     with closing(sqlite3.connect(db)) as connection:
         connection.execute(
             """
@@ -490,12 +501,7 @@ def main() -> int:
             WHERE organization_id = ? AND idempotency_key = ?
             """,
             (
-                (
-                    datetime.now(UTC)
-                    - timedelta(seconds=policy.reservation_ttl_seconds + 1)
-                )
-                .isoformat()
-                .replace("+00:00", "Z"),
+                stale_reservation_at,
                 recovery.organization_id,
                 "p7-stale-reservation-0001",
             ),
@@ -529,6 +535,8 @@ def main() -> int:
         provider_event_id="p7-tenant-bound-event",
         event_type="payment.failed",
         payload={"invoice": "shared-event"},
+        provider_occurred_at=billing_base,
+        provider_sequence=1,
     )
     billing_conflict = None
     try:
@@ -537,6 +545,8 @@ def main() -> int:
             provider_event_id="p7-tenant-bound-event",
             event_type="payment.failed",
             payload={"invoice": "shared-event"},
+            provider_occurred_at=billing_base,
+            provider_sequence=1,
         )
     except SubscriberError as exc:
         billing_conflict = exc.code
@@ -561,6 +571,296 @@ def main() -> int:
         status_code=rate_denied.status_code,
         detail=rate_denied.json().get("detail"),
         retry_after=rate_denied.headers.get("retry-after"),
+    )
+
+    worker_active = governance.provision_organization(
+        slug="p7-worker-active",
+        display_name="P7 Worker Active",
+        owner_email="owner@p7-worker-active.example",
+        owner_display_name="P7 Worker Active Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    worker_suspended = governance.provision_organization(
+        slug="p7-worker-suspended",
+        display_name="P7 Worker Suspended",
+        owner_email="owner@p7-worker-suspended.example",
+        owner_display_name="P7 Worker Suspended Owner",
+        plan_code="developer",
+        status=OrganizationStatus.SUSPENDED,
+    )
+    worker_source = workspace / "worker-source"
+    worker_source.mkdir()
+    worker_marker = workspace / "suspended-worker-executed"
+    (worker_source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(worker_marker)!r}).write_text('executed', encoding='utf-8')\n"
+        "print('ok')\n",
+        encoding="utf-8",
+    )
+    suspended_worker_result = run(
+        "p7-worker-suspended",
+        worker_suspended.organization_id,
+        {"type": "local", "path": str(worker_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        entitled=frozenset({worker_suspended.organization_id}),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    active_worker_result = run(
+        "p7-worker-retention",
+        worker_active.organization_id,
+        {"type": "local", "path": str(worker_source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        entitled=frozenset(),
+        subscribers=governance,
+        journey=[sys.executable, "-c", "print('ok')"],
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        retention_rows = connection.execute(
+            """
+            SELECT retention_class, expires_at, created_at
+            FROM evidence_retention
+            WHERE run_id = ? AND tenant_id = ?
+            """,
+            ("p7-worker-retention", worker_active.organization_id),
+        ).fetchall()
+    retention_is_seven_days = bool(retention_rows) and all(
+        row[0] == "subscriber-7d"
+        and timedelta(days=6, hours=23)
+        <= parse_utc_iso(row[1]) - parse_utc_iso(row[2])
+        <= timedelta(days=7, minutes=1)
+        for row in retention_rows
+    )
+    record(
+        scenarios,
+        "worker_entitlement_and_plan_retention",
+        suspended_worker_result.get("state") == "INFRASTRUCTURE_FAILURE"
+        and suspended_worker_result.get("signed") is False
+        and not worker_marker.exists()
+        and active_worker_result.get("state") == "COMPLETED"
+        and retention_is_seven_days,
+        suspended_state=suspended_worker_result.get("state"),
+        active_state=active_worker_result.get("state"),
+        retention_classes=sorted({row[0] for row in retention_rows}),
+    )
+
+    ordered = governance.provision_organization(
+        slug="p7-billing-order",
+        display_name="P7 Billing Order",
+        owner_email="owner@p7-billing-order.example",
+        owner_display_name="P7 Billing Order Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    ordered_at = datetime.now(UTC)
+    governance.apply_billing_event(
+        organization_id=ordered.organization_id,
+        provider_event_id="p7-order-suspend",
+        event_type="subscription.suspended",
+        payload={"reason": "risk"},
+        provider_occurred_at=ordered_at,
+        provider_sequence=20,
+    )
+    stale_order_code = None
+    try:
+        governance.apply_billing_event(
+            organization_id=ordered.organization_id,
+            provider_event_id="p7-order-delayed-activate",
+            event_type="subscription.activated",
+            payload={"reason": "delayed"},
+            provider_occurred_at=ordered_at - timedelta(minutes=5),
+            provider_sequence=10,
+        )
+    except SubscriberError as exc:
+        stale_order_code = exc.code
+    with closing(sqlite3.connect(db)) as connection:
+        ordered_status = connection.execute(
+            "SELECT status FROM subscriber_organizations WHERE organization_id = ?",
+            (ordered.organization_id,),
+        ).fetchone()[0]
+        rejected_order = connection.execute(
+            """
+            SELECT provider_sequence, processing_outcome
+            FROM subscriber_billing_events WHERE provider_event_id = ?
+            """,
+            ("p7-order-delayed-activate",),
+        ).fetchone()
+    record(
+        scenarios,
+        "billing_provider_ordering",
+        stale_order_code == "billing_event_stale"
+        and ordered_status == OrganizationStatus.SUSPENDED.value
+        and rejected_order == (10, "REJECTED_STALE"),
+        detail=stale_order_code,
+        organization_status=ordered_status,
+        rejected_event=list(rejected_order) if rejected_order else None,
+    )
+
+    valid_governance_update = client.put(
+        "/v1/subscriber/governance",
+        headers=alpha_headers,
+        json={"expected_version": config["version"], "config": config["config"]},
+    )
+    stale_governance_update = client.put(
+        "/v1/subscriber/governance",
+        headers=alpha_headers,
+        json={"expected_version": config["version"], "config": config["config"]},
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        outcome_rows = connection.execute(
+            """
+            SELECT details_json FROM subscriber_audit_events
+            WHERE organization_id = ? AND action = 'request.outcome'
+              AND outcome = 'denied'
+            """,
+            (alpha.organization_id,),
+        ).fetchall()
+    denied_outcomes = {
+        (details["path"], details["status_code"], details["reason"])
+        for details in (json.loads(row[0]) for row in outcome_rows)
+    }
+    record(
+        scenarios,
+        "final_request_outcome_audit",
+        valid_governance_update.status_code == 200
+        and stale_governance_update.status_code == 409
+        and ("/v1/subscriber/me", 404, "tenant_not_found") in denied_outcomes
+        and (
+            "/v1/certifications",
+            429,
+            "concurrent_run_quota_exceeded",
+        )
+        in denied_outcomes
+        and (
+            "/v1/subscriber/governance",
+            403,
+            "private_workers_not_entitled",
+        )
+        in denied_outcomes
+        and (
+            "/v1/subscriber/governance",
+            409,
+            "governance_version_conflict",
+        )
+        in denied_outcomes,
+        denied_outcomes=sorted([list(item) for item in denied_outcomes]),
+    )
+
+    cycle = governance.provision_organization(
+        slug="p7-billing-cycle",
+        display_name="P7 Billing Cycle",
+        owner_email="owner@p7-billing-cycle.example",
+        owner_display_name="P7 Billing Cycle Owner",
+        plan_code="developer",
+        status=OrganizationStatus.ACTIVE,
+    )
+    cycle_headers = headers(cycle.organization_id, cycle.bootstrap_api_key)
+    cycle_project = client.post(
+        "/v1/subscriber/projects",
+        headers=cycle_headers,
+        json={
+            "slug": "billing-cycle",
+            "name": "Billing Cycle",
+            "target_reference": "https://github.com/example/billing-cycle",
+        },
+    ).json()
+    cycle_principal = governance.authenticate(
+        cycle.bootstrap_api_key,
+        tenant_hint=cycle.organization_id,
+        permission=Permission.RUN_CREATE,
+        action="acceptance.billing-cycle.reserve",
+    )
+    cycle_now = datetime.now(UTC)
+    month_start = cycle_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prior_month_usage = month_start - timedelta(days=1)
+    cycle_start = prior_month_usage - timedelta(days=1)
+    cycle_end = cycle_now + timedelta(days=40)
+    with closing(sqlite3.connect(db)) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_subscriptions
+            SET current_period_start = ?, current_period_end = ?
+            WHERE organization_id = ?
+            """,
+            (
+                cycle_start.isoformat().replace("+00:00", "Z"),
+                cycle_end.isoformat().replace("+00:00", "Z"),
+                cycle.organization_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO subscriber_usage_events(
+                organization_id, meter, quantity, idempotency_key,
+                metadata_json, occurred_at
+            ) VALUES (?, 'certification_runs', ?, 'prior-calendar-month', '{}', ?)
+            """,
+            (
+                cycle.organization_id,
+                policy.plan("developer").monthly_certification_runs,
+                prior_month_usage.isoformat().replace("+00:00", "Z"),
+            ),
+        )
+        connection.commit()
+    cross_month_code = None
+    try:
+        governance.reserve_certification_run(
+            cycle_principal,
+            project_id=cycle_project["project_id"],
+            idempotency_key="p7-cross-month-denied",
+            request_digest=digest("p7-cross-month-denied"),
+            policy_version=manifest.manifest_id,
+        )
+    except SubscriberError as exc:
+        cross_month_code = exc.code
+    cycle_usage = governance.usage_summary(
+        governance.authenticate(
+            cycle.bootstrap_api_key,
+            tenant_hint=cycle.organization_id,
+            permission=Permission.USAGE_READ,
+            action="acceptance.billing-cycle.usage",
+        )
+    )
+    with closing(sqlite3.connect(db)) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_subscriptions
+            SET current_period_start = ?, current_period_end = ?
+            WHERE organization_id = ?
+            """,
+            (
+                month_start.isoformat().replace("+00:00", "Z"),
+                cycle_end.isoformat().replace("+00:00", "Z"),
+                cycle.organization_id,
+            ),
+        )
+        connection.commit()
+    rollover = governance.reserve_certification_run(
+        cycle_principal,
+        project_id=cycle_project["project_id"],
+        idempotency_key="p7-new-cycle-allowed",
+        request_digest=digest("p7-new-cycle-allowed"),
+        policy_version=manifest.manifest_id,
+    )
+    record(
+        scenarios,
+        "authoritative_billing_period_quota",
+        cross_month_code == "monthly_run_quota_exceeded"
+        and cycle_usage["meters"].get("certification_runs")
+        == policy.plan("developer").monthly_certification_runs
+        and cycle_usage["period_started_at"]
+        == cycle_start.isoformat().replace("+00:00", "Z")
+        and cycle_usage["period_ended_at"]
+        == cycle_end.isoformat().replace("+00:00", "Z")
+        and rollover.created,
+        detail=cross_month_code,
+        usage=cycle_usage,
+        rollover_created=rollover.created,
     )
 
     record(

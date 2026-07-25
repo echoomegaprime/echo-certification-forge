@@ -4,16 +4,19 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from echo_certification_forge.canonical import parse_utc_iso
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.models import RunState
+from echo_certification_forge.run_worker import run
 from echo_certification_forge.service import ServiceContext, create_app
-from echo_certification_forge.signing import TrustedPublicKeyRegistry
+from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.subscriber import (
     MemberRole,
     OrganizationStatus,
@@ -290,12 +293,15 @@ def test_billing_lifecycle_is_idempotent_and_fail_closed(tmp_path, manifest):
     _store, governance, client = _stack(tmp_path, manifest)
     org = _provision(governance, "billing")
     headers = _headers(org.organization_id, org.bootstrap_api_key)
+    payment_failed_at = datetime.now(UTC)
 
     status = governance.apply_billing_event(
         organization_id=org.organization_id,
         provider_event_id="evt-payment-failed",
         event_type="payment.failed",
         payload={"invoice": "inv-1"},
+        provider_occurred_at=payment_failed_at,
+        provider_sequence=1,
     )
     assert status is OrganizationStatus.PAST_DUE
     assert (
@@ -304,6 +310,8 @@ def test_billing_lifecycle_is_idempotent_and_fail_closed(tmp_path, manifest):
             provider_event_id="evt-payment-failed",
             event_type="payment.failed",
             payload={"invoice": "inv-1"},
+            provider_occurred_at=payment_failed_at,
+            provider_sequence=1,
         )
         is OrganizationStatus.PAST_DUE
     )
@@ -313,6 +321,8 @@ def test_billing_lifecycle_is_idempotent_and_fail_closed(tmp_path, manifest):
             provider_event_id="evt-payment-failed",
             event_type="payment.failed",
             payload={"invoice": "different"},
+            provider_occurred_at=payment_failed_at,
+            provider_sequence=1,
         )
 
     read_allowed = client.get("/v1/subscriber/projects", headers=headers)
@@ -326,6 +336,8 @@ def test_billing_lifecycle_is_idempotent_and_fail_closed(tmp_path, manifest):
         provider_event_id="evt-suspend",
         event_type="subscription.suspended",
         payload={"reason": "risk"},
+        provider_occurred_at=payment_failed_at + timedelta(seconds=1),
+        provider_sequence=2,
     )
     suspended = client.get("/v1/subscriber/projects", headers=headers)
     assert suspended.status_code == 403
@@ -716,11 +728,14 @@ def test_billing_events_are_tenant_bound_and_expired_period_is_read_only(
     alpha = _provision(governance, "billing-alpha")
     beta = _provision(governance, "billing-beta")
     payload = {"invoice": "shared-provider-event"}
+    occurred_at = datetime.now(UTC)
     governance.apply_billing_event(
         organization_id=alpha.organization_id,
         provider_event_id="evt-tenant-bound",
         event_type="payment.failed",
         payload=payload,
+        provider_occurred_at=occurred_at,
+        provider_sequence=1,
     )
     with pytest.raises(SubscriberError, match="billing_event_conflict"):
         governance.apply_billing_event(
@@ -728,6 +743,8 @@ def test_billing_events_are_tenant_bound_and_expired_period_is_read_only(
             provider_event_id="evt-tenant-bound",
             event_type="payment.failed",
             payload=payload,
+            provider_occurred_at=occurred_at,
+            provider_sequence=1,
         )
 
     expired_at = (datetime.now(UTC) - timedelta(seconds=1)).isoformat().replace(
@@ -815,6 +832,510 @@ def test_stale_reservation_is_released_and_metering_is_compensated(
     assert usage["active_run_reservations"] == 1
 
 
+@pytest.mark.parametrize(
+    "status",
+    [OrganizationStatus.SUSPENDED, OrganizationStatus.CANCELLED],
+)
+def test_run_worker_enforces_live_subscriber_entitlement(
+    tmp_path, manifest, status
+):
+    store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, f"worker-{status.value.lower()}", status=status)
+    marker = tmp_path / f"{status.value.lower()}-executed"
+    source = tmp_path / f"{status.value.lower()}-source"
+    source.mkdir()
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+
+    result = run(
+        f"worker-{status.value.lower()}",
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        entitled=frozenset({org.organization_id}),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+
+    assert result["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert result["signed"] is False
+    assert marker.exists() is False
+
+
+def test_run_worker_uses_plan_retention_immediately_before_execution(
+    tmp_path, manifest
+):
+    store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, "worker-retention", plan_code="developer")
+    source = tmp_path / "retention-source"
+    source.mkdir()
+    (source / "hello.py").write_text("print('ok')\n", encoding="utf-8")
+
+    result = run(
+        "worker-retention",
+        org.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        entitled=frozenset(),
+        subscribers=governance,
+        journey=[sys.executable, "hello.py"],
+    )
+
+    assert result["state"] == RunState.COMPLETED.value
+    with sqlite3.connect(governance.db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT retention_class, expires_at, created_at
+            FROM evidence_retention
+            WHERE run_id = ? AND tenant_id = ?
+            """,
+            ("worker-retention", org.organization_id),
+        ).fetchall()
+    assert rows
+    assert {row[0] for row in rows} == {"subscriber-7d"}
+    assert all(
+        timedelta(days=6, hours=23)
+        <= parse_utc_iso(row[1]) - parse_utc_iso(row[2])
+        <= timedelta(days=7, minutes=1)
+        for row in rows
+    )
+
+
+def test_run_worker_fails_closed_when_retention_lookup_fails(tmp_path, manifest):
+    store, _governance, _client = _stack(tmp_path, manifest)
+    source = tmp_path / "lookup-failure-source"
+    source.mkdir()
+    marker = tmp_path / "lookup-failure-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+
+    class BrokenRetentionGovernance:
+        def entitlement(self, _tenant_id: str) -> tuple[bool, str]:
+            return True, "entitled"
+
+        def retention_days(self, _tenant_id: str) -> int:
+            raise sqlite3.OperationalError("simulated governance outage")
+
+    result = run(
+        "worker-lookup-failure",
+        "org_lookup_failure",
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        entitled=frozenset({"org_lookup_failure"}),
+        subscribers=BrokenRetentionGovernance(),  # type: ignore[arg-type]
+        journey=[sys.executable, "journey.py"],
+    )
+
+    assert result["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert result["signed"] is False
+    assert marker.exists() is False
+
+
+def test_billing_provider_order_rejects_delayed_reactivation(tmp_path, manifest):
+    _store, governance, _client = _stack(tmp_path, manifest)
+    org = _provision(governance, "billing-order")
+    suspended_at = datetime.now(UTC)
+    governance.apply_billing_event(
+        organization_id=org.organization_id,
+        provider_event_id="evt-order-suspend",
+        event_type="subscription.suspended",
+        payload={"reason": "risk"},
+        provider_occurred_at=suspended_at,
+        provider_sequence=20,
+    )
+
+    with pytest.raises(SubscriberError, match="billing_event_stale"):
+        governance.apply_billing_event(
+            organization_id=org.organization_id,
+            provider_event_id="evt-order-delayed-activate",
+            event_type="subscription.activated",
+            payload={"reason": "delayed"},
+            provider_occurred_at=suspended_at - timedelta(minutes=5),
+            provider_sequence=10,
+        )
+
+    with sqlite3.connect(governance.db_path) as connection:
+        status = connection.execute(
+            "SELECT status FROM subscriber_organizations WHERE organization_id = ?",
+            (org.organization_id,),
+        ).fetchone()[0]
+        stale = connection.execute(
+            """
+            SELECT provider_occurred_at, provider_sequence, processing_outcome
+            FROM subscriber_billing_events WHERE provider_event_id = ?
+            """,
+            ("evt-order-delayed-activate",),
+        ).fetchone()
+    assert status == OrganizationStatus.SUSPENDED.value
+    assert stale[0] == (suspended_at - timedelta(minutes=5)).isoformat().replace(
+        "+00:00", "Z"
+    )
+    assert stale[1:] == (10, "REJECTED_STALE")
+
+
+def test_existing_billing_schema_migrates_provider_order_state(tmp_path):
+    db = tmp_path / "legacy-subscriber.sqlite3"
+    created_at = "2026-07-01T00:00:00Z"
+    with sqlite3.connect(db) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE subscriber_organizations (
+                organization_id TEXT PRIMARY KEY,
+                slug TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE subscriber_subscriptions (
+                organization_id TEXT PRIMARY KEY,
+                plan_code TEXT NOT NULL,
+                status TEXT NOT NULL,
+                billing_provider TEXT,
+                provider_customer_ref TEXT,
+                current_period_start TEXT NOT NULL,
+                current_period_end TEXT NOT NULL,
+                cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE subscriber_billing_events (
+                provider_event_id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload_sha256 TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO subscriber_organizations
+            VALUES ('org_legacy', 'legacy', 'Legacy', 'ACTIVE', ?, ?)
+            """,
+            (created_at, created_at),
+        )
+        connection.execute(
+            """
+            INSERT INTO subscriber_subscriptions
+            VALUES (
+                'org_legacy', 'developer', 'ACTIVE', NULL, NULL,
+                '2026-07-01T00:00:00Z', '2026-08-01T00:00:00Z',
+                0, ?, ?
+            )
+            """,
+            (created_at, created_at),
+        )
+        connection.execute(
+            """
+            INSERT INTO subscriber_billing_events
+            VALUES (
+                'evt-legacy', 'org_legacy', 'subscription.activated',
+                'legacy-digest', '{}', ?
+            )
+            """,
+            (created_at,),
+        )
+        connection.commit()
+
+    SubscriberGovernance(db, _policy(), PEPPER)
+
+    with sqlite3.connect(db) as connection:
+        event = connection.execute(
+            """
+            SELECT provider_occurred_at, provider_sequence, processing_outcome
+            FROM subscriber_billing_events WHERE provider_event_id = 'evt-legacy'
+            """
+        ).fetchone()
+        subscription = connection.execute(
+            """
+            SELECT last_provider_occurred_at, last_provider_sequence,
+                   last_provider_event_id
+            FROM subscriber_subscriptions WHERE organization_id = 'org_legacy'
+            """
+        ).fetchone()
+    assert event == (created_at, 1, "APPLIED")
+    assert subscription == (created_at, 1, "evt-legacy")
+
+
+def test_final_request_outcomes_audit_post_auth_denials(tmp_path, manifest):
+    _store, governance, client = _stack(tmp_path, manifest)
+    alpha = _provision(governance, "audit-alpha")
+    beta = _provision(governance, "audit-beta")
+    alpha_headers = _headers(alpha.organization_id, alpha.bootstrap_api_key)
+
+    assert client.get(
+        "/v1/subscriber/me",
+        headers=_headers(beta.organization_id, alpha.bootstrap_api_key),
+    ).status_code == 404
+    assert _project(
+        client, alpha.organization_id, alpha.bootstrap_api_key, "one"
+    ).status_code == 201
+    assert _project(
+        client, alpha.organization_id, alpha.bootstrap_api_key, "two"
+    ).status_code == 201
+    quota_denied = _project(
+        client, alpha.organization_id, alpha.bootstrap_api_key, "three"
+    )
+    assert quota_denied.status_code == 429
+    assert "x-certforge-audit-code" not in quota_denied.headers
+
+    current = client.get("/v1/subscriber/governance", headers=alpha_headers).json()
+    disallowed = dict(current["config"])
+    disallowed["private_worker_only"] = True
+    assert client.put(
+        "/v1/subscriber/governance",
+        headers=alpha_headers,
+        json={"expected_version": current["version"], "config": disallowed},
+    ).status_code == 403
+    assert client.put(
+        "/v1/subscriber/governance",
+        headers=alpha_headers,
+        json={"expected_version": current["version"], "config": current["config"]},
+    ).status_code == 200
+    assert client.put(
+        "/v1/subscriber/governance",
+        headers=alpha_headers,
+        json={"expected_version": current["version"], "config": current["config"]},
+    ).status_code == 409
+
+    with sqlite3.connect(governance.db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT details_json FROM subscriber_audit_events
+            WHERE organization_id = ? AND action = 'request.outcome'
+              AND outcome = 'denied'
+            """,
+            (alpha.organization_id,),
+        ).fetchall()
+    denied = {
+        (details["path"], details["status_code"], details["reason"])
+        for details in (json.loads(row[0]) for row in rows)
+    }
+    assert ("/v1/subscriber/me", 404, "tenant_not_found") in denied
+    assert ("/v1/subscriber/projects", 429, "project_quota_exceeded") in denied
+    assert (
+        "/v1/subscriber/governance",
+        403,
+        "private_workers_not_entitled",
+    ) in denied
+    assert ("/v1/subscriber/governance", 409, "governance_version_conflict") in denied
+
+
+def test_run_quota_uses_authoritative_cross_month_billing_period(
+    tmp_path, manifest
+):
+    policy = _policy()
+    limited_policy = policy.model_copy(
+        update={
+            "plans": tuple(
+                plan.model_copy(update={"monthly_certification_runs": 1})
+                if plan.code == "developer"
+                else plan
+                for plan in policy.plans
+            )
+        }
+    )
+    _store, governance, client = _stack(tmp_path, manifest, policy=limited_policy)
+    org = _provision(governance, "billing-period")
+    project = _project(
+        client, org.organization_id, org.bootstrap_api_key
+    ).json()
+    principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.RUN_CREATE,
+    )
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    previous_month_usage = month_start - timedelta(days=1)
+    period_start = previous_month_usage - timedelta(days=1)
+    period_end = now + timedelta(days=40)
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_subscriptions
+            SET current_period_start = ?, current_period_end = ?
+            WHERE organization_id = ?
+            """,
+            (
+                period_start.isoformat().replace("+00:00", "Z"),
+                period_end.isoformat().replace("+00:00", "Z"),
+                org.organization_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO subscriber_usage_events(
+                organization_id, meter, quantity, idempotency_key,
+                metadata_json, occurred_at
+            ) VALUES (?, 'certification_runs', 1, ?, '{}', ?)
+            """,
+            (
+                org.organization_id,
+                "prior-calendar-month-run",
+                previous_month_usage.isoformat().replace("+00:00", "Z"),
+            ),
+        )
+        connection.commit()
+
+    with pytest.raises(SubscriberError, match="monthly_run_quota_exceeded"):
+        governance.reserve_certification_run(
+            principal,
+            project_id=project["project_id"],
+            idempotency_key="cross-month-denied",
+            request_digest=_digest("cross-month-denied"),
+            policy_version=manifest.manifest_id,
+        )
+    usage = governance.usage_summary(
+        _owner(
+            governance,
+            org.organization_id,
+            org.bootstrap_api_key,
+            Permission.USAGE_READ,
+        )
+    )
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["period_started_at"] == period_start.isoformat().replace(
+        "+00:00", "Z"
+    )
+    assert usage["period_ended_at"] == period_end.isoformat().replace("+00:00", "Z")
+
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_subscriptions
+            SET current_period_start = ?, current_period_end = ?
+            WHERE organization_id = ?
+            """,
+            (
+                month_start.isoformat().replace("+00:00", "Z"),
+                period_end.isoformat().replace("+00:00", "Z"),
+                org.organization_id,
+            ),
+        )
+        connection.commit()
+    reservation = governance.reserve_certification_run(
+        principal,
+        project_id=project["project_id"],
+        idempotency_key="new-billing-period-run",
+        request_digest=_digest("new-billing-period-run"),
+        policy_version=manifest.manifest_id,
+    )
+    assert reservation.created is True
+
+
+def test_compensation_remains_in_original_billing_period(tmp_path, manifest):
+    now = [datetime(2026, 1, 31, 12, 0, tzinfo=UTC)]
+    policy = _policy()
+    limited_policy = policy.model_copy(
+        update={
+            "plans": tuple(
+                plan.model_copy(update={"monthly_certification_runs": 1})
+                if plan.code == "developer"
+                else plan
+                for plan in policy.plans
+            )
+        }
+    )
+    db = tmp_path / "certforge.sqlite3"
+    EvidenceStore(db, tmp_path / "evidence")
+    governance = SubscriberGovernance(
+        db,
+        limited_policy,
+        PEPPER,
+        clock=lambda: now[0],
+    )
+    org = _provision(governance, "compensation-period")
+    project_principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.PROJECT_MANAGE,
+    )
+    project = governance.create_project(
+        project_principal,
+        slug="period-project",
+        name="Period Project",
+        target_reference="https://github.com/example/period-project",
+    )
+    run_principal = _owner(
+        governance,
+        org.organization_id,
+        org.bootstrap_api_key,
+        Permission.RUN_CREATE,
+    )
+    old_reservation = governance.reserve_certification_run(
+        run_principal,
+        project_id=project["project_id"],
+        idempotency_key="old-period-run",
+        request_digest=_digest("old-period-run"),
+        policy_version=manifest.manifest_id,
+    )
+
+    now[0] = datetime(2026, 2, 16, 12, 0, tzinfo=UTC)
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            """
+            UPDATE subscriber_subscriptions
+            SET current_period_start = '2026-02-15T00:00:00Z',
+                current_period_end = '2026-03-15T00:00:00Z'
+            WHERE organization_id = ?
+            """,
+            (org.organization_id,),
+        )
+        connection.commit()
+    governance.release_reservation(
+        old_reservation,
+        reason="execution_failed",
+        compensate_meter=True,
+    )
+    new_reservation = governance.reserve_certification_run(
+        run_principal,
+        project_id=project["project_id"],
+        idempotency_key="new-period-run",
+        request_digest=_digest("new-period-run"),
+        policy_version=manifest.manifest_id,
+    )
+    assert new_reservation.created is True
+    governance.release_reservation(
+        new_reservation,
+        reason="execution_completed",
+        compensate_meter=False,
+    )
+    with pytest.raises(SubscriberError, match="monthly_run_quota_exceeded"):
+        governance.reserve_certification_run(
+            run_principal,
+            project_id=project["project_id"],
+            idempotency_key="new-period-extra-run",
+            request_digest=_digest("new-period-extra-run"),
+            policy_version=manifest.manifest_id,
+        )
+    usage = governance.usage_summary(
+        _owner(
+            governance,
+            org.organization_id,
+            org.bootstrap_api_key,
+            Permission.USAGE_READ,
+        )
+    )
+    assert usage["meters"]["certification_runs"] == 1
+
+
 def test_subscriber_policy_and_contract_are_versioned_and_consistent():
     root = Path(__file__).parents[1]
     policy = _policy()
@@ -830,3 +1351,6 @@ def test_subscriber_policy_and_contract_are_versioned_and_consistent():
     )
     assert policy.rate_limit_scope == "api_key_global"
     assert policy.audit_denied_requests is True
+    assert contract["worker_execution"]["lookup_failure_mode"].startswith("fail closed")
+    assert "current_period_start" in contract["quota_meters"][2]
+    assert "final path" in contract["audit"]["final_request_outcomes"]

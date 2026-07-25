@@ -50,11 +50,12 @@ class StaticEntitlement:
     """A simple allow-list entitlement. Tenants not in `entitled` are billing-blocked."""
 
     entitled: frozenset[str]
+    denied_reason: str = "entitlement_exhausted"
 
     def check(self, tenant_id: str) -> tuple[bool, str]:
         if tenant_id in self.entitled:
             return True, "entitled"
-        return False, "entitlement_exhausted"
+        return False, self.denied_reason
 
 
 @dataclass(frozen=True, slots=True)
