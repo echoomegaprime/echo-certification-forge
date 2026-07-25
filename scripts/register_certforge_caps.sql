@@ -107,10 +107,10 @@ VALUES
    'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
 
   ('echo.certforge.admin.lifecycle',
-   'Certification Forge administration: append an immutable revocation, invalidation, expiry, or supersession event to an owned verdict. Tier-2 HMAC and Desktop reauthentication are required.',
+   'Certification Forge administration: append an immutable revocation, invalidation, or supersession event to an owned verdict. Tier-2 HMAC and Desktop reauthentication are required.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/lifecycle', 'POST', 'path', 'forge',
    '{"type":"object","required":["run_id","event_type","reason"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128},"event_type":{"type":"string","enum":["REVOKED","INVALIDATED","SUPERSEDED"]},"reason":{"type":"string","minLength":1,"maxLength":2048},"replacement_run_id":{"type":["string","null"],"minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
-   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'green'),
 
   ('echo.certforge.admin.publish',
    'Certification Forge administration: publish public-only verification material for a current production-ready verdict. Tier-2 HMAC and Desktop reauthentication are required.',
