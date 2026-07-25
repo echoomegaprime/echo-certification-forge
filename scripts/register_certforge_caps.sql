@@ -118,6 +118,12 @@ VALUES
    '{"type":"object","required":["hold_id"],"properties":{"hold_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
    'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
 
+  ('echo.certforge.admin.rerun',
+   'Certification Forge administration: create a new queued certification run with immutable lineage to one terminal tenant-owned source run. Original evidence and verdict records are never copied or changed. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/rerun', 'POST', 'path', 'forge',
+   '{"type":"object","required":["run_id","idempotency_key"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128},"idempotency_key":{"type":"string","minLength":8,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 30, 'active', 'unknown'),
+
   ('echo.certforge.admin.lifecycle',
    'Certification Forge administration: append an immutable revocation, invalidation, or supersession event to an owned verdict. Tier-2 HMAC and Desktop reauthentication are required.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/lifecycle', 'POST', 'path', 'forge',

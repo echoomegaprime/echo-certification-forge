@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from .canonical import to_utc_iso, utc_now
+from .canonical import sha256_json, to_utc_iso, utc_now
 from .deploy_gate import DeployGate
 from .evidence import (
     EvidenceArtifactIntegrityError,
@@ -74,6 +74,11 @@ class SubscriberSubmitRequest(BaseModel):
     target: SubmitTarget
     environment: SubmitEnvironment
     policy_version: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
+class RerunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
@@ -438,6 +443,76 @@ def create_app(context: ServiceContext) -> FastAPI:
             project_run(context.store, row)
             for row in context.store.list_runs(actor.tenant_id)
         ]
+
+    @app.post("/v1/subscriber/certifications/{run_id}/rerun", status_code=201)
+    def subscriber_rerun(
+        run_id: str,
+        request: RerunRequest,
+        response: Response,
+        x_certforge_api_key: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        """Create a new queued run with immutable lineage to one terminal source run."""
+        actor = principal(x_certforge_api_key)
+        try:
+            context.platform.require_role(actor, "owner", "admin", "operator")
+            source = context.store.get_run(run_id, actor.tenant_id)
+            if source["state"] not in _TERMINAL_STATES:
+                raise PlatformError("source_run_not_terminal", 409)
+            if (
+                source.get("policy_version") != context.manifest.manifest_id
+                or source["rule_manifest_digest"] != context.manifest.digest
+            ):
+                raise PlatformError("source_policy_not_active", 409)
+            target = json.loads(source["target_identity_json"])
+            environment = json.loads(source["environment_identity_json"])
+            target_type = str(target.get("target_type", ""))
+            target_reference = str(source.get("target_reference") or target.get("reference") or "")
+            if not target_type or not target_reference:
+                raise PlatformError("source_run_not_rerunnable", 409)
+            internal_key = "rerun-" + sha256_json(
+                {
+                    "source_run_id": run_id,
+                    "idempotency_key": request.idempotency_key,
+                }
+            )
+            context.platform.reserve_run(actor, internal_key)
+            status_code, body = submit(
+                context.store,
+                context.manifest,
+                SubmitRequest(
+                    tenant_id=actor.tenant_id,
+                    target=SubmitTarget(
+                        target_type=target_type,
+                        identity_digest=source["target_identity_digest"],
+                        reference=target_reference,
+                    ),
+                    environment=SubmitEnvironment(
+                        identity_digest=source["environment_identity_digest"],
+                        runner_image_digest=environment.get("runner_image_digest"),
+                    ),
+                    policy_version=context.manifest.manifest_id,
+                    idempotency_key=internal_key,
+                ),
+                actor.tenant_id,
+                source_run_id=run_id,
+            )
+            response.status_code = status_code
+            context.platform.audit(
+                actor.organization_id,
+                actor.project_id,
+                f"api_key:{actor.key_id}",
+                "certification.rerun",
+                "certification",
+                str(body["run_id"]),
+                {"source_run_id": run_id, "status_code": status_code},
+            )
+            return body
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except PlatformError as exc:
+            raise platform_error(exc) from exc
+        except SubmitError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
 
     @app.post("/v1/subscriber/usage")
     def meter_usage(

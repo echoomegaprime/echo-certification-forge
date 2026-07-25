@@ -5,11 +5,13 @@ import base64
 import hashlib
 import hmac
 import json
+import sqlite3
 import sys
 import time
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from echo_certification_forge.canonical import canonical_json, to_utc_iso, utc_now
@@ -241,6 +243,114 @@ def test_subscriber_telemetry_is_bounded_tenant_scoped_and_truthful(store, manif
     )
     assert isolated.status_code == 200
     assert isolated.json()["queue"]["total"] == 0
+
+
+def test_subscriber_rerun_creates_immutable_lineage_without_mutating_source(
+    store, manifest, target, environment, tmp_path
+):
+    platform = CertificationPlatform(store.db_path)
+    account = _bootstrap(platform, suffix="rerun", tenant_id=target.tenant_id)
+    other = _bootstrap(platform, suffix="rerun-other", tenant_id="tenant-rerun-other")
+    client = TestClient(
+        create_app(
+            ServiceContext(
+                store,
+                manifest,
+                TrustedPublicKeyRegistry.empty(),
+                platform=platform,
+            )
+        )
+    )
+    headers = {"X-CertForge-API-Key": account["api_key"]}
+    submitted = client.post(
+        "/v1/subscriber/certifications",
+        headers=headers,
+        json={
+            "target": {
+                "target_type": target.target_type,
+                "identity_digest": target.identity_digest,
+                "reference": target.canonical_ref,
+            },
+            "environment": {"identity_digest": environment.identity_digest},
+            "policy_version": manifest.manifest_id,
+            "idempotency_key": "subscriber-rerun-source",
+        },
+    )
+    assert submitted.status_code == 201
+    source_run_id = submitted.json()["run_id"]
+    source = tmp_path / "rerun-source"
+    source.mkdir()
+    (source / "journey.py").write_text("print('rerun-source-ok')\n", encoding="utf-8")
+    signer = Ed25519VerdictSigner.generate()
+    result = RunExecutor(store, manifest, signer).execute(
+        source_run_id,
+        target.tenant_id,
+        source,
+        entitlement=StaticEntitlement(frozenset({target.tenant_id})),
+        journey=[sys.executable, "journey.py"],
+        control_attestations={
+            "runner_control_channel": True,
+            "signing_authority_separation": True,
+        },
+    )
+    assert result.release_verdict in {"PRODUCTION_READY", "NOT_READY"}
+    assert store.get_run(source_run_id, target.tenant_id)["state"] == "COMPLETED"
+    source_row_before = store.get_run(source_run_id, target.tenant_id)
+    evidence_before = store.list_evidence(source_run_id, target.tenant_id)
+    verdict_before = store.latest_signed_verdict(source_run_id, target.tenant_id)
+    assert evidence_before and verdict_before is not None
+
+    rerun = client.post(
+        f"/v1/subscriber/certifications/{source_run_id}/rerun",
+        headers=headers,
+        json={"idempotency_key": "desktop-rerun-attempt-01"},
+    )
+    assert rerun.status_code == 201
+    body = rerun.json()
+    rerun_id = body["run_id"]
+    assert rerun_id != source_run_id
+    assert body["source_run_id"] == source_run_id
+    assert body["rerun_sequence"] == 1
+    assert body["state"] == "QUEUED"
+    assert body["release_verdict"] == "NOT_READY"
+    assert body["evidence_merkle_root"] is None
+    assert body["target_identity_digest"] == source_row_before["target_identity_digest"]
+    assert body["environment_identity_digest"] == source_row_before["environment_identity_digest"]
+
+    replay = client.post(
+        f"/v1/subscriber/certifications/{source_run_id}/rerun",
+        headers=headers,
+        json={"idempotency_key": "desktop-rerun-attempt-01"},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["run_id"] == rerun_id
+    assert replay.json()["rerun_sequence"] == 1
+
+    assert client.post(
+        f"/v1/subscriber/certifications/{rerun_id}/rerun",
+        headers=headers,
+        json={"idempotency_key": "desktop-rerun-nonterminal"},
+    ).json()["detail"] == "source_run_not_terminal"
+    assert client.post(
+        f"/v1/subscriber/certifications/{source_run_id}/rerun",
+        headers={"X-CertForge-API-Key": other["api_key"]},
+        json={"idempotency_key": "desktop-rerun-isolation"},
+    ).status_code == 404
+
+    assert store.get_run(source_run_id, target.tenant_id) == source_row_before
+    assert store.list_evidence(source_run_id, target.tenant_id) == evidence_before
+    assert store.latest_signed_verdict(source_run_id, target.tenant_id) == verdict_before
+    with pytest.raises(sqlite3.IntegrityError, match="run lineage is immutable"):
+        with store._connection() as connection:
+            connection.execute(
+                "UPDATE runs SET source_run_id = ? WHERE run_id = ?",
+                (rerun_id, rerun_id),
+            )
+    audit = client.get("/v1/subscriber/audit", headers=headers).json()
+    event = next(row for row in audit if row["action"] == "certification.rerun")
+    assert event["object_id"] == rerun_id
+    assert event["detail"]["source_run_id"] == source_run_id
+    assert account["api_key"] not in json.dumps(audit)
 
 
 def test_p7_legal_hold_audit_public_verification_and_revocation(
