@@ -1983,6 +1983,8 @@ def test_registry_webhook_oci_journey_without_sandbox_fails_closed(
     finally:
         registry.stop()
     assert result["error"] == "oci_journey_requires_sandbox"
+    worker_root = store.evidence_root / ".worker"
+    assert not worker_root.exists() or not any(worker_root.iterdir())
     # the refusal happened BEFORE any run-state mutation — the run is still pending
     row = store.get_run(run_id, TENANT)
     assert row["state"] == RunState.QUEUED.value

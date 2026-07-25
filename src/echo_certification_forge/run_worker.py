@@ -192,6 +192,10 @@ def run(
             url = str(target_spec.get("url", "")).strip()
             ref = str(target_spec.get("ref", "")).strip()
             target_reference = f"{url}@{ref}" if ref else url
+        elif target_type == "oci":
+            repository = str(target_spec.get("repository", "")).strip().rstrip("/")
+            digest = str(target_spec.get("digest", "")).strip().lower()
+            target_reference = f"{repository}@{digest}" if repository and digest else ""
         else:
             target_reference = ""
         try:
@@ -266,8 +270,18 @@ def run(
     if acquired.target_type == "oci" and journey:
         # Image code NEVER executes in the control plane. An OCI journey requires an
         # isolated sandbox and it MUST run inside the certified image itself, pinned to
-        # the exact acquired digest — fail closed before any run-state mutation.
+        # the exact acquired digest — fail closed before execution or target reconciliation.
         if sandbox is None:
+            if heartbeat is not None:
+                heartbeat.stop()
+            if claim is not None and subscribers is not None:
+                try:
+                    subscribers.fail_worker_execution(
+                        claim, reason="oci_journey_requires_sandbox"
+                    )
+                except (OSError, sqlite3.Error, SubscriberError):
+                    pass
+            shutil.rmtree(workdir, ignore_errors=True)
             return {
                 "run_id": run_id,
                 "error": "oci_journey_requires_sandbox",

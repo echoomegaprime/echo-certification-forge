@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from echo_certification_forge.acquisition import acquire_target
+from echo_certification_forge.acquisition import AcquiredTarget, acquire_target
 from echo_certification_forge.canonical import parse_utc_iso
 from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
@@ -312,6 +312,97 @@ def test_active_manifest_rollover_creates_distinct_subscriber_reservation(
     assert len(reservations) == 2
     assert len({row[0] for row in reservations}) == 2
     assert len({row[1] for row in reservations}) == 2
+
+
+def test_subscriber_oci_without_sandbox_fails_and_releases_claim(
+    tmp_path,
+    manifest,
+    monkeypatch,
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    provisioned = _provision(governance, "oci-no-sandbox", plan_code="enterprise")
+    project = _project(
+        client,
+        provisioned.organization_id,
+        provisioned.bootstrap_api_key,
+        "oci-app",
+    )
+    assert project.status_code == 201
+    principal = governance.authenticate(
+        provisioned.bootstrap_api_key,
+        tenant_hint=provisioned.organization_id,
+        permission=Permission.RUN_CREATE,
+        action="acceptance.oci.reserve",
+    )
+    digest = "sha256:" + _digest("subscriber-oci-image")
+    repository = "registry.example.test/echo/app"
+    reference = f"{repository}@{digest}"
+    target_spec = {"type": "oci", "repository": repository, "digest": digest}
+    reservation = governance.reserve_certification_run(
+        principal,
+        project_id=project.json()["project_id"],
+        idempotency_key="subscriber-oci-no-sandbox",
+        request_digest=_digest("subscriber-oci-request"),
+        policy_version=manifest.manifest_id,
+        target_type="oci",
+        target_reference=reference,
+        target_identity_digest=_digest("subscriber-oci-declared-target"),
+    )
+    environment = _worker_environment()
+    run_id = "cert_" + _digest("subscriber-oci-run")[:40]
+    governance.materialize_reserved_run(
+        reservation,
+        run_id=run_id,
+        target_type="oci",
+        target_reference=reference,
+        target_identity_digest=_digest("subscriber-oci-declared-target"),
+        environment_identity_digest=environment.identity_digest,
+        environment_json=environment.to_dict(),
+        manifest_id=manifest.manifest_id,
+        manifest_digest=manifest.digest,
+        target_spec=target_spec,
+        journey=["python3", "app/hello.py"],
+    )
+    rootfs = tmp_path / "oci-rootfs"
+    rootfs.mkdir()
+    monkeypatch.setattr(
+        "echo_certification_forge.run_worker.acquire_target",
+        lambda *_args, **_kwargs: AcquiredTarget(
+            rootfs,
+            "oci",
+            reference,
+            digest.split(":", 1)[1],
+        ),
+    )
+
+    result = run(
+        run_id,
+        provisioned.organization_id,
+        target_spec,
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=["python3", "app/hello.py"],
+        sandbox=None,
+    )
+
+    assert result["error"] == "oci_journey_requires_sandbox"
+    assert (
+        store.get_run(run_id, provisioned.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value
+    )
+    usage = governance.usage_summary(
+        _owner(
+            governance,
+            provisioned.organization_id,
+            provisioned.bootstrap_api_key,
+            Permission.USAGE_READ,
+        )
+    )
+    assert usage["active_run_reservations"] == 0
+    worker_root = store.evidence_root / ".worker"
+    assert not worker_root.exists() or not any(worker_root.iterdir())
 
 
 def test_tenant_authentication_isolation_and_project_quota(tmp_path, manifest):
