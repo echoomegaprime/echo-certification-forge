@@ -84,11 +84,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     build_parser.add_argument("--output-root", type=Path, required=True)
     build_parser.add_argument("--provenance-root", type=Path, required=True)
     build_parser.add_argument("--trusted-key-dir", type=Path, required=True)
+    build_parser.add_argument("--teacher-rows", type=int, default=1_600)
+    build_parser.add_argument("--curriculum-rows", type=int, default=900)
+    build_parser.add_argument("--eval-rows", type=int, default=240)
+    build_parser.add_argument("--dataset-version", default="p5-v1")
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--output-root", type=Path, required=True)
     validate_parser.add_argument("--provenance-root", type=Path, required=True)
     validate_parser.add_argument("--trusted-key-dir", type=Path, required=True)
+    validate_parser.add_argument("--dataset-version", default="p5-v1")
 
     args = parser.parse_args(argv)
     if args.command == "materialize-curriculum":
@@ -170,12 +175,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output_root,
             args.provenance_root,
             args.trusted_key_dir,
+            teacher_rows=args.teacher_rows,
+            curriculum_rows=args.curriculum_rows,
+            eval_rows=args.eval_rows,
+            dataset_version=args.dataset_version,
         )
     else:
         report = validate_corpora(
             args.output_root,
             args.provenance_root,
             args.trusted_key_dir,
+            dataset_version=args.dataset_version,
         )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

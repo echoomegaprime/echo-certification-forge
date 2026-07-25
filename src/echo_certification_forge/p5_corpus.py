@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -1862,11 +1863,20 @@ def validate_corpora(
     output_root: Path,
     provenance_root: Path,
     trusted_key_dir: Path,
+    *,
+    dataset_version: str = "p5-v1",
 ) -> dict[str, Any]:
+    if re.fullmatch(r"p5-v[1-9][0-9]*", dataset_version) is None:
+        raise CorpusValidationError("dataset_version must match p5-v<positive integer>")
     verified = verify_teacher_provenance(provenance_root, trusted_key_dir)
-    report: dict[str, Any] = {"schema_version": "p5-corpus-validation.v1", "passed": True}
+    report: dict[str, Any] = {
+        "schema_version": "p5-corpus-validation.v1",
+        "dataset_version": dataset_version,
+        "passed": True,
+    }
+    directory_suffix = dataset_version.replace("-", "_")
     for adapter in ADAPTERS:
-        directory = output_root / f"{adapter}_p5_v1"
+        directory = output_root / f"{adapter}_{directory_suffix}"
         paths = CorpusPaths(
             train=directory / "train.jsonl",
             eval=directory / "eval.jsonl",
@@ -1886,7 +1896,14 @@ def build_corpora(
     output_root: Path,
     provenance_root: Path,
     trusted_key_dir: Path,
+    *,
+    teacher_rows: int = 1_600,
+    curriculum_rows: int = 900,
+    eval_rows: int = 240,
+    dataset_version: str = "p5-v1",
 ) -> dict[str, Any]:
+    if re.fullmatch(r"p5-v[1-9][0-9]*", dataset_version) is None:
+        raise CorpusValidationError("dataset_version must match p5-v<positive integer>")
     sources = {
         "gs343": gs343_curriculum_source,
         "r2d2": r2d2_curriculum_source,
@@ -1903,9 +1920,13 @@ def build_corpora(
     paths_by_adapter: dict[str, CorpusPaths] = {}
     for adapter, builder in builders.items():
         train, evaluation = builder(
-            seeds_by_adapter[adapter], teacher_targets=verified[adapter]
+            seeds_by_adapter[adapter],
+            teacher_targets=verified[adapter],
+            teacher_rows=teacher_rows,
+            curriculum_rows=curriculum_rows,
+            eval_rows=eval_rows,
         )
-        directory = output_root / f"{adapter}_p5_v1"
+        directory = output_root / f"{adapter}_{dataset_version.replace('-', '_')}"
         paths = CorpusPaths(
             train=directory / "train.jsonl",
             eval=directory / "eval.jsonl",
@@ -1915,17 +1936,22 @@ def build_corpora(
         _write_jsonl(paths.eval, evaluation)
         paths_by_adapter[adapter] = paths
 
-    validation = validate_corpora(output_root, provenance_root, trusted_key_dir)
+    validation = validate_corpora(
+        output_root,
+        provenance_root,
+        trusted_key_dir,
+        dataset_version=dataset_version,
+    )
     for adapter, paths in paths_by_adapter.items():
         manifest = {
             "schema_version": "p5-corrective-corpus.v1",
             "adapter": adapter,
-            "dataset_version": "p5-v1",
+            "dataset_version": dataset_version,
             "purpose": "Certification Forge P5 semantic qualification corrective training",
             "curriculum_source": {
                 "path": str(sources[adapter]),
                 "sha256": source_digests[adapter],
-                "selected_seed_rows": 1_600,
+                "selected_seed_rows": teacher_rows,
                 "provenance": CURRICULUM_SEEDED_PROVENANCE,
                 "teacher_credit": False,
             },

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import echo_certification_forge.p5_corpus as p5_corpus
 import echo_certification_forge.teacher_generator as teacher_generator
 from echo_certification_forge.canonical import canonical_json, sha256_json
 from echo_certification_forge.p5_corpus import (
@@ -138,6 +139,37 @@ def _run(
         jitter=kwargs.pop("jitter", lambda: 1.0),
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    ("verdict", "index"),
+    [
+        ("PRODUCTION_READY", 100_000),
+        ("CONDITIONALLY_READY", 100_001),
+        ("NOT_READY", 100_002),
+    ],
+)
+def test_r2_teacher_contract_matches_canonical_targets(verdict: str, index: int):
+    prompt, facts, summary, action = p5_corpus._r2_prompt(
+        verdict, index, seed=None, held_out=True
+    )
+    expected = {
+        "facts_preserved": facts,
+        "summary": summary,
+        "recommended_action": action,
+    }
+    assert teacher_generator._r2_exact_contract(prompt) == expected
+
+    request = {"adapter": "r2d2", "system": p5_corpus.R2_SYSTEM, "prompt": prompt}
+    vertex = json.loads(teacher_generator._request_payload(request))
+    xai = json.loads(teacher_generator._xai_request_payload(request, "grok-4.5"))
+    for reminder in (
+        vertex["systemInstruction"]["parts"][0]["text"],
+        xai["messages"][0]["content"],
+    ):
+        assert canonical_json(facts) in reminder
+        assert canonical_json(summary) in reminder
+        assert canonical_json(action) in reminder
 
 
 def test_generates_content_addressed_success_and_resumes(tmp_path: Path):
