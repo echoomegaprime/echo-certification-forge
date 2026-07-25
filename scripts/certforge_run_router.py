@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from routers._common import audit, rate_limit
+from echo_certification_forge.production_launch import production_worker_args
 
 router = APIRouter(prefix="/sdk/certification-forge", tags=["certification-forge-run"])
 
@@ -97,9 +98,19 @@ async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(Non
         "ECHO_CERTFORGE_ADAPTER_REGISTRY",
         f"{_REPO}/var/p5/trusted-adapter-registry.json",
     )
+    adapter_runner_signing_key = os.environ.get(
+        "ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY",
+        f"{_REPO}/var/p5/adapter-runner-signing-key.pem",
+    )
     missing = [
         path
-        for path in (adapter_response, adapter_policy, adapter_registry, _POLICY_PATH)
+        for path in (
+            adapter_response,
+            adapter_policy,
+            adapter_registry,
+            adapter_runner_signing_key,
+            _POLICY_PATH,
+        )
         if not Path(path).is_file()
     ]
     if missing:
@@ -114,16 +125,21 @@ async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(Non
         raise HTTPException(status_code=500, detail="run_id generation error")
 
     argv = [
-        _VENV_PY, "-m", "echo_certification_forge.run_worker",
-        "--run-id", run_id, "--tenant", _TENANT,
-        "--target-json", json.dumps(target), "--sandbox",
-        "--policy-version", _POLICY_ID,
-        "--adapter-response", adapter_response,
-        "--adapter-policy", adapter_policy,
-        "--adapter-registry", adapter_registry,
+        _VENV_PY,
+        "-m",
+        "echo_certification_forge.run_worker",
+        *production_worker_args(
+            run_id=run_id,
+            tenant=_TENANT,
+            target=target,
+            journey=req.journey,
+            policy_id=_POLICY_ID,
+            adapter_response=Path(adapter_response),
+            adapter_policy=Path(adapter_policy),
+            adapter_registry=Path(adapter_registry),
+            adapter_runner_signing_key=Path(adapter_runner_signing_key),
+        ),
     ]
-    if req.journey:
-        argv += ["--journey-json", json.dumps(req.journey)]
     env = {
         **os.environ,
         "ECHO_CERTFORGE_DB": f"{_REPO}/var/certforge.sqlite3",
@@ -134,6 +150,7 @@ async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(Non
         "ECHO_CERTFORGE_ENTITLED_TENANTS": _TENANT,
         "ECHO_CERTFORGE_SANDBOX_DOCKER": "docker",
         "ECHO_CERTFORGE_ADAPTER_REGISTRY": adapter_registry,
+        "ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY": adapter_runner_signing_key,
     }
 
     Path(_RUN_OUT_DIR).mkdir(parents=True, exist_ok=True)

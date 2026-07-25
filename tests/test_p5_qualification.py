@@ -749,6 +749,15 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
     sources = _candidate_sources_from_report(tmp_path, report, transport)
     trusted_key_path = tmp_path / "trusted-routing-key.pem"
     trusted_key_path.write_text(transport.public_key_pem, encoding="ascii")
+    adapter_runner_key = Ed25519PrivateKey.generate()
+    adapter_runner_key_path = tmp_path / "adapter-runner-signing-key.pem"
+    adapter_runner_key_path.write_bytes(
+        adapter_runner_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
 
     output = tmp_path / "adapter-bundle"
     completed = subprocess.run(
@@ -763,6 +772,8 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
             "p5-e2e-registry",
             "--adapter-policy-id",
             "p5-e2e-policy",
+            "--adapter-runner-signing-key",
+            str(adapter_runner_key_path),
             "--qualification-report",
             str(report["report_path"]),
             "--gs343-r5-evidence",

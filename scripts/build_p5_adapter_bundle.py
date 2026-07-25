@@ -20,6 +20,7 @@ from echo_certification_forge.adapter_execution import (
     policy_to_json,
     r5_trust_pins_digest,
     load_json,
+    load_adapter_runner_identity,
     sign_adapter_bundle,
     write_adapter_execution_artifacts,
 )
@@ -32,7 +33,6 @@ from echo_certification_forge.p5_qualification import (
     TrustedRoutingKey,
 )
 from echo_certification_forge.family_r5 import RECEIPT_SCHEMA
-from echo_certification_forge.runner import RunnerEphemeralIdentity
 
 
 def main() -> int:
@@ -41,6 +41,7 @@ def main() -> int:
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--adapter-registry-id", required=True)
     parser.add_argument("--adapter-policy-id", required=True)
+    parser.add_argument("--adapter-runner-signing-key", required=True, type=Path)
     parser.add_argument("--qualification-report", required=True, type=Path)
     parser.add_argument("--gs343-r5-evidence", required=True, type=Path)
     parser.add_argument("--r2d2-r5-evidence", required=True, type=Path)
@@ -153,7 +154,7 @@ def main() -> int:
         qualification_trust_pins=qualification_trust_pins,
     )
     policy = default_p5_policy(records)
-    runner_identity = RunnerEphemeralIdentity.generate()
+    runner_identity = load_adapter_runner_identity(args.adapter_runner_signing_key)
     trust_binding = AdapterBundleTrustBinding(
         registry_id=args.adapter_registry_id,
         runner_key_id=runner_identity.key_id,

@@ -25,7 +25,10 @@ from echo_certification_forge.adapter_execution import (
     sign_adapter_bundle,
     write_adapter_execution_artifacts,
 )
-from echo_certification_forge.adapter_transport import parse_verified_adapter_bundle
+from echo_certification_forge.adapter_transport import (
+    AdapterBundleError,
+    parse_verified_adapter_bundle,
+)
 from echo_certification_forge.adapters import AdapterMaturity, adapter_set_digest
 from echo_certification_forge.canonical import sha256_bytes, sha256_json
 from echo_certification_forge.p5_qualification import (
@@ -38,6 +41,7 @@ from echo_certification_forge.family_r5 import execute as execute_r5
 from echo_certification_forge.evidence import merkle_root
 from echo_certification_forge.runner import RunnerEphemeralIdentity
 from echo_certification_forge.run_worker import _load_adapter_inputs, main as run_worker_main
+from echo_certification_forge.production_launch import production_worker_args
 from test_family_r5 import FakeFamilyTransport, expected as expected_r5
 from test_p5_qualification import (
     FakeQualificationTransport,
@@ -256,6 +260,7 @@ def write_registry(
     path: Path,
     binding: AdapterBundleTrustBinding,
     runner_public_key_pem: str,
+    reusable_response,
 ) -> None:
     write_json(
         path,
@@ -276,6 +281,13 @@ def write_registry(
             ),
             "r5_trust_pins_sha256": binding.r5_trust_pins_sha256,
             "external_trust_pins_sha256": binding.external_trust_pins_sha256,
+            "reusable_bundle": {
+                "run_id": reusable_response.run_id,
+                "tenant_id": reusable_response.tenant_id,
+                "sha256": sha256_json(
+                    reusable_response.model_dump(mode="json")
+                ),
+            },
         },
     )
 
@@ -437,7 +449,16 @@ def test_worker_uses_independent_registry_and_rejects_self_keyed_bundle(
     selected = sources(tmp_path / "sources")
     records = build_records(selected, qualification, trust)
     policy = default_p5_policy(records)
-    trusted_runner = RunnerEphemeralIdentity.generate()
+    trusted_private_key = Ed25519PrivateKey.generate()
+    trusted_runner = RunnerEphemeralIdentity(trusted_private_key)
+    signing_key_path = tmp_path / "adapter-runner-signing-key.pem"
+    signing_key_path.write_bytes(
+        trusted_private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
     binding = trust_binding(selected, trust, policy, trusted_runner)
     signed = sign_adapter_bundle(
         records,
@@ -463,17 +484,51 @@ def test_worker_uses_independent_registry_and_rejects_self_keyed_bundle(
         policy=policy,
     )
     registry = tmp_path / "trusted-adapter-registry.json"
-    write_registry(registry, binding, trusted_runner.public_key_pem)
+    write_registry(
+        registry,
+        binding,
+        trusted_runner.public_key_pem,
+        signed.response,
+    )
 
-    loaded_records, loaded_policy = _load_adapter_inputs(
+    loaded_records, loaded_policy, rebound = _load_adapter_inputs(
         response_path=output / "adapter-bundle-response.json",
         policy_path=output / "adapter-policy.json",
         registry_path=registry,
-        run_id="cert-p5-worker-registry",
+        runner_signing_key_path=signing_key_path,
+        run_id="cert-p5-production-new",
         tenant="echo-sovereign",
     )
     assert len(loaded_records) == 2
     assert loaded_policy == policy
+    assert rebound.run_id == "cert-p5-production-new"
+    assert rebound.request_id == "cert-p5-production-new-adapter-request"
+    _, _, repeated = _load_adapter_inputs(
+        response_path=output / "adapter-bundle-response.json",
+        policy_path=output / "adapter-policy.json",
+        registry_path=registry,
+        runner_signing_key_path=signing_key_path,
+        run_id="cert-p5-production-new",
+        tenant="echo-sovereign",
+    )
+    assert repeated.model_dump(mode="json") == rebound.model_dump(mode="json")
+    _, _, second_rebound = _load_adapter_inputs(
+        response_path=output / "adapter-bundle-response.json",
+        policy_path=output / "adapter-policy.json",
+        registry_path=registry,
+        runner_signing_key_path=signing_key_path,
+        run_id="cert-p5-production-second",
+        tenant="echo-sovereign",
+    )
+    assert second_rebound.run_id == "cert-p5-production-second"
+    with pytest.raises(AdapterBundleError, match="run or tenant mismatch"):
+        parse_verified_adapter_bundle(
+            rebound,
+            trusted_runner.public_key_pem,
+            expected_run_id="cert-p5-production-second",
+            expected_tenant_id="echo-sovereign",
+            expected_trust_roots=binding.to_dict(),
+        )
 
     policy_path = output / "adapter-policy.json"
     original_policy = policy_path.read_text(encoding="utf-8")
@@ -485,12 +540,38 @@ def test_worker_uses_independent_registry_and_rejects_self_keyed_bundle(
             response_path=output / "adapter-bundle-response.json",
             policy_path=policy_path,
             registry_path=registry,
-            run_id="cert-p5-worker-registry",
+            runner_signing_key_path=signing_key_path,
+            run_id="cert-p5-production-new",
             tenant="echo-sovereign",
         )
     policy_path.write_text(original_policy, encoding="utf-8")
 
     attacker = RunnerEphemeralIdentity.generate()
+    attacker_private = Ed25519PrivateKey.generate()
+    signing_key_path.write_bytes(
+        attacker_private.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    with pytest.raises(ValueError, match="signing key differs"):
+        _load_adapter_inputs(
+            response_path=output / "adapter-bundle-response.json",
+            policy_path=output / "adapter-policy.json",
+            registry_path=registry,
+            runner_signing_key_path=signing_key_path,
+            run_id="cert-p5-production-new",
+            tenant="echo-sovereign",
+        )
+    signing_key_path.write_bytes(
+        trusted_private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+
     attacker_binding = replace(binding, runner_key_id=attacker.key_id)
     attacker_bundle = sign_adapter_bundle(
         records,
@@ -512,9 +593,90 @@ def test_worker_uses_independent_registry_and_rejects_self_keyed_bundle(
             response_path=output / "adapter-bundle-response.json",
             policy_path=output / "adapter-policy.json",
             registry_path=registry,
-            run_id="cert-p5-worker-registry",
+            runner_signing_key_path=signing_key_path,
+            run_id="cert-p5-production-new",
             tenant="echo-sovereign",
         )
+
+
+def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
+    tmp_path: Path,
+    complete_qualification,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    qualification, trust = complete_qualification
+    selected = sources(tmp_path / "sources")
+    records = build_records(selected, qualification, trust)
+    policy = default_p5_policy(records)
+    adapter_private_key = Ed25519PrivateKey.generate()
+    adapter_runner = RunnerEphemeralIdentity(adapter_private_key)
+    adapter_key_path = tmp_path / "adapter-runner-signing-key.pem"
+    adapter_key_path.write_bytes(
+        adapter_private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    binding = trust_binding(selected, trust, policy, adapter_runner)
+    reusable = sign_adapter_bundle(
+        records,
+        run_id="reusable-qualified-adapter-set",
+        tenant_id="echo-sovereign",
+        trust_binding=binding,
+        runner_identity=adapter_runner,
+    )
+    artifacts = tmp_path / "p5"
+    acceptance = build_acceptance_report(
+        reusable.response,
+        reusable.runner_public_key_pem,
+        run_id="reusable-qualified-adapter-set",
+        tenant_id="echo-sovereign",
+        policy=policy,
+        expected_adapter_set_sha256=reusable.adapter_set_sha256,
+        trust_binding=binding,
+    )
+    write_adapter_execution_artifacts(
+        artifacts,
+        signed_bundle=reusable,
+        acceptance_report=acceptance,
+        policy=policy,
+    )
+    registry = artifacts / "trusted-adapter-registry.json"
+    write_registry(
+        registry,
+        binding,
+        adapter_runner.public_key_pem,
+        reusable.response,
+    )
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "README.txt").write_text("certification target", encoding="utf-8")
+    run_id = "production-router-worker-e2e"
+    args = production_worker_args(
+        run_id=run_id,
+        tenant="echo-sovereign",
+        target={"type": "local", "path": str(target)},
+        journey=None,
+        policy_id="certforge.release-strict.v2",
+        adapter_response=artifacts / "adapter-bundle-response.json",
+        adapter_policy=artifacts / "adapter-policy.json",
+        adapter_registry=registry,
+        adapter_runner_signing_key=adapter_key_path,
+    )
+    monkeypatch.setenv("ECHO_CERTFORGE_DB", str(tmp_path / "certforge.sqlite3"))
+    monkeypatch.setenv("ECHO_CERTFORGE_EVIDENCE_ROOT", str(tmp_path / "evidence"))
+    monkeypatch.setenv(
+        "ECHO_CERTFORGE_POLICY",
+        str(Path(__file__).parents[1] / "policies" / "mandatory-rules.v2.json"),
+    )
+    monkeypatch.setenv(
+        "ECHO_CERTFORGE_RUN_SIGNING_KEY",
+        str(tmp_path / "run-signing-key.pem"),
+    )
+    monkeypatch.setenv("ECHO_CERTFORGE_ENTITLED_TENANTS", "echo-sovereign")
+    monkeypatch.setenv("ECHO_CERTFORGE_WORK_ROOT", str(tmp_path / "workspaces"))
+    assert run_worker_main(args) == 0
 
 
 def test_production_worker_rejects_v1_manifest_without_adapters(

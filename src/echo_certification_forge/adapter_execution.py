@@ -11,8 +11,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .adapter_transport import parse_verified_adapter_bundle
 from .adapters import (
@@ -170,12 +174,13 @@ def sign_adapter_bundle(
     trust_binding: AdapterBundleTrustBinding,
     runner_identity: RunnerEphemeralIdentity | None = None,
     runner_id: str = "anvil-adapter-runner",
+    issued_at: datetime | None = None,
 ) -> SignedAdapterBundle:
     """Sign records with a run-scoped runner key and return public verification material."""
     require_identifier(run_id, "run_id")
     require_identifier(tenant_id, "tenant_id")
     require_identifier(runner_id, "runner_id")
-    issued_at = utc_now()
+    issued_at = issued_at or utc_now()
     authority = ControlPlaneTransportAuthority.generate()
     runner = runner_identity or RunnerEphemeralIdentity.generate()
     if trust_binding.runner_key_id != runner.key_id:
@@ -214,6 +219,18 @@ def sign_adapter_bundle(
         adapter_set_sha256=adapter_set_digest(records),
         trust_binding=trust_binding,
     )
+
+
+def load_adapter_runner_identity(path: Path) -> RunnerEphemeralIdentity:
+    try:
+        key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+    except (OSError, ValueError, TypeError) as exc:
+        raise AdapterExecutionError(
+            f"adapter runner signing key is unreadable: {type(exc).__name__}"
+        ) from exc
+    if not isinstance(key, Ed25519PrivateKey):
+        raise AdapterExecutionError("adapter runner signing key is not Ed25519")
+    return RunnerEphemeralIdentity(key)
 
 
 def default_p5_policy(records: tuple[AdapterExecutionRecord, ...]) -> AdapterAcceptancePolicy:

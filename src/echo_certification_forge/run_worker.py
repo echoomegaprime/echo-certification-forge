@@ -21,7 +21,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from .acquisition import AcquisitionError, acquire_target
 from .adapter_policy import AdapterAcceptancePolicy, load_adapter_acceptance_policy
 from .adapter_registry import load_trusted_adapter_registry
-from .adapter_execution import policy_to_json
+from .adapter_execution import (
+    AdapterBundleTrustBinding,
+    load_adapter_runner_identity,
+    policy_to_json,
+    sign_adapter_bundle,
+)
 from .adapter_transport import parse_verified_adapter_bundle
 from .adapters import AdapterExecutionRecord, adapter_set_digest
 from .canonical import sha256_bytes, sha256_json
@@ -91,6 +96,7 @@ def run(
     sandbox: DockerSandbox | None = None,
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
+    adapter_bundle_response_sha256: str | None = None,
 ) -> dict:
     work_root = Path(
         os.environ.get(
@@ -149,6 +155,7 @@ def run(
         "target_identity_digest": target.identity_digest,
         "environment_identity_digest": environment.identity_digest,
         "adapter_set_sha256": environment.adapter_set_sha256,
+        "adapter_bundle_response_sha256": adapter_bundle_response_sha256,
         "signer_public_key_id": signer.key_id,
         "journey_isolation": "docker" if sandbox is not None else "none",
     }
@@ -159,26 +166,57 @@ def _load_adapter_inputs(
     response_path: Path,
     policy_path: Path,
     registry_path: Path,
+    runner_signing_key_path: Path,
     run_id: str,
     tenant: str,
-) -> tuple[tuple[AdapterExecutionRecord, ...], AdapterAcceptancePolicy]:
+) -> tuple[
+    tuple[AdapterExecutionRecord, ...],
+    AdapterAcceptancePolicy,
+    RunnerResponse,
+]:
     try:
         registry = load_trusted_adapter_registry(registry_path)
         response = RunnerResponse.model_validate_json(response_path.read_text(encoding="utf-8"))
+        response_sha256 = sha256_json(response.model_dump(mode="json"))
+        if response_sha256 != registry.reusable_bundle_sha256:
+            raise ValueError("reusable adapter bundle differs from independent registry")
         records = parse_verified_adapter_bundle(
             response,
             registry.runner_public_key_pem,
-            expected_run_id=run_id,
-            expected_tenant_id=tenant,
+            expected_run_id=registry.reusable_bundle_run_id,
+            expected_tenant_id=registry.reusable_bundle_tenant_id,
             allowed_runner_ids=(registry.runner_id,),
             expected_trust_roots=registry.trust_roots,
         )
         policy = load_adapter_acceptance_policy(policy_path)
         if sha256_json(policy_to_json(policy)) != registry.policy_sha256:
             raise ValueError("adapter policy differs from independent registry")
+        runner_identity = load_adapter_runner_identity(runner_signing_key_path)
+        if runner_identity.key_id != registry.runner_key_id:
+            raise ValueError(
+                "adapter runner signing key differs from independent registry"
+            )
+        trust_binding = AdapterBundleTrustBinding(**registry.trust_roots)
+        rebound = sign_adapter_bundle(
+            records,
+            run_id=run_id,
+            tenant_id=tenant,
+            trust_binding=trust_binding,
+            runner_identity=runner_identity,
+            runner_id=registry.runner_id,
+            issued_at=response.issued_at,
+        )
+        rebound_records = parse_verified_adapter_bundle(
+            rebound.response,
+            registry.runner_public_key_pem,
+            expected_run_id=run_id,
+            expected_tenant_id=tenant,
+            allowed_runner_ids=(registry.runner_id,),
+            expected_trust_roots=registry.trust_roots,
+        )
     except (OSError, TypeError, ValueError) as exc:
         raise ValueError(f"adapter_input_rejected:{type(exc).__name__}:{exc}") from exc
-    return records, policy
+    return rebound_records, policy, rebound.response
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -235,6 +273,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--adapter-response", type=Path, default=None)
     parser.add_argument("--adapter-policy", type=Path, default=None)
     parser.add_argument(
+        "--adapter-runner-signing-key",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY"])
+            if os.environ.get("ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY")
+            else None
+        ),
+    )
+    parser.add_argument(
         "--adapter-registry",
         type=Path,
         default=(
@@ -273,9 +320,10 @@ def main(argv: list[str] | None = None) -> int:
         args.adapter_response,
         args.adapter_policy,
         args.adapter_registry,
+        args.adapter_runner_signing_key,
     )
     supplied_count = sum(path is not None for path in adapter_paths)
-    allowed_counts = (0, 3) if args.non_production_compat else (3,)
+    allowed_counts = (0, 4) if args.non_production_compat else (4,)
     if supplied_count not in allowed_counts:
         print(
             json.dumps(
@@ -293,12 +341,14 @@ def main(argv: list[str] | None = None) -> int:
 
     adapter_records = None
     adapter_policy = None
-    if supplied_count == 3:
+    adapter_rebound_response = None
+    if supplied_count == 4:
         try:
-            adapter_records, adapter_policy = _load_adapter_inputs(
+            adapter_records, adapter_policy, adapter_rebound_response = _load_adapter_inputs(
                 response_path=args.adapter_response,
                 policy_path=args.adapter_policy,
                 registry_path=args.adapter_registry,
+                runner_signing_key_path=args.adapter_runner_signing_key,
                 run_id=args.run_id,
                 tenant=args.tenant,
             )

@@ -27,15 +27,25 @@ class TrustedAdapterRegistry:
     qualification_trust_pins_sha256: str
     r5_trust_pins_sha256: str
     external_trust_pins_sha256: str
+    reusable_bundle_run_id: str
+    reusable_bundle_tenant_id: str
+    reusable_bundle_sha256: str
 
     def __post_init__(self) -> None:
-        for field in ("registry_id", "runner_id", "policy_id"):
+        for field in (
+            "registry_id",
+            "runner_id",
+            "policy_id",
+            "reusable_bundle_run_id",
+            "reusable_bundle_tenant_id",
+        ):
             require_identifier(str(getattr(self, field)), field)
         for field in (
             "policy_sha256",
             "qualification_trust_pins_sha256",
             "r5_trust_pins_sha256",
             "external_trust_pins_sha256",
+            "reusable_bundle_sha256",
         ):
             object.__setattr__(
                 self,
@@ -107,6 +117,7 @@ def parse_trusted_adapter_registry(raw: Any) -> TrustedAdapterRegistry:
             "qualification_trust_pins_sha256",
             "r5_trust_pins_sha256",
             "external_trust_pins_sha256",
+            "reusable_bundle",
         },
         "adapter registry",
     )
@@ -114,10 +125,22 @@ def parse_trusted_adapter_registry(raw: Any) -> TrustedAdapterRegistry:
         raise AdapterRegistryError("unsupported adapter registry schema_version")
     runner = raw["runner"]
     policy = raw["policy"]
-    if not isinstance(runner, dict) or not isinstance(policy, dict):
-        raise AdapterRegistryError("registry runner and policy must be objects")
+    reusable = raw["reusable_bundle"]
+    if (
+        not isinstance(runner, dict)
+        or not isinstance(policy, dict)
+        or not isinstance(reusable, dict)
+    ):
+        raise AdapterRegistryError(
+            "registry runner, policy, and reusable_bundle must be objects"
+        )
     _exact_keys(runner, {"runner_id", "key_id", "public_key_pem"}, "registry runner")
     _exact_keys(policy, {"policy_id", "sha256"}, "registry policy")
+    _exact_keys(
+        reusable,
+        {"run_id", "tenant_id", "sha256"},
+        "registry reusable_bundle",
+    )
     return TrustedAdapterRegistry(
         registry_id=str(raw["registry_id"]),
         runner_id=str(runner["runner_id"]),
@@ -130,6 +153,9 @@ def parse_trusted_adapter_registry(raw: Any) -> TrustedAdapterRegistry:
         ),
         r5_trust_pins_sha256=str(raw["r5_trust_pins_sha256"]),
         external_trust_pins_sha256=str(raw["external_trust_pins_sha256"]),
+        reusable_bundle_run_id=str(reusable["run_id"]),
+        reusable_bundle_tenant_id=str(reusable["tenant_id"]),
+        reusable_bundle_sha256=str(reusable["sha256"]),
     )
 
 

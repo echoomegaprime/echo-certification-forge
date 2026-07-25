@@ -63,6 +63,8 @@ The run worker loads an independent trusted adapter registry from `--adapter-reg
 
 Production launchers use `mandatory-rules.v2.json` and require the adapter bundle, policy, and independent registry; v1 or missing-adapter operation is available only through the explicit non-production compatibility switch. External trust pins now cover all four aliases plus the exact server build, registry snapshot/revision, and base-model identity. Every R5 run uses an operator-chosen run ID and nonce bound into every signed receipt challenge, report, manifest, and R5 trust digest; mixed-run splices and attestation `requested_models` values other than exactly the four pinned aliases are rejected.
 
+The production adapter response is a reusable, registry-pinned qualified identity source, not a replayable certification-run response. The worker verifies its exact registry digest, loads the independent adapter-runner signing key, and deterministically signs a new response bound to the freshly allocated certification `run_id` and tenant before execution. The deploy gate and SDK launcher require that protected signing-key path; caller-supplied paths are not accepted.
+
 ## Discovery note
 
 Repository-required live discovery was attempted before implementation. The Arcanum search capability was unavailable in the live registry, and `echo.functions.search` returned a gateway timeout/502 after 30 seconds. The implementation therefore reuses the repository's direct-HTTP and local-scoring design from the prior `scripts/qualify_family_adapters.py`, the strict held-out schema/validation helpers in `src/echo_certification_forge/p5_corpus.py`, and the Ed25519 routing-receipt verification contract in `src/echo_certification_forge/family_r5.py`.

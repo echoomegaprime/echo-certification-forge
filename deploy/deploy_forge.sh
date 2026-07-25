@@ -34,6 +34,7 @@ test -f policies/mandatory-rules.v2.json || { echo "!! v2 policy manifest missin
 test -f "$ADAPTER_DIR/adapter-bundle-response.json" || { echo "!! adapter bundle missing"; exit 1; }
 test -f "$ADAPTER_DIR/adapter-policy.json" || { echo "!! adapter policy missing"; exit 1; }
 test -f "$ADAPTER_DIR/trusted-adapter-registry.json" || { echo "!! trusted adapter registry missing"; exit 1; }
+test -f "$ADAPTER_DIR/adapter-runner-signing-key.pem" || { echo "!! adapter runner signing key missing"; exit 1; }
 
 echo "== [4/7] staging boot on 127.0.0.1:$STAGING_PORT =="
 export ECHO_CERTFORGE_DB="$REPO_DIR/var/staging.sqlite3"
@@ -43,6 +44,7 @@ export ECHO_CERTFORGE_TRUSTED_KEYS="$REPO_DIR/var/trusted-public-keys"
 export ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
 export ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
 export ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
+export ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
 STAGING_LOG="$REPO_DIR/var/certforge_staging.log"
 ./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >"$STAGING_LOG" 2>&1 &
 STAGING_PID=$!
@@ -75,6 +77,7 @@ Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$REPO_DIR/var/trusted-public-keys
 Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
 Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
 Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
+Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
 ExecStart=$REPO_DIR/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5
