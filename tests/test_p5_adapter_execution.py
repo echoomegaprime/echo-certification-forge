@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from echo_certification_forge.adapter_execution import (
     build_acceptance_report,
     build_records_from_evidence,
     default_p5_policy,
+    external_trust_pins_digest,
     load_json,
     sign_adapter_bundle,
     write_adapter_execution_artifacts,
@@ -23,6 +25,14 @@ from echo_certification_forge.adapter_execution import (
 from echo_certification_forge.adapter_transport import parse_verified_adapter_bundle
 from echo_certification_forge.adapters import AdapterMaturity, adapter_set_digest
 from echo_certification_forge.canonical import canonical_json, sha256_bytes, sha256_json
+from echo_certification_forge.p5_qualification import (
+    QualificationArtifactDigests,
+    QualificationEvidenceTrustPins,
+    TrustedRoutingKey,
+)
+
+GS_ARTIFACT_DIGEST = sha256_bytes(b"gs343-adapter")
+R2_ARTIFACT_DIGEST = sha256_bytes(b"r2d2-adapter")
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
@@ -140,26 +150,68 @@ def qualification_report(*, gs_go: bool = True, r2_go: bool = True) -> dict[str,
 
 
 def sources(tmp_path: Path, *, gs_maturity: str = "STABLE", r2_maturity: str = "STABLE"):
+    gs_key = Ed25519PrivateKey.generate()
+    r2_key = Ed25519PrivateKey.generate()
     gs = make_r5_evidence(
         tmp_path / "gs-r5",
         model="echo-gs343",
-        adapter_digest=sha256_bytes(b"gs343-adapter"),
+        adapter_digest=GS_ARTIFACT_DIGEST,
         maturity=gs_maturity,
+        private_key=gs_key,
     )
     r2 = make_r5_evidence(
         tmp_path / "r2-r5",
         model="echo-r2d2",
-        adapter_digest=sha256_bytes(b"r2d2-adapter"),
+        adapter_digest=R2_ARTIFACT_DIGEST,
         maturity=r2_maturity,
+        private_key=r2_key,
     )
     return (
-        AdapterEvidenceSource("gs343", "echo-gs343", gs, "gs_adapter_v2_context"),
-        AdapterEvidenceSource("r2d2", "echo-r2d2", r2, "r2_adapter_context"),
+        AdapterEvidenceSource(
+            "gs343",
+            "echo-gs343",
+            gs,
+            "gs_adapter_v2_context",
+            TrustedRoutingKey(public_key_pem(gs_key), key_id(gs_key)),
+        ),
+        AdapterEvidenceSource(
+            "r2d2",
+            "echo-r2d2",
+            r2,
+            "r2_adapter_context",
+            TrustedRoutingKey(public_key_pem(r2_key), key_id(r2_key)),
+        ),
+    )
+
+
+def qualification_trust(
+    selected: tuple[AdapterEvidenceSource, ...],
+) -> QualificationEvidenceTrustPins:
+    return QualificationEvidenceTrustPins(
+        routing_key=selected[0].trusted_routing_key,
+        artifact_digests=QualificationArtifactDigests(
+            gs_candidate=GS_ARTIFACT_DIGEST,
+            gs_incumbent=sha256_bytes(b"gs343-incumbent"),
+            r2_candidate=R2_ARTIFACT_DIGEST,
+            r2_incumbent=sha256_bytes(b"r2d2-incumbent"),
+        ),
+    )
+
+
+def build_records(
+    selected: tuple[AdapterEvidenceSource, ...],
+    report: dict[str, Any],
+):
+    return build_records_from_evidence(
+        selected,
+        qualification_report=report,
+        qualification_trust_pins=qualification_trust(selected),
     )
 
 
 def test_builds_signed_gs343_r2d2_bundle_and_acceptance_report(tmp_path: Path) -> None:
-    records = build_records_from_evidence(sources(tmp_path), qualification_report=qualification_report())
+    selected = sources(tmp_path)
+    records = build_records(selected, qualification_report())
 
     signed = sign_adapter_bundle(records, run_id="cert-p5-live", tenant_id="echo-sovereign")
     parsed = parse_verified_adapter_bundle(
@@ -175,6 +227,9 @@ def test_builds_signed_gs343_r2d2_bundle_and_acceptance_report(tmp_path: Path) -
         tenant_id="echo-sovereign",
         policy=default_p5_policy(records),
         expected_adapter_set_sha256=signed.adapter_set_sha256,
+        external_trust_pins_sha256=external_trust_pins_digest(
+            qualification_trust(selected), selected
+        ),
     )
 
     assert tuple(record.identity.adapter_id for record in parsed) == ("gs343", "r2d2")
@@ -189,14 +244,29 @@ def test_missing_routing_receipt_fails_closed(tmp_path: Path) -> None:
     write_json(selected[0].r5_evidence_directory / "positive-target.json", {"status_code": 200, "body": {}})
 
     with pytest.raises(AdapterExecutionError, match="routing_receipt"):
-        build_records_from_evidence(selected, qualification_report=qualification_report())
+        build_records(selected, qualification_report())
+
+
+def test_r5_package_key_must_match_external_operator_pin(tmp_path: Path) -> None:
+    selected = sources(tmp_path)
+    operator_key = Ed25519PrivateKey.generate()
+    selected = (
+        replace(
+            selected[0],
+            trusted_routing_key=TrustedRoutingKey(
+                public_key_pem(operator_key),
+                key_id(operator_key),
+            ),
+        ),
+        selected[1],
+    )
+    with pytest.raises(AdapterExecutionError, match="external trusted key"):
+        build_records(selected, qualification_report())
 
 
 def test_failed_quality_is_emitted_and_acceptance_blocks(tmp_path: Path) -> None:
-    records = build_records_from_evidence(
-        sources(tmp_path),
-        qualification_report=qualification_report(gs_go=False),
-    )
+    selected = sources(tmp_path)
+    records = build_records(selected, qualification_report(gs_go=False))
     signed = sign_adapter_bundle(records, run_id="cert-p5-quality-block", tenant_id="echo-sovereign")
     report = build_acceptance_report(
         signed.response,
@@ -205,6 +275,9 @@ def test_failed_quality_is_emitted_and_acceptance_blocks(tmp_path: Path) -> None
         tenant_id="echo-sovereign",
         policy=default_p5_policy(records),
         expected_adapter_set_sha256=signed.adapter_set_sha256,
+        external_trust_pins_sha256=external_trust_pins_digest(
+            qualification_trust(selected), selected
+        ),
     )
 
     assert records[0].quality.score == 0.0
@@ -215,10 +288,8 @@ def test_failed_quality_is_emitted_and_acceptance_blocks(tmp_path: Path) -> None
 
 
 def test_non_stable_adapter_signs_but_acceptance_blocks(tmp_path: Path) -> None:
-    records = build_records_from_evidence(
-        sources(tmp_path, gs_maturity="CONFORMANCE_PENDING"),
-        qualification_report=qualification_report(),
-    )
+    selected = sources(tmp_path, gs_maturity="CONFORMANCE_PENDING")
+    records = build_records(selected, qualification_report())
     signed = sign_adapter_bundle(records, run_id="cert-p5-block", tenant_id="echo-sovereign")
     report = build_acceptance_report(
         signed.response,
@@ -227,6 +298,9 @@ def test_non_stable_adapter_signs_but_acceptance_blocks(tmp_path: Path) -> None:
         tenant_id="echo-sovereign",
         policy=default_p5_policy(records),
         expected_adapter_set_sha256=signed.adapter_set_sha256,
+        external_trust_pins_sha256=external_trust_pins_digest(
+            qualification_trust(selected), selected
+        ),
     )
 
     assert report["adapter_gate"] == "BLOCK"
@@ -234,7 +308,8 @@ def test_non_stable_adapter_signs_but_acceptance_blocks(tmp_path: Path) -> None:
 
 
 def test_writes_complete_verifiable_artifact_set(tmp_path: Path) -> None:
-    records = build_records_from_evidence(sources(tmp_path), qualification_report=qualification_report())
+    selected = sources(tmp_path)
+    records = build_records(selected, qualification_report())
     signed = sign_adapter_bundle(records, run_id="cert-p5-artifacts", tenant_id="echo-sovereign")
     policy = default_p5_policy(records)
     report = build_acceptance_report(
@@ -244,6 +319,9 @@ def test_writes_complete_verifiable_artifact_set(tmp_path: Path) -> None:
         tenant_id="echo-sovereign",
         policy=policy,
         expected_adapter_set_sha256=signed.adapter_set_sha256,
+        external_trust_pins_sha256=external_trust_pins_digest(
+            qualification_trust(selected), selected
+        ),
     )
     output = tmp_path / "bundle"
 
@@ -276,11 +354,19 @@ def test_input_container_validation_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(AdapterExecutionError, match="without records"):
         default_p5_policy(())
     with pytest.raises(AdapterExecutionError, match="at least one adapter"):
-        build_records_from_evidence((), qualification_report={})
+        build_records_from_evidence(
+            (),
+            qualification_report={},
+            qualification_trust_pins=qualification_trust(sources(tmp_path / "trust")),
+        )
 
     selected = sources(tmp_path / "sources")
     with pytest.raises(AdapterExecutionError, match="duplicate adapter source"):
-        build_records_from_evidence((selected[0], selected[0]), qualification_report=qualification_report())
+        build_records_from_evidence(
+            (selected[0], selected[0]),
+            qualification_report=qualification_report(),
+            qualification_trust_pins=qualification_trust(selected),
+        )
 
 
 @pytest.mark.parametrize(
@@ -290,7 +376,7 @@ def test_input_container_validation_fails_closed(tmp_path: Path) -> None:
         ("target_mismatch", "R5 target model mismatch"),
         ("missing_public_key", "lacks attested public key"),
         ("missing_signature", "lacks signature_b64"),
-        ("key_mismatch", "key does not match attestation"),
+        ("key_mismatch", "differs from external trusted key"),
         ("invalid_signature", "signature is invalid"),
     ),
 )
@@ -319,7 +405,7 @@ def test_r5_evidence_tampering_fails_closed(tmp_path: Path, mutation: str, messa
     write_json(positive_path, positive)
 
     with pytest.raises(AdapterExecutionError, match=message):
-        build_records_from_evidence(selected, qualification_report=qualification_report())
+        build_records(selected, qualification_report())
 
 
 @pytest.mark.parametrize(
@@ -339,17 +425,19 @@ def test_malformed_qualification_fails_closed(
     report["qualification"]["gs_adapter_v2_context"][field] = value
 
     with pytest.raises(AdapterExecutionError, match=message):
-        build_records_from_evidence(sources(tmp_path), qualification_report=report)
+        selected = sources(tmp_path)
+        build_records(selected, report)
 
 
 def test_empty_probe_evidence_and_unknown_maturity_fail_closed(tmp_path: Path) -> None:
     report = qualification_report()
     report["mode_scores"]["gs_adapter_v2_context"]["probe_results"] = []
     with pytest.raises(AdapterExecutionError, match="must be non-empty"):
-        build_records_from_evidence(sources(tmp_path / "empty-probes"), qualification_report=report)
+        selected = sources(tmp_path / "empty-probes")
+        build_records(selected, report)
 
-    records = build_records_from_evidence(
+    records = build_records(
         sources(tmp_path / "unknown-maturity", gs_maturity="UNRECOGNIZED"),
-        qualification_report=qualification_report(),
+        qualification_report(),
     )
     assert records[0].identity.maturity is AdapterMaturity.EXPERIMENTAL

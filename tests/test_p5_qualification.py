@@ -24,8 +24,10 @@ from echo_certification_forge.p5_qualification import (
     EXPECTED_EVAL_ROWS,
     QualificationArtifactDigests,
     QualificationConfig,
+    QualificationEvidenceTrustPins,
     QualificationError,
     QualificationModels,
+    TrustedRoutingKey,
     run_qualification,
 )
 
@@ -295,6 +297,19 @@ def _config(tmp_path: Path, transport: FakeQualificationTransport) -> Qualificat
     )
 
 
+def _qualification_trust(
+    config: QualificationConfig,
+    transport: FakeQualificationTransport,
+) -> QualificationEvidenceTrustPins:
+    return QualificationEvidenceTrustPins(
+        routing_key=TrustedRoutingKey(
+            transport.public_key_pem,
+            transport.key_id,
+        ),
+        artifact_digests=config.artifact_digests,
+    )
+
+
 def _candidate_sources_from_report(
     tmp_path: Path,
     report: Mapping[str, Any],
@@ -360,6 +375,7 @@ def _candidate_sources_from_report(
                 model,
                 evidence,
                 "unused-for-complete-qualification-report",
+                TrustedRoutingKey(transport.public_key_pem, transport.key_id),
             )
         )
     return sources[0], sources[1]
@@ -444,6 +460,23 @@ def test_receipt_artifact_digest_must_match_independent_operator_pin(
         "selected_adapter_digest mismatch" in blocker
         for blocker in report["blockers"]
     )
+
+
+def test_cross_family_alias_and_digest_reuse_are_rejected() -> None:
+    with pytest.raises(ValueError, match="four requested model aliases"):
+        QualificationModels(
+            gs_candidate=GS_CANDIDATE,
+            gs_incumbent=GS_INCUMBENT,
+            r2_candidate=GS_CANDIDATE,
+            r2_incumbent=R2_INCUMBENT,
+        )
+    with pytest.raises(ValueError, match="four expected artifact digests"):
+        QualificationArtifactDigests(
+            gs_candidate=_artifact_digest(GS_CANDIDATE),
+            gs_incumbent=_artifact_digest(GS_INCUMBENT),
+            r2_candidate=_artifact_digest(GS_CANDIDATE),
+            r2_incumbent=_artifact_digest(R2_INCUMBENT),
+        )
 
 
 def test_r2_empty_invented_facts_cannot_hide_unauthorized_claims(
@@ -551,7 +584,8 @@ def test_successful_candidate_exceeds_incumbent_by_1_05(tmp_path: Path) -> None:
 
 def test_minimal_forged_candidate_report_is_rejected(tmp_path: Path) -> None:
     transport = FakeQualificationTransport(request_prefix="forged-summary")
-    valid = run_qualification(_config(tmp_path, transport), transport=transport)
+    config = _config(tmp_path, transport)
+    valid = run_qualification(config, transport=transport)
     sources = _candidate_sources_from_report(tmp_path / "r5", valid, transport)
     forged = {
         "schema": "echo.certification-forge.p5-qualification/v1",
@@ -582,7 +616,39 @@ def test_minimal_forged_candidate_report_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(
         AdapterExecutionError, match="candidate qualification evidence is invalid"
     ):
-        build_records_from_evidence(sources, qualification_report=forged)
+        build_records_from_evidence(
+            sources,
+            qualification_report=forged,
+            qualification_trust_pins=_qualification_trust(config, transport),
+        )
+
+
+def test_self_keyed_perfect_package_rejected_by_external_trust_root(
+    tmp_path: Path,
+) -> None:
+    attacker = FakeQualificationTransport(request_prefix="attacker-perfect")
+    config = _config(tmp_path, attacker)
+    report = run_qualification(config, transport=attacker)
+    assert report["promotion_decision"] == "PROMOTE"
+    sources = _candidate_sources_from_report(tmp_path / "r5", report, attacker)
+
+    operator_trust = FakeQualificationTransport(request_prefix="operator-trust")
+    external_pins = QualificationEvidenceTrustPins(
+        routing_key=TrustedRoutingKey(
+            operator_trust.public_key_pem,
+            operator_trust.key_id,
+        ),
+        artifact_digests=config.artifact_digests,
+    )
+    with pytest.raises(
+        AdapterExecutionError,
+        match="qualification routing attestation differs from independent operator key",
+    ):
+        build_records_from_evidence(
+            sources,
+            qualification_report=report,
+            qualification_trust_pins=external_pins,
+        )
 
 
 @pytest.mark.parametrize("ledger", ["response_receipts", "score_ledger"])
@@ -591,7 +657,8 @@ def test_missing_or_tampered_qualification_ledger_row_blocks_bundle(
     ledger: str,
 ) -> None:
     transport = FakeQualificationTransport(request_prefix=f"tampered-{ledger}")
-    report = run_qualification(_config(tmp_path, transport), transport=transport)
+    config = _config(tmp_path, transport)
+    report = run_qualification(config, transport=transport)
     sources = _candidate_sources_from_report(tmp_path / "r5", report, transport)
     path = Path(report[ledger]["path"])
     rows = path.read_text(encoding="utf-8").splitlines()
@@ -622,7 +689,11 @@ def test_missing_or_tampered_qualification_ledger_row_blocks_bundle(
     with pytest.raises(
         AdapterExecutionError, match="candidate qualification evidence is invalid"
     ):
-        build_records_from_evidence(sources, qualification_report=report)
+        build_records_from_evidence(
+            sources,
+            qualification_report=report,
+            qualification_trust_pins=_qualification_trust(config, transport),
+        )
 
 
 def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> None:
@@ -632,6 +703,8 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
     assert report["promotion_decision"] == "PROMOTE"
 
     sources = _candidate_sources_from_report(tmp_path, report, transport)
+    trusted_key_path = tmp_path / "trusted-routing-key.pem"
+    trusted_key_path.write_text(transport.public_key_pem, encoding="ascii")
 
     output = tmp_path / "adapter-bundle"
     completed = subprocess.run(
@@ -648,6 +721,26 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
             str(sources[0].r5_evidence_directory),
             "--r2d2-r5-evidence",
             str(sources[1].r5_evidence_directory),
+            "--trusted-qualification-public-key",
+            str(trusted_key_path),
+            "--trusted-qualification-key-id",
+            transport.key_id,
+            "--gs343-r5-public-key",
+            str(trusted_key_path),
+            "--gs343-r5-key-id",
+            transport.key_id,
+            "--r2d2-r5-public-key",
+            str(trusted_key_path),
+            "--r2d2-r5-key-id",
+            transport.key_id,
+            "--gs-candidate-sha256",
+            _artifact_digest(GS_CANDIDATE),
+            "--gs-incumbent-sha256",
+            _artifact_digest(GS_INCUMBENT),
+            "--r2-candidate-sha256",
+            _artifact_digest(R2_CANDIDATE),
+            "--r2-incumbent-sha256",
+            _artifact_digest(R2_INCUMBENT),
             "--output-directory",
             str(output),
         ],
@@ -661,6 +754,7 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
         (output / "adapter-acceptance-report.json").read_text(encoding="utf-8")
     )
     assert acceptance["adapter_gate"] == "GO"
+    assert len(acceptance["external_trust_pins_sha256"]) == 64
     assert {
         record["identity"]["artifact_sha256"] for record in acceptance["records"]
     } == {

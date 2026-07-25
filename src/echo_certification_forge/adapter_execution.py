@@ -38,7 +38,12 @@ from .canonical import (
     to_utc_iso,
     utc_now,
 )
-from .p5_qualification import QualificationError, verify_qualification_evidence
+from .p5_qualification import (
+    QualificationEvidenceTrustPins,
+    QualificationError,
+    TrustedRoutingKey,
+    verify_qualification_evidence,
+)
 from .runner import (
     ControlPlaneTransportAuthority,
     RunnerCommand,
@@ -60,6 +65,7 @@ class AdapterEvidenceSource:
     target_model: str
     r5_evidence_directory: Path
     quality_mode: str
+    trusted_routing_key: TrustedRoutingKey
 
     def __post_init__(self) -> None:
         require_identifier(self.adapter_id, "adapter_id")
@@ -172,6 +178,26 @@ def default_p5_policy(records: tuple[AdapterExecutionRecord, ...]) -> AdapterAcc
     )
 
 
+def external_trust_pins_digest(
+    qualification_trust_pins: QualificationEvidenceTrustPins,
+    sources: tuple[AdapterEvidenceSource, ...],
+) -> str:
+    by_adapter = {
+        source.adapter_id: source.trusted_routing_key.to_dict()
+        for source in sources
+    }
+    if set(by_adapter) != {"gs343", "r2d2"}:
+        raise AdapterExecutionError(
+            "external R5 trust pins must cover exactly gs343 and r2d2"
+        )
+    return sha256_json(
+        {
+            "qualification": qualification_trust_pins.to_dict(),
+            "r5_routing_keys": dict(sorted(by_adapter.items())),
+        }
+    )
+
+
 def build_acceptance_report(
     response: RunnerResponse,
     runner_public_key_pem: str,
@@ -180,7 +206,9 @@ def build_acceptance_report(
     tenant_id: str,
     policy: AdapterAcceptancePolicy,
     expected_adapter_set_sha256: str,
+    external_trust_pins_sha256: str,
 ) -> dict[str, Any]:
+    require_sha256(external_trust_pins_sha256, "external_trust_pins_sha256")
     records = parse_verified_adapter_bundle(
         response,
         runner_public_key_pem,
@@ -199,6 +227,7 @@ def build_acceptance_report(
         "not_ready_reason": "P5 adapter gate proof only; P6/P7 and hosted CI remain release blockers",
         "accepted_adapters": list(acceptance.accepted_adapters),
         "adapter_set_sha256": acceptance.adapter_set_sha256,
+        "external_trust_pins_sha256": external_trust_pins_sha256,
         "reasons": list(acceptance.reasons),
         "records": [adapter_record_bundle_dict(record) for record in records],
         "policy": policy_to_json(policy),
@@ -223,6 +252,7 @@ def build_records_from_evidence(
     sources: tuple[AdapterEvidenceSource, ...],
     *,
     qualification_report: Mapping[str, Any],
+    qualification_trust_pins: QualificationEvidenceTrustPins,
     execution_node: str = "ANVIL",
 ) -> tuple[AdapterExecutionRecord, ...]:
     if not sources:
@@ -234,7 +264,14 @@ def build_records_from_evidence(
         if source.adapter_id in seen:
             raise AdapterExecutionError(f"duplicate adapter source: {source.adapter_id}")
         seen.add(source.adapter_id)
-        records.append(_record_from_source(source, qualification_report, execution_node=execution_node))
+        records.append(
+            _record_from_source(
+                source,
+                qualification_report,
+                qualification_trust_pins=qualification_trust_pins,
+                execution_node=execution_node,
+            )
+        )
     return tuple(records)
 
 
@@ -242,6 +279,7 @@ def _record_from_source(
     source: AdapterEvidenceSource,
     qualification_report: Mapping[str, Any],
     *,
+    qualification_trust_pins: QualificationEvidenceTrustPins,
     execution_node: str,
 ) -> AdapterExecutionRecord:
     r5_report = load_json(source.r5_evidence_directory / "r5-report.json")
@@ -252,10 +290,22 @@ def _record_from_source(
     expected = _object(r5_report.get("expected_identity"), "expected_identity")
     if expected.get("target_model") != source.target_model:
         raise AdapterExecutionError(f"R5 target model mismatch for {source.adapter_id}")
-    receipt = _verified_receipt(r5_report, positive, source.target_model)
+    receipt = _verified_receipt(
+        r5_report,
+        positive,
+        source.target_model,
+        source.trusted_routing_key,
+    )
     payload = _object(receipt.get("payload"), "routing receipt payload")
 
     selected_digest = require_sha256(str(payload.get("selected_adapter_digest")), "selected_adapter_digest")
+    expected_artifact = qualification_trust_pins.artifact_digests.by_adapter(
+        source.adapter_id
+    )["candidate"]
+    if selected_digest != expected_artifact:
+        raise AdapterExecutionError(
+            f"R5 artifact digest differs from external pin for {source.adapter_id}"
+        )
     identity = AdapterIdentity(
         adapter_id=source.adapter_id,
         version=_identifier_or_default(payload.get("adapter_version"), "adapter_version", default="unknown"),
@@ -288,6 +338,7 @@ def _record_from_source(
         qualification_report,
         target_model=source.target_model,
         artifact_sha256=selected_digest,
+        qualification_trust_pins=qualification_trust_pins,
         manifest_sha256=sha256_json(manifest),
     )
     result_payload = {
@@ -316,6 +367,7 @@ def _verified_receipt(
     r5_report: Mapping[str, Any],
     positive_target: Mapping[str, Any],
     target_model: str,
+    trusted_routing_key: TrustedRoutingKey,
 ) -> dict[str, Any]:
     bundle = _object(r5_report.get("forge_verification_bundle"), "forge_verification_bundle")
     public_key_pem = bundle.get("public_key_pem")
@@ -327,10 +379,16 @@ def _verified_receipt(
     signature_b64 = receipt.get("signature_b64")
     if not isinstance(signature_b64, str):
         raise AdapterExecutionError("routing receipt lacks signature_b64")
-    key = _public_key(public_key_pem)
-    expected_key_id = f"ed25519:{sha256_bytes(key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw))[:32]}"
-    if receipt.get("key_id") != expected_key_id or bundle.get("attested_key_id") != expected_key_id:
-        raise AdapterExecutionError("routing receipt key does not match attestation")
+    if (
+        public_key_pem != trusted_routing_key.public_key_pem
+        or bundle.get("attested_key_id") != trusted_routing_key.key_id
+        or receipt.get("key_id") != trusted_routing_key.key_id
+        or payload.get("signature_key_id") != trusted_routing_key.key_id
+    ):
+        raise AdapterExecutionError(
+            "routing receipt or R5 attestation differs from external trusted key"
+        )
+    key = trusted_routing_key.public_key
     try:
         key.verify(base64.b64decode(signature_b64, validate=True), canonical_json(payload).encode("utf-8"))
     except (InvalidSignature, ValueError, TypeError) as exc:
@@ -357,6 +415,7 @@ def _quality_report(
     *,
     target_model: str,
     artifact_sha256: str,
+    qualification_trust_pins: QualificationEvidenceTrustPins,
     manifest_sha256: str,
 ) -> AdapterQualityReport:
     if qualification_report.get("schema") == "echo.certification-forge.p5-qualification/v1":
@@ -365,6 +424,7 @@ def _quality_report(
             qualification_report,
             target_model=target_model,
             artifact_sha256=artifact_sha256,
+            qualification_trust_pins=qualification_trust_pins,
             manifest_sha256=manifest_sha256,
         )
     qualifications = _object(qualification_report.get("qualification"), "qualification")
@@ -410,10 +470,14 @@ def _candidate_quality_report(
     *,
     target_model: str,
     artifact_sha256: str,
+    qualification_trust_pins: QualificationEvidenceTrustPins,
     manifest_sha256: str,
 ) -> AdapterQualityReport:
     try:
-        verified_evidence = verify_qualification_evidence(qualification_report)
+        verified_evidence = verify_qualification_evidence(
+            qualification_report,
+            qualification_trust_pins,
+        )
     except QualificationError as exc:
         raise AdapterExecutionError(
             f"candidate qualification evidence is invalid: {exc}"
@@ -505,6 +569,9 @@ def _candidate_quality_report(
                 "schema": qualification_report["schema"],
                 "qualification_run_id": verified_evidence["qualification_run_id"],
                 "evidence_manifest_sha256": verified_evidence["manifest_sha256"],
+                "external_qualification_trust_pins_sha256": verified_evidence[
+                    "external_trust_pins_sha256"
+                ],
                 "adapter": adapter_id,
                 "target_model": target_model,
                 "artifact_sha256": artifact_sha256,

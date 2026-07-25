@@ -15,9 +15,15 @@ from echo_certification_forge.adapter_execution import (
     build_acceptance_report,
     build_records_from_evidence,
     default_p5_policy,
+    external_trust_pins_digest,
     load_json,
     sign_adapter_bundle,
     write_adapter_execution_artifacts,
+)
+from echo_certification_forge.p5_qualification import (
+    QualificationArtifactDigests,
+    QualificationEvidenceTrustPins,
+    TrustedRoutingKey,
 )
 
 
@@ -28,6 +34,18 @@ def main() -> int:
     parser.add_argument("--qualification-report", required=True, type=Path)
     parser.add_argument("--gs343-r5-evidence", required=True, type=Path)
     parser.add_argument("--r2d2-r5-evidence", required=True, type=Path)
+    parser.add_argument(
+        "--trusted-qualification-public-key", required=True, type=Path
+    )
+    parser.add_argument("--trusted-qualification-key-id", required=True)
+    parser.add_argument("--gs343-r5-public-key", required=True, type=Path)
+    parser.add_argument("--gs343-r5-key-id", required=True)
+    parser.add_argument("--r2d2-r5-public-key", required=True, type=Path)
+    parser.add_argument("--r2d2-r5-key-id", required=True)
+    parser.add_argument("--gs-candidate-sha256", required=True)
+    parser.add_argument("--gs-incumbent-sha256", required=True)
+    parser.add_argument("--r2-candidate-sha256", required=True)
+    parser.add_argument("--r2-incumbent-sha256", required=True)
     parser.add_argument("--gs343-model")
     parser.add_argument("--r2d2-model")
     parser.add_argument("--gs343-quality-mode", default="gs_adapter_context")
@@ -50,12 +68,45 @@ def main() -> int:
         gs343_model = args.gs343_model or "echo-gs343"
         r2d2_model = args.r2d2_model or "echo-r2d2"
 
-    records = build_records_from_evidence(
-        (
-            AdapterEvidenceSource("gs343", gs343_model, args.gs343_r5_evidence, args.gs343_quality_mode),
-            AdapterEvidenceSource("r2d2", r2d2_model, args.r2d2_r5_evidence, args.r2d2_quality_mode),
+    artifact_digests = QualificationArtifactDigests(
+        gs_candidate=args.gs_candidate_sha256,
+        gs_incumbent=args.gs_incumbent_sha256,
+        r2_candidate=args.r2_candidate_sha256,
+        r2_incumbent=args.r2_incumbent_sha256,
+    )
+    qualification_trust_pins = QualificationEvidenceTrustPins(
+        routing_key=TrustedRoutingKey(
+            args.trusted_qualification_public_key.read_text(encoding="ascii"),
+            args.trusted_qualification_key_id,
         ),
+        artifact_digests=artifact_digests,
+    )
+    sources = (
+        AdapterEvidenceSource(
+            "gs343",
+            gs343_model,
+            args.gs343_r5_evidence,
+            args.gs343_quality_mode,
+            TrustedRoutingKey(
+                args.gs343_r5_public_key.read_text(encoding="ascii"),
+                args.gs343_r5_key_id,
+            ),
+        ),
+        AdapterEvidenceSource(
+            "r2d2",
+            r2d2_model,
+            args.r2d2_r5_evidence,
+            args.r2d2_quality_mode,
+            TrustedRoutingKey(
+                args.r2d2_r5_public_key.read_text(encoding="ascii"),
+                args.r2d2_r5_key_id,
+            ),
+        ),
+    )
+    records = build_records_from_evidence(
+        sources,
         qualification_report=qualification_report,
+        qualification_trust_pins=qualification_trust_pins,
     )
     policy = default_p5_policy(records)
     signed = sign_adapter_bundle(records, run_id=args.run_id, tenant_id=args.tenant_id)
@@ -66,6 +117,10 @@ def main() -> int:
         tenant_id=args.tenant_id,
         policy=policy,
         expected_adapter_set_sha256=signed.adapter_set_sha256,
+        external_trust_pins_sha256=external_trust_pins_digest(
+            qualification_trust_pins,
+            sources,
+        ),
     )
     write_adapter_execution_artifacts(
         args.output_directory,

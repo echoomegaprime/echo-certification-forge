@@ -83,6 +83,42 @@ class QualificationError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class TrustedRoutingKey:
+    """An independently supplied Ed25519 routing trust root."""
+
+    public_key_pem: str
+    key_id: str
+
+    def __post_init__(self) -> None:
+        try:
+            key = serialization.load_pem_public_key(self.public_key_pem.encode("ascii"))
+        except (ValueError, TypeError, UnicodeEncodeError) as error:
+            raise ValueError("trusted routing public key is invalid") from error
+        if not isinstance(key, Ed25519PublicKey):
+            raise ValueError("trusted routing key is not Ed25519")
+        raw = key.public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+        expected_key_id = f"ed25519:{sha256_bytes(raw)[:32]}"
+        if self.key_id != expected_key_id:
+            raise ValueError("trusted routing key_id does not match the public key")
+
+    @property
+    def public_key(self) -> Ed25519PublicKey:
+        key = serialization.load_pem_public_key(self.public_key_pem.encode("ascii"))
+        if not isinstance(key, Ed25519PublicKey):
+            raise ValueError("trusted routing key is not Ed25519")
+        return key
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "public_key_pem": self.public_key_pem,
+            "key_id": self.key_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class QualificationModels:
     gs_candidate: str
     gs_incumbent: str
@@ -99,6 +135,15 @@ class QualificationModels:
                 raise ValueError(f"{adapter} candidate and incumbent model names are required")
             if candidate == incumbent:
                 raise ValueError(f"{adapter} candidate and incumbent models must differ")
+        if len(
+            {
+                self.gs_candidate,
+                self.gs_incumbent,
+                self.r2_candidate,
+                self.r2_incumbent,
+            }
+        ) != 4:
+            raise ValueError("all four requested model aliases must be globally unique")
 
     def by_adapter(self, adapter: str) -> dict[str, str]:
         if adapter == "gs343":
@@ -139,6 +184,15 @@ class QualificationArtifactDigests:
             raise ValueError("GS343 candidate and incumbent artifact digests must differ")
         if self.r2_candidate == self.r2_incumbent:
             raise ValueError("R2D2 candidate and incumbent artifact digests must differ")
+        if len(
+            {
+                self.gs_candidate,
+                self.gs_incumbent,
+                self.r2_candidate,
+                self.r2_incumbent,
+            }
+        ) != 4:
+            raise ValueError("all four expected artifact digests must be globally unique")
 
     def by_adapter(self, adapter: str) -> dict[str, str]:
         if adapter == "gs343":
@@ -152,6 +206,24 @@ class QualificationArtifactDigests:
             adapter: self.by_adapter(adapter)
             for adapter in ("gs343", "r2d2")
         }
+
+
+@dataclass(frozen=True, slots=True)
+class QualificationEvidenceTrustPins:
+    """External trust roots required to verify a qualification package."""
+
+    routing_key: TrustedRoutingKey
+    artifact_digests: QualificationArtifactDigests
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "routing_key": self.routing_key.to_dict(),
+            "artifact_digests": self.artifact_digests.to_dict(),
+        }
+
+    @property
+    def digest(self) -> str:
+        return sha256_json(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True)
@@ -1191,6 +1263,7 @@ def _jsonl_objects(path: Path, label: str) -> list[dict[str, Any]]:
 
 def verify_qualification_evidence(
     qualification_report: Mapping[str, Any],
+    trust_pins: QualificationEvidenceTrustPins,
 ) -> dict[str, Any]:
     """Recompute a P5 verdict exclusively from its complete sealed evidence."""
     if qualification_report.get("schema") != QUALIFICATION_SCHEMA:
@@ -1257,6 +1330,10 @@ def verify_qualification_evidence(
         raise QualificationError("qualification report model bindings differ from state")
     if qualification_report.get("artifact_digests") != artifact_digests.to_dict():
         raise QualificationError("qualification report artifact pins differ from state")
+    if artifact_digests != trust_pins.artifact_digests:
+        raise QualificationError(
+            "qualification artifact digests differ from independent operator pins"
+        )
 
     eval_state = state.get("eval")
     if not isinstance(eval_state, dict):
@@ -1291,7 +1368,15 @@ def verify_qualification_evidence(
     if state.get("trusted_attestation_sha256") != _file_sha256(trusted_path):
         raise QualificationError("trusted routing attestation digest mismatch")
     attestation = _load_json(trusted_path, "trusted routing attestation")
-    public_key = _validate_attestation(attestation, attestation, models)
+    _validate_attestation(attestation, attestation, models)
+    if (
+        attestation.get("public_key_pem") != trust_pins.routing_key.public_key_pem
+        or attestation.get("key_id") != trust_pins.routing_key.key_id
+    ):
+        raise QualificationError(
+            "qualification routing attestation differs from independent operator key"
+        )
+    public_key = trust_pins.routing_key.public_key
     attestation_report = qualification_report.get("routing_attestation")
     if not isinstance(attestation_report, dict):
         raise QualificationError("qualification report lacks routing attestation")
@@ -1391,6 +1476,7 @@ def verify_qualification_evidence(
         "score_rows": recomputed_scores,
         "records": records,
         "manifest_sha256": manifest["manifest_sha256"],
+        "external_trust_pins_sha256": trust_pins.digest,
     }
 
 

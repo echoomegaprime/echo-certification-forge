@@ -57,6 +57,8 @@ The four artifact digests are mandatory operator trust inputs. Obtain them from 
 
 Bundle construction does not trust the qualification summary. It verifies the content-addressed evidence manifest, re-verifies all 960 signed response receipts, requires 960 matching deterministic score rows across the four adapter/role aliases, and recomputes hard gates plus the `1.05` promotion ratio before creating adapter records.
 
+`scripts/build_p5_adapter_bundle.py` additionally requires operator-supplied qualification and R5 Ed25519 public-key/key-id pins plus all four artifact SHA-256 pins. These inputs must come from the independent release trust store, not from the qualification/R5 package. Their aggregate digest is recorded in the adapter acceptance report; self-keyed packages and cross-family alias/digest reuse are rejected.
+
 ## Discovery note
 
 Repository-required live discovery was attempted before implementation. The Arcanum search capability was unavailable in the live registry, and `echo.functions.search` returned a gateway timeout/502 after 30 seconds. The implementation therefore reuses the repository's direct-HTTP and local-scoring design from the prior `scripts/qualify_family_adapters.py`, the strict held-out schema/validation helpers in `src/echo_certification_forge/p5_corpus.py`, and the Ed25519 routing-receipt verification contract in `src/echo_certification_forge/family_r5.py`.
