@@ -169,3 +169,10 @@ WHERE id = 'echo.certforge.admin.evidence_artifact';
 UPDATE arcanum_sdk.sdk_capabilities
 SET health_status = 'green', updated_at = now()
 WHERE id = 'echo.certforge.telemetry';
+
+-- Promoted only after a real terminal source produced one distinct queued
+-- NOT_READY run through the signed Desktop path; idempotent replay returned
+-- the same run, lineage was visible, and the source projection stayed exact.
+UPDATE arcanum_sdk.sdk_capabilities
+SET health_status = 'green', updated_at = now()
+WHERE id = 'echo.certforge.admin.rerun';

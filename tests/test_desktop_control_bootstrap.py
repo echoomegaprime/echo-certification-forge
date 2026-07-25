@@ -108,3 +108,10 @@ def test_live_accepted_telemetry_cap_is_durably_green():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
     assert "explicit UNKNOWN/UNAVAILABLE source truth" in sql
     assert "WHERE id = 'echo.certforge.telemetry'" in sql
+
+
+def test_live_accepted_rerun_cap_is_durably_green():
+    sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
+    assert "distinct queued" in sql
+    assert "source projection stayed exact" in sql
+    assert "WHERE id = 'echo.certforge.admin.rerun'" in sql
