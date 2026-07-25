@@ -30,6 +30,7 @@ def test_recipe_matches_p5_v1_training_evidence():
     assert MODULE.RECIPE == {
         "epochs": 3.0,
         "gradient_accumulation_steps": 16,
+        "gradient_checkpointing_use_reentrant": False,
         "learning_rate": 7e-5,
         "lora_alpha": 32,
         "lora_dropout": 0.05,

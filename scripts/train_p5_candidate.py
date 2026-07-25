@@ -24,6 +24,7 @@ TARGET_MODULES = ("q_proj", "k_proj", "v_proj", "o_proj")
 RECIPE = {
     "epochs": 3.0,
     "gradient_accumulation_steps": 16,
+    "gradient_checkpointing_use_reentrant": False,
     "learning_rate": 7e-5,
     "lora_alpha": 32,
     "lora_dropout": 0.05,
@@ -244,6 +245,9 @@ def main(argv: list[str] | None = None) -> int:
         bf16=True,
         fp16=False,
         gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={
+            "use_reentrant": RECIPE["gradient_checkpointing_use_reentrant"]
+        },
         max_grad_norm=1.0,
         logging_steps=10,
         save_steps=RECIPE["save_steps"],
