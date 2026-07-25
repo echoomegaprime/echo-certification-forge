@@ -1344,6 +1344,29 @@ class SubscriberGovernance:
                 },
             )
 
+    def audit_resource_event(
+        self,
+        principal: SubscriberPrincipal,
+        *,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Append a tenant-scoped domain audit event after reauthorizing the actor."""
+        with self._connection(immediate=True) as connection:
+            self._require_with_connection(connection, principal, Permission.RUN_READ)
+            self._append_audit(
+                connection,
+                organization_id=principal.organization_id,
+                actor_ref=principal.user_id,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                outcome="allowed",
+                details=details,
+            )
+
     def require(self, principal: SubscriberPrincipal, permission: Permission) -> None:
         with self._connection() as connection:
             self._require_with_connection(connection, principal, permission)

@@ -1,6 +1,7 @@
 """Tenant-scoped read and deploy-gate API surface."""
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 from dataclasses import dataclass, field
@@ -17,8 +18,19 @@ from .canonical import sha256_json
 from .deploy_gate import DeployGate
 from .deployment import DeploymentAdmissionController, DeploymentLedger
 from .deployment_service import install_deployment_api
-from .evidence import EvidenceStore
-from .intake import SubmitError, SubmitRequest, project_run, submit
+from .evidence import (
+    EvidenceArtifactIntegrityError,
+    EvidenceArtifactRestricted,
+    EvidenceArtifactTooLarge,
+    EvidenceArtifactUnavailable,
+    EvidenceStore,
+)
+from .intake import (
+    SubmitError,
+    SubmitRequest,
+    project_run,
+    submit,
+)
 from .models import RunState, SignedVerdictEnvelope
 from .policy import RuleManifest
 from .release_hooks import WebhookSecretRegistry
@@ -30,6 +42,9 @@ from .subscriber import (
     SubscriberGovernance,
     SubscriberPrincipal,
 )
+
+
+_MAX_ADMIN_ARTIFACT_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(slots=True)
@@ -479,6 +494,61 @@ def create_app(context: ServiceContext) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         return {"run_id": run_id, "artifacts": artifacts}  # redacted index, never raw content
+
+    @app.get("/v1/subscriber/certifications/{run_id}/evidence/{artifact_id}")
+    def get_evidence_artifact(
+        run_id: str,
+        artifact_id: str,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.RUN_READ,
+            "certifications.evidence.download",
+        )
+        try:
+            context.subscribers.require_plan_feature(principal, "audit_exports")
+            descriptor, content = context.store.read_evidence_artifact(
+                run_id,
+                principal.organization_id,
+                artifact_id,
+                max_bytes=_MAX_ADMIN_ARTIFACT_BYTES,
+            )
+            context.subscribers.audit_resource_event(
+                principal,
+                action="evidence.download",
+                resource_type="evidence_artifact",
+                resource_id=artifact_id,
+                details={
+                    "run_id": run_id,
+                    "sha256": descriptor["sha256"],
+                    "size_bytes": descriptor["size_bytes"],
+                },
+            )
+            return {
+                "run_id": run_id,
+                "artifact_id": artifact_id,
+                "sha256": descriptor["sha256"],
+                "size_bytes": descriptor["size_bytes"],
+                "media_type": descriptor["media_type"],
+                "redaction_status": descriptor["redaction_status"],
+                "encoding": "base64",
+                "payload_base64": base64.b64encode(content).decode("ascii"),
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="artifact_not_found") from exc
+        except EvidenceArtifactRestricted as exc:
+            raise HTTPException(status_code=403, detail="artifact_redaction_incomplete") from exc
+        except EvidenceArtifactTooLarge as exc:
+            raise HTTPException(status_code=413, detail="artifact_too_large") from exc
+        except EvidenceArtifactUnavailable as exc:
+            raise HTTPException(status_code=410, detail="artifact_content_unavailable") from exc
+        except EvidenceArtifactIntegrityError as exc:
+            raise HTTPException(status_code=409, detail="artifact_integrity_failed") from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
 
     @app.post("/v1/certifications/{run_id}/verify")
     def verify_run(

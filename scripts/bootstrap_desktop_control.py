@@ -1,6 +1,6 @@
 """Provision the sovereign Echo Desktop tenant and vault its API key.
 
-The generated subscriber key moves directly from CertificationPlatform.bootstrap()
+The generated subscriber key moves directly from SubscriberGovernance provisioning
 to the encrypted Vault HTTP endpoint. It is never printed, written to disk, or
 accepted as a command-line argument.
 """
@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-from echo_certification_forge.platform import CertificationPlatform
+from echo_certification_forge.subscriber import (
+    OrganizationStatus,
+    Permission,
+    SubscriberGovernance,
+    SubscriberPolicy,
+)
 
 
 DEFAULT_SERVICE = "certforge.desktop_admin_api_key"
@@ -33,10 +38,31 @@ def _sovereign_key(path: Path) -> str:
 def _organization_exists(db_path: Path, organization_id: str) -> bool:
     with sqlite3.connect(db_path) as connection:
         row = connection.execute(
-            "SELECT 1 FROM organizations WHERE organization_id = ?",
+            "SELECT 1 FROM subscriber_organizations WHERE slug = ?",
             (organization_id,),
         ).fetchone()
     return row is not None
+
+
+def _existing_control(db_path: Path, organization_slug: str, project_slug: str) -> dict[str, str]:
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT o.organization_id, p.project_id
+            FROM subscriber_organizations o
+            LEFT JOIN subscriber_projects p
+              ON p.organization_id = o.organization_id AND p.slug = ?
+            WHERE o.slug = ?
+            """,
+            (project_slug, organization_slug),
+        ).fetchone()
+    if row is None or row["project_id"] is None:
+        raise RuntimeError("existing Desktop tenant is missing its governed project")
+    return {
+        "organization_id": str(row["organization_id"]),
+        "project_id": str(row["project_id"]),
+    }
 
 
 def _vault_has_service(vault_base: str, sovereign_key: str, service: str) -> bool:
@@ -106,36 +132,56 @@ def _store_in_vault(
 
 def provision(args: argparse.Namespace) -> dict[str, Any]:
     db_path = Path(args.database).resolve()
-    platform = CertificationPlatform(db_path)
+    if not args.api_key_pepper:
+        raise RuntimeError("ECHO_CERTFORGE_API_KEY_PEPPER is required")
+    governance = SubscriberGovernance(
+        db_path,
+        SubscriberPolicy.load(Path(args.subscriber_policy)),
+        args.api_key_pepper.encode("utf-8"),
+    )
     sovereign_key = _sovereign_key(Path(args.sovereign_key_file))
     organization_exists = _organization_exists(db_path, args.organization_id)
     vault_exists = _vault_has_service(args.vault_base, sovereign_key, args.vault_service)
     if organization_exists or vault_exists:
         if organization_exists and vault_exists:
+            existing = _existing_control(db_path, args.organization_id, args.project_id)
             return {
                 "ok": True,
                 "created": False,
-                "organization_id": args.organization_id,
-                "project_id": args.project_id,
+                **existing,
                 "vault_service": args.vault_service,
             }
         raise RuntimeError(
             "partial provisioning state detected; refusing to create or overwrite credentials"
         )
 
-    account = platform.bootstrap(
-        organization_id=args.organization_id,
-        tenant_id=args.tenant_id,
-        organization_name=args.organization_name,
-        project_id=args.project_id,
-        project_name=args.project_name,
-        target_reference=args.target_reference,
-        required_policy=args.required_policy,
-        owner_user_id=args.owner_user_id,
+    provisioned = governance.provision_organization(
+        slug=args.organization_id,
+        display_name=args.organization_name,
         owner_email=args.owner_email,
-        plan_id=args.plan,
-        billing_status="active",
+        owner_display_name=args.owner_user_id,
+        plan_code=args.plan,
+        status=OrganizationStatus.ACTIVE,
     )
+    principal = governance.authenticate(
+        provisioned.bootstrap_api_key,
+        tenant_hint=provisioned.organization_id,
+        permission=Permission.PROJECT_MANAGE,
+        action="desktop.bootstrap.project",
+    )
+    project = governance.create_project(
+        principal,
+        slug=args.project_id,
+        name=args.project_name,
+        target_reference=args.target_reference,
+    )
+    account = {
+        "organization_id": provisioned.organization_id,
+        "tenant_id": provisioned.organization_id,
+        "project_id": str(project["project_id"]),
+        "key_id": provisioned.bootstrap_api_key.removeprefix("ecf_live_key_").split(".", 1)[0],
+        "api_key": provisioned.bootstrap_api_key,
+    }
     try:
         vault = _store_in_vault(
             vault_base=args.vault_base,
@@ -166,6 +212,14 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--vault-base", default="http://127.0.0.1:8000")
     result.add_argument("--vault-service", default=DEFAULT_SERVICE)
     result.add_argument("--sovereign-key-file", default="/home/forge/.echo_sovereign_key")
+    result.add_argument(
+        "--subscriber-policy",
+        default=os.environ.get(
+            "ECHO_CERTFORGE_SUBSCRIBER_POLICY",
+            "policies/subscriber-governance.v1.json",
+        ),
+    )
+    result.set_defaults(api_key_pepper=os.environ.get("ECHO_CERTFORGE_API_KEY_PEPPER"))
     result.add_argument("--organization-id", default="org-echo-sovereign")
     result.add_argument("--tenant-id", default="echo-sovereign")
     result.add_argument("--organization-name", default="Echo Omega Prime")
@@ -175,7 +229,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--required-policy", default="mandatory-rules-v1")
     result.add_argument("--owner-user-id", default="user-echo-desktop-admin")
     result.add_argument("--owner-email", default="certforge-admin@echo-op.com")
-    result.add_argument("--plan", choices=("starter", "team", "enterprise"), default="enterprise")
+    result.add_argument(
+        "--plan",
+        choices=("developer", "professional", "enterprise", "sovereign"),
+        default="sovereign",
+    )
     return result
 
 

@@ -14,6 +14,8 @@ def arguments(tmp_path) -> Namespace:
         vault_base="http://vault.invalid",
         vault_service=subject.DEFAULT_SERVICE,
         sovereign_key_file=str(tmp_path / "sovereign"),
+        subscriber_policy=str(Path("policies/subscriber-governance.v1.json")),
+        api_key_pepper="desktop-bootstrap-test-pepper-material-32-bytes",
         organization_id="org-echo-sovereign",
         tenant_id="echo-sovereign",
         organization_name="Echo Omega Prime",
@@ -23,7 +25,7 @@ def arguments(tmp_path) -> Namespace:
         required_policy="mandatory-rules-v1",
         owner_user_id="user-echo-desktop-admin",
         owner_email="certforge-admin@echo-op.com",
-        plan="enterprise",
+        plan="sovereign",
     )
 
 
@@ -47,7 +49,7 @@ def test_provision_moves_generated_key_to_vault_without_returning_it(tmp_path, m
 
     assert result["ok"] is True and result["created"] is True
     assert "api_key" not in result
-    assert captured["account"]["api_key"].startswith("ecf_")
+    assert captured["account"]["api_key"].startswith("ecf_live_key_")
     assert captured["account"]["api_key"] not in str(result)
     assert subject._organization_exists(tmp_path / "certforge.sqlite3", args.organization_id)
 
@@ -65,13 +67,10 @@ def test_provision_is_idempotent_only_when_tenant_and_vault_both_exist(tmp_path,
 
     monkeypatch.setattr(subject, "_vault_has_service", lambda *_args: True)
     result = subject.provision(args)
-    assert result == {
-        "ok": True,
-        "created": False,
-        "organization_id": args.organization_id,
-        "project_id": args.project_id,
-        "vault_service": subject.DEFAULT_SERVICE,
-    }
+    assert result["ok"] is True and result["created"] is False
+    assert result["organization_id"].startswith("org_")
+    assert result["project_id"].startswith("prj_")
+    assert result["vault_service"] == subject.DEFAULT_SERVICE
 
 
 def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_path, monkeypatch):
@@ -84,8 +83,10 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
 
 def test_admin_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("('echo.certforge.admin.") == 5
-    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 5
+    assert sql.count("('echo.certforge.admin.") == 6
+    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 6
+    assert "echo.certforge.admin.evidence_artifact" in sql
+    assert "5 MiB raw" in sql
     assert "ecf_" not in sql
 
 

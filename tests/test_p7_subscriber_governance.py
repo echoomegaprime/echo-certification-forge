@@ -1,6 +1,7 @@
 """P7 acceptance coverage for subscriber productization and governance."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -1532,7 +1533,6 @@ def test_worker_enforces_private_local_and_customer_signing_controls(
     assert controlled_dispatch is not None
     assert result is not None and result["state"] == RunState.COMPLETED.value
     assert result["signer_public_key_id"] == customer_signer.key_id
-
 
 def test_mutation_reauthorizes_inside_write_transaction(tmp_path, manifest):
     _store, governance, _client = _stack(tmp_path, manifest)
@@ -3194,3 +3194,84 @@ def test_deploy_environment_boots_and_authenticated_smoke_is_green(
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+
+
+def _artifact_fixture(tmp_path, manifest):
+    store, governance, client = _stack(tmp_path, manifest)
+    owner = _provision(governance, "artifact-owner", plan_code="professional")
+    other = _provision(governance, "artifact-other", plan_code="professional")
+    run_id = "cert-p7-artifact"
+    store.register_declared_run(
+        run_id,
+        owner.organization_id,
+        "git",
+        _digest("artifact-target"),
+        "https://github.com/example/artifact@0123456789abcdef",
+        _digest("artifact-environment"),
+        {"runner_image_digest": "sha256:" + _digest("artifact-runner")},
+        manifest.manifest_id,
+        manifest.manifest_id,
+        manifest.digest,
+    )
+    descriptor = store.append_artifact(
+        run_id,
+        owner.organization_id,
+        f"{run_id}-tenant_isolation",
+        b"verified customer evidence",
+        "application/octet-stream",
+        "p8c.acceptance",
+    )
+    return store, client, owner, other, run_id, descriptor
+
+
+def test_subscriber_artifact_download_is_bounded_tenant_scoped_and_audited(
+    tmp_path, manifest
+):
+    store, client, owner, other, run_id, descriptor = _artifact_fixture(
+        tmp_path, manifest
+    )
+    route = f"/v1/subscriber/certifications/{run_id}/evidence/{descriptor['artifact_id']}"
+
+    denied = client.get(route)
+    assert denied.status_code == 401
+    isolated = client.get(
+        route,
+        headers=_headers(other.organization_id, other.bootstrap_api_key),
+    )
+    assert isolated.status_code == 404
+
+    owner_headers = _headers(owner.organization_id, owner.bootstrap_api_key)
+    downloaded = client.get(route, headers=owner_headers)
+    assert downloaded.status_code == 200
+    body = downloaded.json()
+    content = base64.b64decode(body["payload_base64"], validate=True)
+    assert body["encoding"] == "base64"
+    assert body["run_id"] == run_id
+    assert body["artifact_id"] == descriptor["artifact_id"]
+    assert body["sha256"] == descriptor["sha256"]
+    assert body["size_bytes"] == len(content) == descriptor["size_bytes"]
+    assert hashlib.sha256(content).hexdigest() == body["sha256"]
+    assert body["redaction_status"] in {"COMPLETE", "NOT_REQUIRED"}
+
+    audit = client.get("/v1/subscriber/audit", headers=owner_headers)
+    event = next(row for row in audit.json() if row["action"] == "evidence.download")
+    assert event["resource_id"] == descriptor["artifact_id"]
+    assert event["details"] == {
+        "run_id": run_id,
+        "sha256": descriptor["sha256"],
+        "size_bytes": descriptor["size_bytes"],
+    }
+
+
+def test_subscriber_artifact_download_rejects_unverified_bytes(tmp_path, manifest):
+    store, client, owner, _other, run_id, descriptor = _artifact_fixture(
+        tmp_path, manifest
+    )
+    artifact = store.evidence_root / descriptor["relative_path"]
+    artifact.write_bytes(b"tampered")
+    response = client.get(
+        f"/v1/subscriber/certifications/{run_id}/evidence/{descriptor['artifact_id']}",
+        headers=_headers(owner.organization_id, owner.bootstrap_api_key),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "artifact_integrity_failed"
