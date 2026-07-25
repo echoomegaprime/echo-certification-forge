@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0.0",
+  "contract_id": "certforge.subscriber-governance.v1",
+  "authentication": {
+    "scheme": "Bearer",
+    "token_format": "ecf_live_<key_id>.<secret>",
+    "tenant_header": "X-Tenant-ID",
+    "tenant_mismatch_response": 404,
+    "plaintext_token_storage": false,
+    "server_side_pepper_required": true,
+    "rate_limit_scope": "global per API key across subscriber endpoints",
+    "denied_request_audit_required": true
+  },
+  "authorization": {
+    "roles": ["OWNER", "ADMIN", "DEVELOPER", "VIEWER", "BILLING"],
+    "enforcement": "role permission intersected with API-key scopes",
+    "past_due_mode": "read-only",
+    "suspended_mode": "deny-all",
+    "cancelled_mode": "deny-all"
+  },
+  "tenant_isolation": {
+    "authoritative_tenant": "authenticated API key organization_id",
+    "resource_queries": "organization_id scoped",
+    "cross_tenant_response": 404,
+    "subscriber_plane_sovereign_sdk_access": false,
+    "subscriber_plane_private_signing_key_access": false
+  },
+  "governed_resources": [
+    "organizations",
+    "users",
+    "memberships",
+    "projects",
+    "plans",
+    "subscriptions",
+    "API keys",
+    "policy packs",
+    "private workers",
+    "certification reservations"
+  ],
+  "quota_meters": [
+    "projects",
+    "active API keys",
+    "certification runs per billing month",
+    "concurrent runs",
+    "requests per minute",
+    "policy packs",
+    "private workers",
+    "retention days"
+  ],
+  "lifecycle": {
+    "projects": ["ACTIVE", "ARCHIVED"],
+    "members": ["INVITED", "ACTIVE", "DEACTIVATED"],
+    "api_keys": ["ACTIVE until expires_at", "REVOKED", "expired credentials denied"],
+    "private_workers": ["ACTIVE", "REVOKED"],
+    "subscriptions": ["TRIALING", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"],
+    "stale_run_reservations": "released and metering-compensated"
+  },
+  "api": {
+    "project_archive": "DELETE /v1/subscriber/projects/{project_id}",
+    "member_list": "GET /v1/subscriber/members",
+    "member_activate": "POST /v1/subscriber/members/{user_id}/activate",
+    "member_role_update": "PATCH /v1/subscriber/members/{user_id}/role",
+    "member_deactivate": "DELETE /v1/subscriber/members/{user_id}",
+    "api_key_revoke": "DELETE /v1/subscriber/api-keys/{key_id}",
+    "private_worker_revoke": "DELETE /v1/subscriber/private-workers/{worker_id}",
+    "subscription_cancel": "POST /v1/subscriber/subscription/cancel"
+  },
+  "audit": {
+    "append_only": true,
+    "hash_chained_per_tenant": true,
+    "update_trigger": "deny",
+    "delete_trigger": "deny",
+    "verification_endpoint": "/v1/subscriber/audit/verify"
+  },
+  "safe_defaults": {
+    "new_plan": "developer",
+    "release_gates": false,
+    "private_workers": false,
+    "custom_policy_packs": false,
+    "customer_managed_keys": false,
+    "local_only_execution": false,
+    "retention_days": 7
+  },
+  "acceptance": {
+    "tests": "tests/test_p7_subscriber_governance.py",
+    "executable": "python scripts/p7_acceptance.py",
+    "evidence": "artifacts/p7_acceptance_report.json"
+  }
+}

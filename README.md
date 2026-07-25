@@ -4,12 +4,13 @@ Echo Certification Forge is a deterministic, evidence-backed release authority f
 
 ## Current phase
 
-P1, P2, P3, and P4 are complete:
+P1, P2, P3, P4, and the independently gated P7 subscriber-governance lane are complete:
 
 - **P1:** immutable target/environment identity, append-only evidence, Merkle roots, deterministic verdicts, signed verdict envelopes, lifecycle checks, and exact-digest deploy-gate evaluation.
 - **P2:** short-lived run credentials, authenticated transport, replay prevention, leases, heartbeats, resumable chunks, safe archive handling, hardened non-root runner containers, and real FORGE resource/timeout/crash acceptance.
 - **P3:** authenticated append-only evidence custody, visibility and legal-hold controls, independent signed root anchoring, isolated verdict signing, public-key publication/rotation/revocation/compromise behavior, public-only offline verification material, and real FORGE failure/recovery acceptance.
 - **P4:** purpose-built role images, sealed twelve-image supply-chain identities, independent builds, vulnerability/malware scans, signatures, hostile runtime matrix, service lifecycle, public-only verifier containment, and purpose-built signer regression on FORGE.
+- **P7:** tenant-isolated organizations/projects/users, role-and-scope authorization, API-key and resource revocation, plan quotas and global abuse controls, billing/subscription enforcement, append-only hash-chained audit, governed intake, and versioned subscriber policy/contract.
 
 Authoritative state:
 
@@ -19,7 +20,7 @@ run_outcome: COMPLETE
 release_verdict: NOT_READY
 ```
 
-The complete product is not production-ready. GS343/R2D2 applied-adapter identity and quality proof, central `echo.certforge.*` registration, real deployment-path enforcement, subscriber governance, and hosted CI resolution remain blockers.
+The complete product is not production-ready. GS343/R2D2 applied-adapter quality and maturity, real deployment-path enforcement, and hosted CI resolution remain blockers. P7 completion does not override those fail-closed blockers.
 
 The verified execution plane uses hardened non-root containers on a **rootful Docker Engine**. This is not a claim of rootless Docker or microVM isolation.
 
@@ -47,6 +48,14 @@ The full acceptance report is 27,322 bytes with SHA-256 `e805e6b9913a8a3712fee47
 The rerun6 acceptance report is 124,342 bytes with SHA-256 `c7b5031265883386b7b0df6409600dd51a622a796ccdd75abd221c0e373b4c56`.
 The sealed image manifest SHA-256 is `bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a`.
 
+## P7 evidence
+
+- Executable acceptance: `python scripts/p7_acceptance.py`
+- Acceptance report: `artifacts/p7_acceptance_report.json`
+- Subscriber policy: `policies/subscriber-governance.v1.json`
+- Subscriber API/authorization contract: `contracts/subscriber-governance.v1.json`
+- Targeted suite: `tests/test_p7_subscriber_governance.py`
+
 ## Development and verification
 
 ```powershell
@@ -62,7 +71,11 @@ py -3.13 -m venv .venv
 ```powershell
 $env:ECHO_CERTFORGE_DB = "$PWD\var\certforge.sqlite3"
 $env:ECHO_CERTFORGE_EVIDENCE_ROOT = "$PWD\var\evidence"
+$env:ECHO_CERTFORGE_SUBSCRIBERS_ENABLED = "1"
+$env:ECHO_CERTFORGE_API_KEY_PEPPER = .\.venv\Scripts\python -c "import secrets; print(secrets.token_urlsafe(32))"
 .\.venv\Scripts\python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port 8400
 ```
 
-The API intentionally exposes no signing-key material and no generic command-execution surface.
+Organization provisioning remains a trusted control-plane operation. Subscriber requests use the returned one-time bootstrap key as `Authorization: Bearer <key>` and must provide the matching `X-Tenant-ID`.
+
+The API intentionally exposes no signing-key material, sovereign SDK access, or generic command-execution surface.

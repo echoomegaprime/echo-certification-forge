@@ -56,6 +56,9 @@ class SubmitEnvironment(BaseModel):
 class SubmitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tenant_id: str = Field(min_length=1, max_length=128)
+    project_id: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    )
     target: SubmitTarget
     environment: SubmitEnvironment
     policy_version: str = Field(min_length=1, max_length=128)
@@ -66,6 +69,7 @@ class SubmitRequest(BaseModel):
         return sha256_json(
             {
                 "tenant_id": self.tenant_id,
+                **({"project_id": self.project_id} if self.project_id is not None else {}),
                 "target": self.target.model_dump(),
                 "environment": self.environment.model_dump(),
                 "policy_version": self.policy_version,

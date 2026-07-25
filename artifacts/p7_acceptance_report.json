@@ -1,0 +1,137 @@
+{
+  "contract_id": "certforge.subscriber-governance.v1",
+  "contract_sha256": "10366e2ff615ca357dba0c7a7a032f04a14b4e5c8fac7a70bcc0d174fc9d3158",
+  "generated_at_utc": "2026-07-25T08:26:04.585522Z",
+  "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
+  "manifest_id": "certforge.release-strict.v1",
+  "passed": true,
+  "phase": "P7",
+  "platform": "Windows-11-10.0.22631-SP0",
+  "policy_id": "certforge.subscriber-governance.v1",
+  "policy_sha256": "2a26d1233ea545477736b7fc5b5e3b322e669dbd8c697ed7822cda1ad27ac6eb",
+  "python": "3.13.0 (tags/v3.13.0:60403a5, Oct  7 2024, 09:38:07) [MSC v.1941 64 bit (AMD64)]",
+  "release_note": "P7 completion does not override unresolved P5/P6 and hosted-CI blockers.",
+  "release_verdict": "NOT_READY",
+  "scenarios": {
+    "api_key_lifecycle": {
+      "detail": "api_key_revoked",
+      "passed": true,
+      "status_code": 401
+    },
+    "authorization_scope": {
+      "detail": "permission_denied",
+      "passed": true,
+      "status_code": 403
+    },
+    "billing_event_tenant_binding": {
+      "detail": "billing_event_conflict",
+      "passed": true
+    },
+    "billing_failure_fail_closed": {
+      "detail": "subscription_past_due",
+      "passed": true,
+      "status_code": 402
+    },
+    "concurrent_quota": {
+      "detail": "concurrent_run_quota_exceeded",
+      "passed": true,
+      "status_code": 429
+    },
+    "expired_subscription_read_only": {
+      "detail": "subscription_period_expired",
+      "passed": true,
+      "read_status": 200,
+      "write_status": 402
+    },
+    "global_api_key_rate_limit": {
+      "detail": "rate_limit_exceeded",
+      "passed": true,
+      "retry_after": "60",
+      "status_code": 429
+    },
+    "governed_intake_default_block": {
+      "create_status": 201,
+      "passed": true,
+      "release_verdict": "NOT_READY",
+      "replay_status": 200,
+      "run_id": "cert_b55a1a86f0fe1e09497b7a996fcc9e8c8a026f60"
+    },
+    "immutable_audit_chain": {
+      "chain_tip": "bb7155844adcabeb026cf4b3d635561663f167d2500c58fd82124e880138a5f4",
+      "delete_blocked": true,
+      "denied_audits": 3,
+      "event_count": 19,
+      "passed": true,
+      "update_blocked": true
+    },
+    "member_lifecycle_revocation": {
+      "activate_status": 204,
+      "deactivate_status": 204,
+      "passed": true,
+      "revoked_status": 401
+    },
+    "metering_idempotency": {
+      "passed": true,
+      "usage": {
+        "active_run_reservations": 1,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 1
+        },
+        "organization_id": "org_5d1a308271ab46ae60a5d552",
+        "period_started_at": "2026-07-01T00:00:00Z"
+      }
+    },
+    "resource_lifecycle_revocation": {
+      "passed": true,
+      "project_archive_status": 204,
+      "worker_revoke_status": 204,
+      "worker_status": "REVOKED"
+    },
+    "safe_plan_defaults": {
+      "default_governance": {
+        "allowed_policy_ids": [],
+        "customer_managed_signing": false,
+        "local_only_execution": false,
+        "private_worker_only": false,
+        "report_brand_name": null,
+        "report_logo_url": null,
+        "retention_days": 7
+      },
+      "detail": "private_workers_not_entitled",
+      "passed": true,
+      "status_code": 403
+    },
+    "stale_reservation_recovery": {
+      "passed": true,
+      "usage": {
+        "active_run_reservations": 1,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 1
+        },
+        "organization_id": "org_e4300342a27c16665f8a87ce",
+        "period_started_at": "2026-07-01T00:00:00Z"
+      }
+    },
+    "tenant_isolation": {
+      "detail": "tenant_not_found",
+      "passed": true,
+      "status_code": 404
+    },
+    "versioned_policy_contract": {
+      "contract_id": "certforge.subscriber-governance.v1",
+      "passed": true,
+      "schema_version": "1.0.0"
+    }
+  },
+  "schema_version": "1.0.0"
+}
