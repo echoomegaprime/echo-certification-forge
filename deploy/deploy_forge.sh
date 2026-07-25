@@ -45,6 +45,7 @@ export ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-respons
 export ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
 export ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
 export ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
+export ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4
 STAGING_LOG="$REPO_DIR/var/certforge_staging.log"
 ./.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning >"$STAGING_LOG" 2>&1 &
 STAGING_PID=$!
@@ -78,6 +79,7 @@ Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-res
 Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
 Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
 Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
+Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4
 ExecStart=$REPO_DIR/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5

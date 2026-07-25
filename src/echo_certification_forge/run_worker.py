@@ -40,13 +40,20 @@ from .signing import Ed25519VerdictSigner
 
 _REPO = Path(__file__).resolve().parents[2]
 _ADAPTER_RULE = "adapter_identity_and_quality"
+_PRODUCTION_MANIFEST_ID = "certforge.release-strict.v2"
+_PRODUCTION_MANIFEST_SHA256 = (
+    "7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4"
+)
 
 
 def _env_digest(component: str) -> str:
     return sha256_bytes(f"certforge-worker-env:{component}".encode("utf-8"))
 
 
-def _worker_environment(adapter_set_sha256: str | None = None) -> EnvironmentIdentity:
+def _worker_environment(
+    adapter_set_sha256: str | None = None,
+    adapter_bundle_response_sha256: str | None = None,
+) -> EnvironmentIdentity:
     """Declared certification environment.
 
     The legacy v1 path retains its historical environment commitment. P5/v2 callers pass the exact
@@ -59,7 +66,16 @@ def _worker_environment(adapter_set_sha256: str | None = None) -> EnvironmentIde
         policy_sha256=_env_digest("policy"),
         harness_sha256=_env_digest("harness"),
         prompt_set_sha256=_env_digest("prompt-set"),
-        model_route_sha256=_env_digest("model-route"),
+        model_route_sha256=(
+            sha256_json(
+                {
+                    "base_model_route_sha256": _env_digest("model-route"),
+                    "adapter_bundle_response_sha256": adapter_bundle_response_sha256,
+                }
+            )
+            if adapter_bundle_response_sha256
+            else _env_digest("model-route")
+        ),
         os_runtime_sha256=_env_digest("os-runtime"),
         egress_policy_sha256=_env_digest("egress-policy"),
     )
@@ -96,7 +112,7 @@ def run(
     sandbox: DockerSandbox | None = None,
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
-    adapter_bundle_response_sha256: str | None = None,
+    adapter_bundle_response: RunnerResponse | None = None,
 ) -> dict:
     work_root = Path(
         os.environ.get(
@@ -118,7 +134,17 @@ def run(
         artifact_sha256=acquired.artifact_sha256,
     )
     adapter_digest = adapter_set_digest(adapter_records) if adapter_records is not None else None
-    environment = _worker_environment(adapter_digest)
+    adapter_response_content = (
+        (adapter_bundle_response.model_dump_json(indent=2) + "\n").encode("utf-8")
+        if adapter_bundle_response is not None
+        else None
+    )
+    adapter_response_sha256 = (
+        sha256_bytes(adapter_response_content)
+        if adapter_response_content is not None
+        else None
+    )
+    environment = _worker_environment(adapter_digest, adapter_response_sha256)
     try:
         existing = store.get_run(run_id, tenant)
     except KeyError:
@@ -127,6 +153,15 @@ def run(
         store.register_run(run_id, target, environment, manifest.manifest_id, manifest.digest)
     elif existing["state"] not in (RunState.CREATED.value, RunState.QUEUED.value):
         return {"run_id": run_id, "error": "run_not_pending", "state": existing["state"]}
+    if adapter_response_content is not None:
+        store.append_artifact(
+            run_id,
+            tenant,
+            "adapter-bundle-response",
+            adapter_response_content,
+            "application/json",
+            "run-worker",
+        )
 
     executor = RunExecutor(store, manifest, signer)
     journey_runner = sandboxed_journey_runner(sandbox) if sandbox is not None else None
@@ -155,7 +190,7 @@ def run(
         "target_identity_digest": target.identity_digest,
         "environment_identity_digest": environment.identity_digest,
         "adapter_set_sha256": environment.adapter_set_sha256,
-        "adapter_bundle_response_sha256": adapter_bundle_response_sha256,
+        "adapter_bundle_response_sha256": adapter_response_sha256,
         "signer_public_key_id": signer.key_id,
         "journey_isolation": "docker" if sandbox is not None else "none",
     }
@@ -305,6 +340,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     adapter_rule_required = any(rule.id == _ADAPTER_RULE for rule in manifest.rules)
+    trusted_manifest_sha256 = os.environ.get(
+        "ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256",
+        _PRODUCTION_MANIFEST_SHA256,
+    )
+    if not args.non_production_compat and (
+        manifest.manifest_id != _PRODUCTION_MANIFEST_ID
+        or manifest.digest != trusted_manifest_sha256
+    ):
+        print(
+            json.dumps(
+                {
+                    "error": "production_manifest_identity_mismatch",
+                    "manifest_id": manifest.manifest_id,
+                    "manifest_sha256": manifest.digest,
+                }
+            )
+        )
+        return 2
     if not args.non_production_compat and not adapter_rule_required:
         print(
             json.dumps(
@@ -393,6 +446,7 @@ def main(argv: list[str] | None = None) -> int:
         sandbox=sandbox,
         adapter_records=adapter_records,
         adapter_policy=adapter_policy,
+        adapter_bundle_response=adapter_rebound_response,
     )
     print(json.dumps(result))
     return 0 if result.get("run_outcome") == RunOutcome.COMPLETE.value else 1

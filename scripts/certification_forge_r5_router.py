@@ -185,7 +185,13 @@ async def run_negative_controls(
 
     # 7) FORGE independently re-verifies the bundle
     try:
-        forge_verify = core.verify_forge_bundle(bundle, identity, mode=mode)
+        forge_verify = core.verify_forge_bundle(
+            bundle,
+            identity,
+            mode=mode,
+            expected_run_id=run_id,
+            expected_run_nonce=req.evidence_run_nonce,
+        )
     except core.R5CoreError as exc:
         forge_verify = {"all_ok": False, "reason": str(exc), "receipts": [],
                         "identity_ok": False, "key_id_ok": False}

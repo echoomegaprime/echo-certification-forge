@@ -872,7 +872,7 @@ def verify_full_r5_evidence(
             f"positive:{target_model}:"
         ),
     )
-    wrong_payload, _ = _verify_completion_receipt(
+    wrong_payload, wrong_receipt = _verify_completion_receipt(
         _load_evidence_json(directory, "positive-wrong.json"),
         key=key,
         key_id=trusted_key_id,
@@ -951,24 +951,39 @@ def verify_full_r5_evidence(
         raise R5Error("R5 report negative controls are incomplete or incorrect")
 
     bundle_receipts = bundle.get("receipts")
-    if not isinstance(bundle_receipts, list) or len(bundle_receipts) != 2:
-        raise R5Error("R5 forge bundle must contain exactly two control receipts")
+    if not isinstance(bundle_receipts, list) or len(bundle_receipts) != 4:
+        raise R5Error("R5 forge bundle must contain exactly four control receipts")
     expected_receipts = {
-        "wrong_active_adapter": wrong_active_receipt,
-        "unloaded_adapter": unloaded_receipt,
+        "positive_target": (target_receipt, 200, None),
+        "positive_wrong": (wrong_receipt, 200, None),
+        "wrong_active_adapter": (
+            wrong_active_receipt,
+            409,
+            "ADAPTER_IDENTITY_MISMATCH",
+        ),
+        "unloaded_adapter": (unloaded_receipt, 503, "ADAPTER_NOT_ACTIVE"),
     }
+    observed_bundle_controls: set[str] = set()
     for entry in bundle_receipts:
         if not isinstance(entry, dict):
             raise R5Error("R5 forge bundle receipt entry is invalid")
         control = entry.get("control")
-        receipt = expected_receipts.get(str(control))
-        if receipt is None or entry != {
+        expected_receipt = expected_receipts.get(str(control))
+        if expected_receipt is None or str(control) in observed_bundle_controls:
+            raise R5Error("R5 forge bundle contains duplicate or unknown controls")
+        receipt, status_code, error_code = expected_receipt
+        if entry != {
             "control": control,
+            "status_code": status_code,
+            "error_code": error_code,
             "key_id": receipt.get("key_id"),
             "payload": receipt.get("payload"),
             "signature_b64": receipt.get("signature_b64"),
         }:
             raise R5Error("R5 forge bundle receipt does not match evidence")
+        observed_bundle_controls.add(str(control))
+    if observed_bundle_controls != set(expected_receipts):
+        raise R5Error("R5 forge bundle is missing required controls")
     return {
         "report": report,
         "manifest": manifest,
@@ -1037,13 +1052,20 @@ def _build_bundle(operator: "Operator", mode: str) -> dict[str, Any]:
     attestation = operator.evidence.get("attestation") or {}
     receipts: list[dict[str, Any]] = []
     if mode == "full":
-        for control, key in (("wrong_active_adapter", "wrong-active-response"),
-                             ("unloaded_adapter", "unloaded-response")):
-            body = (operator.evidence.get(key) or {}).get("body") or {}
+        for control, evidence_key in (
+            ("positive_target", "positive-target"),
+            ("positive_wrong", "positive-wrong"),
+            ("wrong_active_adapter", "wrong-active-response"),
+            ("unloaded_adapter", "unloaded-response"),
+        ):
+            evidence = operator.evidence.get(evidence_key) or {}
+            body = evidence.get("body") or {}
             receipt = body.get("routing_receipt")
             if isinstance(receipt, dict):
                 receipts.append({
                     "control": control,
+                    "status_code": evidence.get("status_code"),
+                    "error_code": body.get("error_code"),
                     "key_id": receipt.get("key_id"),
                     "payload": receipt.get("payload"),
                     "signature_b64": receipt.get("signature_b64"),

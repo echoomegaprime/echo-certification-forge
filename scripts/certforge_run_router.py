@@ -35,6 +35,7 @@ _TENANT = "echo-sovereign"  # the sovereign gate tenant (matches echo.certforge.
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 _POLICY_ID = "certforge.release-strict.v2"
 _POLICY_PATH = f"{_REPO}/policies/mandatory-rules.v2.json"
+_POLICY_SHA256 = "7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4"
 
 
 def _sovereign_key() -> str | None:
@@ -151,6 +152,7 @@ async def certforge_run(req: RunRequest, x_echo_api_key: str | None = Header(Non
         "ECHO_CERTFORGE_SANDBOX_DOCKER": "docker",
         "ECHO_CERTFORGE_ADAPTER_REGISTRY": adapter_registry,
         "ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY": adapter_runner_signing_key,
+        "ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256": _POLICY_SHA256,
     }
 
     Path(_RUN_OUT_DIR).mkdir(parents=True, exist_ok=True)

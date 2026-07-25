@@ -65,6 +65,8 @@ Production launchers use `mandatory-rules.v2.json` and require the adapter bundl
 
 The production adapter response is a reusable, registry-pinned qualified identity source, not a replayable certification-run response. The worker verifies its exact registry digest, loads the independent adapter-runner signing key, and deterministically signs a new response bound to the freshly allocated certification `run_id` and tenant before execution. The deploy gate and SDK launcher require that protected signing-key path; caller-supplied paths are not accepted.
 
+The R5 SDK verifier now requires exactly four semantically correct signed controls (both positive probes plus wrong-active and unloaded), the externally selected run ID/nonce in every challenge, distinct request IDs, and exact status/error/model/digest semantics. Async R5 submission reserves the request digest atomically before SSH launch, treats only exact retries as idempotent, records conflicts, and persists launch failures. Production workers also pin the exact v2 manifest digest and persist each per-run rebound response into the evidence chain before verdict signing, binding its SHA-256 into the environment identity.
+
 ## Discovery note
 
 Repository-required live discovery was attempted before implementation. The Arcanum search capability was unavailable in the live registry, and `echo.functions.search` returned a gateway timeout/502 after 30 seconds. The implementation therefore reuses the repository's direct-HTTP and local-scoring design from the prior `scripts/qualify_family_adapters.py`, the strict held-out schema/validation helpers in `src/echo_certification_forge/p5_corpus.py`, and the Ed25519 routing-receipt verification contract in `src/echo_certification_forge/family_r5.py`.
