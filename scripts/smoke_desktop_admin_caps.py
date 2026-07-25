@@ -87,10 +87,10 @@ async def invoke(
 
 async def smoke(args: argparse.Namespace) -> dict[str, Any]:
     sys.path.insert(0, args.worker_root)
-    from routers.sdk_invoke import _load_key
+    from routers.sdk_invoke import _authenticate
 
     api_key = sovereign_key(Path(args.sovereign_key_file))
-    key_info = await _load_key(api_key)
+    key_info = await _authenticate(api_key)
     secret_hmac = str(key_info.get("secret_hmac") or "")
     if len(secret_hmac) < 64:
         raise RuntimeError("active sovereign key has no usable HMAC seed")
