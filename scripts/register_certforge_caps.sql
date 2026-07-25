@@ -1,4 +1,5 @@
--- Register the 9 echo.certforge.* SDK capabilities as handler_kind='http' proxies to the live
+-- Register the 11 Echo Desktop operator-facing echo.certforge.* SDK capabilities as
+-- handler_kind='http' proxies to the live
 -- echo-certforge.service on FORGE :8309. Idempotent (ON CONFLICT DO UPDATE).
 --
 -- Tenant model: the SDK gate is the sovereign control plane, so every gate invocation operates as
@@ -22,6 +23,12 @@ VALUES
    'http', 'http://127.0.0.1:8309/healthz', 'GET', 'query', 'forge',
    '{"type":"object","additionalProperties":false}'::jsonb,
    'certforge.read', 0, '{}'::jsonb, 10, 'active', 'unknown'),
+
+  ('echo.certforge.list_runs',
+   'Certification Forge: list tenant-scoped certification runs with state, outcome, verdict, and immutable identities.',
+   'http', 'http://127.0.0.1:8309/v1/certifications', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb,
+   'certforge.read', 0, '{"X-Tenant-ID":"echo-sovereign"}'::jsonb, 15, 'active', 'unknown'),
 
   ('echo.certforge.submit',
    'Certification Forge: submit a certification run for a target under a policy. Idempotency-Key bound; default-deny NOT_READY at intake.',
@@ -62,6 +69,12 @@ VALUES
   ('echo.certforge.verdict',
    'Certification Forge: get the signed verdict envelope for a run (or 404 verdict_not_available).',
    'http', 'http://127.0.0.1:8309/v1/certifications/{run_id}/verdict', 'GET', 'path', 'forge',
+   '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string"}}}'::jsonb,
+   'certforge.read', 0, '{"X-Tenant-ID":"echo-sovereign"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.verify_verdict',
+   'Certification Forge: independently verify the stored signed verdict against the trusted public-key registry.',
+   'http', 'http://127.0.0.1:8309/v1/certifications/{run_id}/verdict/verify', 'GET', 'path', 'forge',
    '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string"}}}'::jsonb,
    'certforge.read', 0, '{"X-Tenant-ID":"echo-sovereign"}'::jsonb, 15, 'active', 'unknown'),
 
