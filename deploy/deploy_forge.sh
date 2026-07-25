@@ -19,33 +19,26 @@ cd "$SOURCE_REPO"
 echo "== [1/8] fetch immutable source ($BRANCH) =="
 git "${GITC[@]}" fetch --quiet origin "$BRANCH"
 NEW_SHA="$(git rev-parse "origin/$BRANCH^{commit}")"
-RELEASE_DIR="$RELEASE_ROOT/$NEW_SHA"
+RELEASE_ID="$NEW_SHA-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+RELEASE_DIR="$RELEASE_ROOT/$RELEASE_ID"
 RELEASE_TMP="$RELEASE_DIR.tmp.$$"
 echo "   candidate=$NEW_SHA"
 
 mkdir -p "$RELEASE_ROOT" "$STATE_ROOT/evidence" "$STATE_ROOT/trusted-public-keys"
-if [ -e "$RELEASE_DIR" ]; then
-  test "$(cat "$RELEASE_DIR/.certforge-release-sha" 2>/dev/null)" = "$NEW_SHA" || {
-    echo "!! existing release directory is incomplete or mismatched: $RELEASE_DIR"
-    exit 1
-  }
-  echo "   reusing verified release directory"
-else
-  trap 'rm -rf "$RELEASE_TMP"' EXIT
-  mkdir "$RELEASE_TMP"
-  git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
-  mv "$RELEASE_TMP" "$RELEASE_DIR"
-  trap 'test -f "$RELEASE_DIR/.certforge-release-sha" || rm -rf "$RELEASE_DIR"' EXIT
+trap 'rm -rf "$RELEASE_TMP"' EXIT
+mkdir "$RELEASE_TMP"
+git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
+mv "$RELEASE_TMP" "$RELEASE_DIR"
+trap 'test -f "$RELEASE_DIR/.certforge-release-sha" || rm -rf "$RELEASE_DIR"' EXIT
 
-  echo "== [2/8] isolated venv + install =="
-  python3 -m venv "$RELEASE_DIR/.venv"
-  "$RELEASE_DIR/.venv/bin/pip" install --quiet --upgrade pip
-  "$RELEASE_DIR/.venv/bin/pip" install --quiet "$RELEASE_DIR"
-  "$RELEASE_DIR/.venv/bin/python" -m compileall -q \
-    "$RELEASE_DIR/src" "$RELEASE_DIR/tests" "$RELEASE_DIR/deploy"
-  printf '%s\n' "$NEW_SHA" >"$RELEASE_DIR/.certforge-release-sha"
-  trap - EXIT
-fi
+echo "== [2/8] isolated venv + install =="
+python3 -m venv "$RELEASE_DIR/.venv"
+"$RELEASE_DIR/.venv/bin/pip" install --quiet --upgrade pip
+"$RELEASE_DIR/.venv/bin/pip" install --quiet "$RELEASE_DIR"
+"$RELEASE_DIR/.venv/bin/python" -m compileall -q \
+  "$RELEASE_DIR/src" "$RELEASE_DIR/tests" "$RELEASE_DIR/deploy"
+printf '%s\n' "$NEW_SHA" >"$RELEASE_DIR/.certforge-release-sha"
+trap - EXIT
 
 echo "== [3/8] verify release inputs =="
 test -f "$RELEASE_DIR/policies/mandatory-rules.v1.json" || {
@@ -113,6 +106,50 @@ if sudo test -f "$UNIT_PATH"; then
   HAD_UNIT=1
 fi
 
+PROMOTION_ARMED=1
+rollback_production() {
+  exit_status=$?
+  if [ "$PROMOTION_ARMED" != 1 ]; then
+    return "$exit_status"
+  fi
+  set +e
+  echo "!! deployment failed - restoring prior production state"
+  rollback_status=0
+  if [ -n "$PREV_LINK" ]; then
+    ROLLBACK_LINK="$CURRENT_LINK.rollback.$$"
+    ln -s "$PREV_LINK" "$ROLLBACK_LINK" &&
+      mv -Tf "$ROLLBACK_LINK" "$CURRENT_LINK" || rollback_status=1
+  else
+    rm -f "$CURRENT_LINK" || rollback_status=1
+  fi
+  if [ "$HAD_UNIT" = 1 ]; then
+    sudo cp "$UNIT_BACKUP" "$UNIT_PATH" || rollback_status=1
+    sudo systemctl daemon-reload || rollback_status=1
+    sudo systemctl restart "$SERVICE.service" || rollback_status=1
+    restored=0
+    for _ in $(seq 1 40); do
+      curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && {
+        restored=1
+        break
+      }
+      sleep 0.5
+    done
+    [ "$restored" = 1 ] || rollback_status=1
+  else
+    sudo systemctl disable --now "$SERVICE.service" >/dev/null 2>&1 || true
+    sudo rm -f "$UNIT_PATH" || rollback_status=1
+    sudo systemctl daemon-reload || rollback_status=1
+  fi
+  rm -f "$UNIT_BACKUP"
+  if [ "$rollback_status" = 0 ]; then
+    echo "ROLLBACK COMPLETE - prior production state is healthy"
+  else
+    echo "ROLLBACK FAILED - prior production state could not be proven healthy" >&2
+  fi
+  exit 1
+}
+trap rollback_production EXIT
+
 echo "== [7/8] atomic promote -> systemd on 0.0.0.0:$PROD_PORT =="
 NEXT_LINK="$CURRENT_LINK.next.$$"
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
@@ -153,24 +190,12 @@ for _ in $(seq 1 40); do
 done
 if [ "$ready" != 1 ] || ! "$RELEASE_DIR/.venv/bin/python" \
   "$RELEASE_DIR/deploy/smoke_live.py" "http://127.0.0.1:$PROD_PORT"; then
-  echo "!! PROD RED - restoring prior release"
-  if [ -n "$PREV_LINK" ]; then
-    ROLLBACK_LINK="$CURRENT_LINK.rollback.$$"
-    ln -s "$PREV_LINK" "$ROLLBACK_LINK"
-    mv -Tf "$ROLLBACK_LINK" "$CURRENT_LINK"
-  fi
-  if [ "$HAD_UNIT" = 1 ]; then
-    sudo cp "$UNIT_BACKUP" "$UNIT_PATH"
-    sudo systemctl daemon-reload
-    sudo systemctl restart "$SERVICE.service" || true
-  else
-    sudo systemctl stop "$SERVICE.service" || true
-  fi
-  rm -f "$UNIT_BACKUP"
-  echo "ROLLBACK COMPLETE - production kept on the prior unit/release"
+  echo "!! PROD RED"
   exit 1
 fi
 
+PROMOTION_ARMED=0
+trap - EXIT
 rm -f "$UNIT_BACKUP"
 echo "DEPLOY GREEN - $SERVICE live on :$PROD_PORT @ $NEW_SHA"
 sudo systemctl status "$SERVICE.service" --no-pager -l | head -6 || true
