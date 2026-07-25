@@ -38,6 +38,7 @@ from .canonical import (
     to_utc_iso,
     utc_now,
 )
+from .p5_qualification import QualificationError, verify_qualification_evidence
 from .runner import (
     ControlPlaneTransportAuthority,
     RunnerCommand,
@@ -411,10 +412,12 @@ def _candidate_quality_report(
     artifact_sha256: str,
     manifest_sha256: str,
 ) -> AdapterQualityReport:
-    if qualification_report.get("run_outcome") != "COMPLETE":
-        raise AdapterExecutionError("candidate qualification run is not COMPLETE")
-    if qualification_report.get("promotion_decision") not in {"PROMOTE", "BLOCK"}:
-        raise AdapterExecutionError("candidate qualification promotion decision is invalid")
+    try:
+        verified_evidence = verify_qualification_evidence(qualification_report)
+    except QualificationError as exc:
+        raise AdapterExecutionError(
+            f"candidate qualification evidence is invalid: {exc}"
+        ) from exc
     models = _object(qualification_report.get("models"), "models")
     adapter_models = _object(models.get(adapter_id), f"models.{adapter_id}")
     if adapter_models.get("candidate") != target_model:
@@ -435,9 +438,7 @@ def _candidate_quality_report(
         raise AdapterExecutionError(
             f"candidate qualification artifact digest mismatch for {adapter_id}"
         )
-    qualifications = _object(
-        qualification_report.get("qualification"), "qualification"
-    )
+    qualifications = _object(verified_evidence.get("qualification"), "qualification")
     qualification = _object(
         qualifications.get(adapter_id), f"qualification.{adapter_id}"
     )
@@ -502,6 +503,8 @@ def _candidate_quality_report(
         suite_sha256=sha256_json(
             {
                 "schema": qualification_report["schema"],
+                "qualification_run_id": verified_evidence["qualification_run_id"],
+                "evidence_manifest_sha256": verified_evidence["manifest_sha256"],
                 "adapter": adapter_id,
                 "target_model": target_model,
                 "artifact_sha256": artifact_sha256,

@@ -29,6 +29,7 @@ QUALIFICATION_SCHEMA = "echo.certification-forge.p5-qualification/v1"
 CHECKPOINT_SCHEMA = "echo.certification-forge.p5-qualification-checkpoint/v1"
 STATE_SCHEMA = "echo.certification-forge.p5-qualification-state/v1"
 SCORE_LEDGER_SCHEMA = "echo.certification-forge.p5-score/v1"
+EVIDENCE_MANIFEST_SCHEMA = "echo.certification-forge.p5-evidence-manifest/v1"
 EXPECTED_EVAL_ROWS = 240
 EXPECTED_EVAL_SHA256 = {
     "gs343": "158f63780f7a10c540505b66887e3ea2cf657382819c68b1e90e97a316e07d88",
@@ -351,6 +352,47 @@ def _append_jsonl(path: Path, row: Mapping[str, Any]) -> None:
         os.fsync(stream.fileno())
 
 
+def _sealed_manifest(
+    *,
+    qualification_run_id: str,
+    state_path: Path,
+    checkpoint_path: Path,
+    score_path: Path,
+    corpora: Mapping[str, EvalCorpus],
+    trusted_attestation_path: Path,
+) -> dict[str, Any]:
+    core = {
+        "schema": EVIDENCE_MANIFEST_SCHEMA,
+        "qualification_run_id": qualification_run_id,
+        "state": {"path": str(state_path), "sha256": _file_sha256(state_path)},
+        "response_receipts": {
+            "path": str(checkpoint_path),
+            "sha256": _file_sha256(checkpoint_path),
+            "row_count": EXPECTED_EVAL_ROWS * 4,
+        },
+        "score_ledger": {
+            "path": str(score_path),
+            "sha256": _file_sha256(score_path),
+            "row_count": EXPECTED_EVAL_ROWS * 4,
+        },
+        "eval": {
+            adapter: {
+                "path": str(corpus.path),
+                "sha256": corpus.sha256,
+                "row_count": len(corpus.rows),
+                "manifest_path": str(corpus.manifest_path),
+                "manifest_sha256": corpus.manifest_sha256,
+            }
+            for adapter, corpus in sorted(corpora.items())
+        },
+        "trusted_attestation": {
+            "path": str(trusted_attestation_path),
+            "sha256": _file_sha256(trusted_attestation_path),
+        },
+    }
+    return {**core, "manifest_sha256": sha256_json(core)}
+
+
 def _load_eval(adapter: str, path: Path) -> EvalCorpus:
     if path.name != "eval.jsonl":
         raise QualificationError(f"{adapter} qualification must use eval.jsonl, not {path.name}")
@@ -520,6 +562,7 @@ def _verify_receipt(
     challenge: str,
     attestation: Mapping[str, Any],
     public_key: Ed25519PublicKey,
+    qualification_run_id: str,
 ) -> dict[str, Any]:
     if response.status != 200:
         raise QualificationError(
@@ -584,6 +627,7 @@ def _verify_receipt(
             )
     return {
         "schema": CHECKPOINT_SCHEMA,
+        "qualification_run_id": qualification_run_id,
         "key": item.key,
         "adapter": item.adapter,
         "role": item.role,
@@ -609,7 +653,7 @@ def _checkpoint_state(
     corpora: Mapping[str, EvalCorpus],
     trusted_attestation_sha256: str,
 ) -> dict[str, Any]:
-    return {
+    state = {
         "schema": STATE_SCHEMA,
         "base_url": config.base_url.rstrip("/"),
         "models": config.models.to_dict(),
@@ -632,6 +676,7 @@ def _checkpoint_state(
         "ground": False,
         "training_split_used": False,
     }
+    return {**state, "qualification_run_id": sha256_json(state)}
 
 
 def _prepare_state(path: Path, expected: Mapping[str, Any]) -> None:
@@ -650,6 +695,7 @@ def _load_checkpoint(
     work_by_key: Mapping[str, WorkItem],
     attestation: Mapping[str, Any],
     public_key: Ed25519PublicKey,
+    qualification_run_id: str,
 ) -> dict[str, dict[str, Any]]:
     if not path.exists():
         return {}
@@ -676,6 +722,7 @@ def _load_checkpoint(
             raise QualificationError(f"checkpoint contains duplicate successful row {key}")
         item = work_by_key[key]
         expected_record_fields = {
+            "qualification_run_id": qualification_run_id,
             "adapter": item.adapter,
             "role": item.role,
             "row_id": item.row_id,
@@ -699,6 +746,7 @@ def _load_checkpoint(
             challenge,
             attestation,
             public_key,
+            qualification_run_id,
         )
         for field in (
             "request_sha256",
@@ -785,6 +833,7 @@ def _gs_score(
     false_green = critical and predicted.get("release_risk") != "block"
     return {
         "schema": SCORE_LEDGER_SCHEMA,
+        "qualification_run_id": record["qualification_run_id"],
         "key": item.key,
         "adapter": item.adapter,
         "role": item.role,
@@ -891,6 +940,7 @@ def _r2_score(
         )
     return {
         "schema": SCORE_LEDGER_SCHEMA,
+        "qualification_run_id": record["qualification_run_id"],
         "key": item.key,
         "adapter": item.adapter,
         "role": item.role,
@@ -1118,6 +1168,232 @@ def _receipt_summary(
     return summary
 
 
+def _jsonl_objects(path: Path, label: str) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise QualificationError(f"cannot read {label}: {error}") from error
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise QualificationError(
+                f"{label} line {line_number} is invalid JSON"
+            ) from error
+        if not isinstance(row, dict):
+            raise QualificationError(f"{label} line {line_number} is not an object")
+        rows.append(row)
+    return rows
+
+
+def verify_qualification_evidence(
+    qualification_report: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recompute a P5 verdict exclusively from its complete sealed evidence."""
+    if qualification_report.get("schema") != QUALIFICATION_SCHEMA:
+        raise QualificationError("qualification report schema is unsupported")
+    if qualification_report.get("run_outcome") != "COMPLETE":
+        raise QualificationError("qualification report is not COMPLETE")
+    if qualification_report.get("training_split_used") is not False:
+        raise QualificationError("qualification report used or ambiguously references training data")
+
+    checkpoint_meta = qualification_report.get("checkpoint_state")
+    receipts_meta = qualification_report.get("response_receipts")
+    score_meta = qualification_report.get("score_ledger")
+    manifest_meta = qualification_report.get("evidence_manifest")
+    for label, value in (
+        ("checkpoint_state", checkpoint_meta),
+        ("response_receipts", receipts_meta),
+        ("score_ledger", score_meta),
+        ("evidence_manifest", manifest_meta),
+    ):
+        if not isinstance(value, dict):
+            raise QualificationError(f"qualification report lacks {label}")
+
+    state_path = Path(str(checkpoint_meta.get("path")))
+    checkpoint_path = Path(str(receipts_meta.get("path")))
+    score_path = Path(str(score_meta.get("path")))
+    manifest_path = Path(str(manifest_meta.get("path")))
+    if checkpoint_meta.get("sha256") != _file_sha256(state_path):
+        raise QualificationError("qualification state digest mismatch")
+    if receipts_meta.get("sha256") != _file_sha256(checkpoint_path):
+        raise QualificationError("response receipt ledger digest mismatch")
+    if score_meta.get("sha256") != _file_sha256(score_path):
+        raise QualificationError("score ledger digest mismatch")
+    if manifest_meta.get("sha256") != _file_sha256(manifest_path):
+        raise QualificationError("qualification evidence manifest file digest mismatch")
+
+    state = _load_json(state_path, "qualification checkpoint state")
+    if state.get("schema") != STATE_SCHEMA or state.get("training_split_used") is not False:
+        raise QualificationError("qualification state contract is invalid")
+    run_id = state.get("qualification_run_id")
+    if not isinstance(run_id, str):
+        raise QualificationError("qualification state lacks a run id")
+    state_core = {key: value for key, value in state.items() if key != "qualification_run_id"}
+    if run_id != sha256_json(state_core):
+        raise QualificationError("qualification run id does not bind its state")
+    if qualification_report.get("qualification_run_id") != run_id:
+        raise QualificationError("qualification report run id mismatch")
+
+    try:
+        models = QualificationModels(
+            gs_candidate=state["models"]["gs343"]["candidate"],
+            gs_incumbent=state["models"]["gs343"]["incumbent"],
+            r2_candidate=state["models"]["r2d2"]["candidate"],
+            r2_incumbent=state["models"]["r2d2"]["incumbent"],
+        )
+        artifact_digests = QualificationArtifactDigests(
+            gs_candidate=state["artifact_digests"]["gs343"]["candidate"],
+            gs_incumbent=state["artifact_digests"]["gs343"]["incumbent"],
+            r2_candidate=state["artifact_digests"]["r2d2"]["candidate"],
+            r2_incumbent=state["artifact_digests"]["r2d2"]["incumbent"],
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise QualificationError("qualification state model or artifact pins are invalid") from error
+    if qualification_report.get("models") != models.to_dict():
+        raise QualificationError("qualification report model bindings differ from state")
+    if qualification_report.get("artifact_digests") != artifact_digests.to_dict():
+        raise QualificationError("qualification report artifact pins differ from state")
+
+    eval_state = state.get("eval")
+    if not isinstance(eval_state, dict):
+        raise QualificationError("qualification state lacks eval evidence")
+    corpora: dict[str, EvalCorpus] = {}
+    for adapter in ("gs343", "r2d2"):
+        binding = eval_state.get(adapter)
+        if not isinstance(binding, dict):
+            raise QualificationError(f"qualification state lacks {adapter} eval binding")
+        corpus = _load_eval(adapter, Path(str(binding.get("path"))))
+        expected_binding = {
+            "path": str(corpus.path),
+            "sha256": corpus.sha256,
+            "rows": len(corpus.rows),
+            "manifest_path": str(corpus.manifest_path),
+            "manifest_sha256": corpus.manifest_sha256,
+        }
+        if binding != expected_binding:
+            raise QualificationError(f"{adapter} eval binding differs from pinned corpus")
+        report_binding = qualification_report.get("eval", {}).get(adapter)
+        if not isinstance(report_binding, dict):
+            raise QualificationError(f"qualification report lacks {adapter} eval binding")
+        if (
+            report_binding.get("sha256") != corpus.sha256
+            or report_binding.get("row_count") != EXPECTED_EVAL_ROWS
+            or report_binding.get("split") != "eval"
+        ):
+            raise QualificationError(f"{adapter} report eval binding is invalid")
+        corpora[adapter] = corpus
+
+    trusted_path = Path(str(state.get("trusted_attestation_path")))
+    if state.get("trusted_attestation_sha256") != _file_sha256(trusted_path):
+        raise QualificationError("trusted routing attestation digest mismatch")
+    attestation = _load_json(trusted_path, "trusted routing attestation")
+    public_key = _validate_attestation(attestation, attestation, models)
+    attestation_report = qualification_report.get("routing_attestation")
+    if not isinstance(attestation_report, dict):
+        raise QualificationError("qualification report lacks routing attestation")
+    if (
+        attestation_report.get("trusted_file_sha256")
+        != state["trusted_attestation_sha256"]
+        or attestation_report.get("key_id") != attestation.get("key_id")
+        or attestation_report.get("server_build_digest")
+        != attestation.get("server_build_digest")
+        or attestation_report.get("registry_snapshot_digest")
+        != attestation.get("registry_snapshot_digest")
+        or attestation_report.get("base_model_digest")
+        != attestation.get("base_model_digest")
+    ):
+        raise QualificationError("qualification report routing attestation binding is invalid")
+
+    max_tokens = state.get("max_tokens")
+    if not isinstance(max_tokens, int) or max_tokens < 64:
+        raise QualificationError("qualification state max_tokens is invalid")
+    work = _build_work(corpora, models, artifact_digests, max_tokens)
+    work_by_key = {item.key: item for item in work}
+    if len(work) != EXPECTED_EVAL_ROWS * 4 or len(work_by_key) != len(work):
+        raise QualificationError("qualification work is incomplete or duplicated")
+    records = _load_checkpoint(
+        checkpoint_path,
+        work_by_key,
+        attestation,
+        public_key,
+        run_id,
+    )
+    if set(records) != set(work_by_key):
+        raise QualificationError("response receipt ledger has missing or unexpected rows")
+    routing_request_ids = [str(record["routing_request_id"]) for record in records.values()]
+    if len(set(routing_request_ids)) != len(routing_request_ids):
+        raise QualificationError("response receipt ledger reuses routing request ids")
+    for adapter in ("gs343", "r2d2"):
+        for role in ("candidate", "incumbent"):
+            count = sum(
+                item.adapter == adapter and item.role == role for item in work
+            )
+            if count != EXPECTED_EVAL_ROWS:
+                raise QualificationError(
+                    f"{adapter} {role} does not contain exactly {EXPECTED_EVAL_ROWS} rows"
+                )
+
+    recomputed_qualification, recomputed_scores = _score_all(work, records)
+    score_rows = _jsonl_objects(score_path, "score ledger")
+    if len(score_rows) != EXPECTED_EVAL_ROWS * 4:
+        raise QualificationError("score ledger must contain exactly 960 rows")
+    score_by_key: dict[str, dict[str, Any]] = {}
+    for row in score_rows:
+        key = row.get("key")
+        if not isinstance(key, str) or key not in work_by_key:
+            raise QualificationError("score ledger contains an unknown row key")
+        if key in score_by_key:
+            raise QualificationError(f"score ledger contains duplicate row {key}")
+        if row.get("qualification_run_id") != run_id:
+            raise QualificationError("score ledger mixes qualification run ids")
+        score_by_key[key] = row
+    expected_scores = {row["key"]: row for row in recomputed_scores}
+    if score_by_key != expected_scores:
+        raise QualificationError("score ledger differs from deterministic recomputation")
+    if qualification_report.get("qualification") != recomputed_qualification:
+        raise QualificationError("qualification summary differs from deterministic recomputation")
+    global_blockers = [
+        f"{adapter}:{blocker}"
+        for adapter, result in recomputed_qualification.items()
+        for blocker in result["blockers"]
+    ]
+    expected_decision = "PROMOTE" if not global_blockers else "BLOCK"
+    if qualification_report.get("blockers") != global_blockers:
+        raise QualificationError("qualification report blockers differ from recomputation")
+    if qualification_report.get("promotion_decision") != expected_decision:
+        raise QualificationError("qualification promotion decision differs from recomputation")
+
+    manifest = _load_json(manifest_path, "qualification evidence manifest")
+    if manifest.get("schema") != EVIDENCE_MANIFEST_SCHEMA:
+        raise QualificationError("qualification evidence manifest schema is invalid")
+    manifest_core = {key: value for key, value in manifest.items() if key != "manifest_sha256"}
+    if manifest.get("manifest_sha256") != sha256_json(manifest_core):
+        raise QualificationError("qualification evidence manifest seal is invalid")
+    expected_manifest = _sealed_manifest(
+        qualification_run_id=run_id,
+        state_path=state_path,
+        checkpoint_path=checkpoint_path,
+        score_path=score_path,
+        corpora=corpora,
+        trusted_attestation_path=trusted_path,
+    )
+    if manifest != expected_manifest:
+        raise QualificationError("qualification evidence manifest does not bind current ledgers")
+    if manifest_meta.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise QualificationError("qualification report manifest seal mismatch")
+    return {
+        "qualification_run_id": run_id,
+        "qualification": recomputed_qualification,
+        "score_rows": recomputed_scores,
+        "records": records,
+        "manifest_sha256": manifest["manifest_sha256"],
+    }
+
+
 def _run_qualification_locked(
     config: QualificationConfig,
     *,
@@ -1128,6 +1404,7 @@ def _run_qualification_locked(
     checkpoint_path = config.output_directory / "response-receipts.jsonl"
     state_path = config.output_directory / "qualification-state.json"
     score_path = config.output_directory / "score-ledger.jsonl"
+    manifest_path = config.output_directory / "qualification-evidence-manifest.json"
     generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     report: dict[str, Any] = {
         "schema": QUALIFICATION_SCHEMA,
@@ -1211,7 +1488,11 @@ def _run_qualification_locked(
         if len(work_by_key) != len(work):
             raise QualificationError("qualification work contains duplicate row keys")
         records = _load_checkpoint(
-            checkpoint_path, work_by_key, live_result.body, public_key
+            checkpoint_path,
+            work_by_key,
+            live_result.body,
+            public_key,
+            state["qualification_run_id"],
         )
         report["resumed_successful_rows"] = len(records)
         seen_routing_request_ids = {
@@ -1231,7 +1512,12 @@ def _run_qualification_locked(
                 timeout=config.timeout_seconds,
             )
             record = _verify_receipt(
-                item, response, challenge, live_result.body, public_key
+                item,
+                response,
+                challenge,
+                live_result.body,
+                public_key,
+                state["qualification_run_id"],
             )
             if record["routing_request_id"] in seen_routing_request_ids:
                 raise QualificationError(
@@ -1247,7 +1533,11 @@ def _run_qualification_locked(
                 f"qualification is missing {len(missing)} response receipts"
             )
         records = _load_checkpoint(
-            checkpoint_path, work_by_key, live_result.body, public_key
+            checkpoint_path,
+            work_by_key,
+            live_result.body,
+            public_key,
+            state["qualification_run_id"],
         )
         if set(records) != set(work_by_key):
             raise QualificationError(
@@ -1260,6 +1550,21 @@ def _run_qualification_locked(
             "path": str(score_path),
             "sha256": _file_sha256(score_path),
             "row_count": len(score_rows),
+        }
+        evidence_manifest = _sealed_manifest(
+            qualification_run_id=state["qualification_run_id"],
+            state_path=state_path,
+            checkpoint_path=checkpoint_path,
+            score_path=score_path,
+            corpora=corpora,
+            trusted_attestation_path=config.trusted_attestation_path,
+        )
+        _write_json(manifest_path, evidence_manifest)
+        report["qualification_run_id"] = state["qualification_run_id"]
+        report["evidence_manifest"] = {
+            "path": str(manifest_path),
+            "sha256": _file_sha256(manifest_path),
+            "manifest_sha256": evidence_manifest["manifest_sha256"],
         }
         global_blockers = [
             f"{adapter}:{blocker}"

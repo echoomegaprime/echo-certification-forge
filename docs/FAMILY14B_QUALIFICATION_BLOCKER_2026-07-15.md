@@ -55,6 +55,8 @@ Reuse the same output directory to resume; successfully checkpointed rows are ve
 
 The four artifact digests are mandatory operator trust inputs. Obtain them from the independently verified adapter artifact manifests or the expected identities used by the successful R5 controls, never from the completion response being qualified. The harness binds these pins into its state, checkpoint, report, and every routing-receipt verification; a label match or merely different candidate/incumbent digests cannot pass.
 
+Bundle construction does not trust the qualification summary. It verifies the content-addressed evidence manifest, re-verifies all 960 signed response receipts, requires 960 matching deterministic score rows across the four adapter/role aliases, and recomputes hard gates plus the `1.05` promotion ratio before creating adapter records.
+
 ## Discovery note
 
 Repository-required live discovery was attempted before implementation. The Arcanum search capability was unavailable in the live registry, and `echo.functions.search` returned a gateway timeout/502 after 30 seconds. The implementation therefore reuses the repository's direct-HTTP and local-scoring design from the prior `scripts/qualify_family_adapters.py`, the strict held-out schema/validation helpers in `src/echo_certification_forge/p5_corpus.py`, and the Ed25519 routing-receipt verification contract in `src/echo_certification_forge/family_r5.py`.

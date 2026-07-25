@@ -13,6 +13,11 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import echo_certification_forge.p5_qualification as qualification_module
+from echo_certification_forge.adapter_execution import (
+    AdapterEvidenceSource,
+    AdapterExecutionError,
+    build_records_from_evidence,
+)
 from echo_certification_forge.canonical import canonical_json, sha256_bytes
 from echo_certification_forge.family_r5 import CHALLENGE_HEADER, HttpResult
 from echo_certification_forge.p5_qualification import (
@@ -290,6 +295,76 @@ def _config(tmp_path: Path, transport: FakeQualificationTransport) -> Qualificat
     )
 
 
+def _candidate_sources_from_report(
+    tmp_path: Path,
+    report: Mapping[str, Any],
+    transport: FakeQualificationTransport,
+) -> tuple[AdapterEvidenceSource, AdapterEvidenceSource]:
+    checkpoint = {
+        row["key"]: row
+        for row in _jsonl(Path(report["response_receipts"]["path"]))
+    }
+    sources: list[AdapterEvidenceSource] = []
+    for adapter, model in (
+        ("gs343", GS_CANDIDATE),
+        ("r2d2", R2_CANDIDATE),
+    ):
+        row = next(
+            item
+            for item in checkpoint.values()
+            if item["adapter"] == adapter and item["role"] == "candidate"
+        )
+        evidence = tmp_path / f"{adapter}-r5"
+        evidence.mkdir(parents=True)
+        (evidence / "r5-report.json").write_bytes(
+            (
+                json.dumps(
+                    {
+                        "r5_gate": "PASS",
+                        "run_outcome": "COMPLETE",
+                        "expected_identity": {"target_model": model},
+                        "forge_verification_bundle": {
+                            "public_key_pem": transport.public_key_pem,
+                            "attested_key_id": transport.key_id,
+                        },
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        (evidence / "positive-target.json").write_bytes(
+            (
+                json.dumps(
+                    {"status_code": 200, "body": row["response_body"]},
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        (evidence / "evidence-manifest.json").write_bytes(
+            (
+                json.dumps(
+                    {"entries": [], "merkle_root": sha256_bytes(b"")},
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
+        )
+        sources.append(
+            AdapterEvidenceSource(
+                adapter,
+                model,
+                evidence,
+                "unused-for-complete-qualification-report",
+            )
+        )
+    return sources[0], sources[1]
+
+
 def test_resume_never_repeats_checkpointed_successes(tmp_path: Path) -> None:
     first = FakeQualificationTransport(fail_on_post=7, request_prefix="first")
     config = _config(tmp_path, first)
@@ -474,67 +549,89 @@ def test_successful_candidate_exceeds_incumbent_by_1_05(tmp_path: Path) -> None:
     assert json.loads(report_bytes)["run_lock"]["held_for_entire_run"] is True
 
 
+def test_minimal_forged_candidate_report_is_rejected(tmp_path: Path) -> None:
+    transport = FakeQualificationTransport(request_prefix="forged-summary")
+    valid = run_qualification(_config(tmp_path, transport), transport=transport)
+    sources = _candidate_sources_from_report(tmp_path / "r5", valid, transport)
+    forged = {
+        "schema": "echo.certification-forge.p5-qualification/v1",
+        "run_outcome": "COMPLETE",
+        "promotion_decision": "PROMOTE",
+        "training_split_used": False,
+        "models": valid["models"],
+        "artifact_digests": valid["artifact_digests"],
+        "qualification": {
+            adapter: {
+                "candidate": {"row_count": 1, "hard_gates_passed": True},
+                "promotion_threshold": {"passed": True},
+                "routing_identity": {
+                    "candidate_digests": [
+                        valid["artifact_digests"][adapter]["candidate"]
+                    ],
+                    "expected_candidate_digest": [
+                        valid["artifact_digests"][adapter]["candidate"]
+                    ],
+                    "passed": True,
+                },
+                "promotion_decision": "PROMOTE",
+                "blockers": [],
+            }
+            for adapter in ("gs343", "r2d2")
+        },
+    }
+    with pytest.raises(
+        AdapterExecutionError, match="candidate qualification evidence is invalid"
+    ):
+        build_records_from_evidence(sources, qualification_report=forged)
+
+
+@pytest.mark.parametrize("ledger", ["response_receipts", "score_ledger"])
+def test_missing_or_tampered_qualification_ledger_row_blocks_bundle(
+    tmp_path: Path,
+    ledger: str,
+) -> None:
+    transport = FakeQualificationTransport(request_prefix=f"tampered-{ledger}")
+    report = run_qualification(_config(tmp_path, transport), transport=transport)
+    sources = _candidate_sources_from_report(tmp_path / "r5", report, transport)
+    path = Path(report[ledger]["path"])
+    rows = path.read_text(encoding="utf-8").splitlines()
+    if ledger == "response_receipts":
+        path.write_bytes(("\n".join(rows[:-1]) + "\n").encode("utf-8"))
+    else:
+        row = json.loads(rows[0])
+        row["json_valid"] = not row["json_valid"]
+        rows[0] = canonical_json(row)
+        path.write_bytes(("\n".join(rows) + "\n").encode("utf-8"))
+    new_ledger_sha256 = qualification_module._file_sha256(path)
+    report[ledger]["sha256"] = new_ledger_sha256
+    manifest_path = Path(report["evidence_manifest"]["path"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest[ledger]["sha256"] = new_ledger_sha256
+    manifest[ledger]["row_count"] = EXPECTED_EVAL_ROWS * 4
+    manifest_core = {
+        key: value for key, value in manifest.items() if key != "manifest_sha256"
+    }
+    manifest["manifest_sha256"] = qualification_module.sha256_json(manifest_core)
+    manifest_path.write_bytes(
+        (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    )
+    report["evidence_manifest"]["sha256"] = qualification_module._file_sha256(
+        manifest_path
+    )
+    report["evidence_manifest"]["manifest_sha256"] = manifest["manifest_sha256"]
+    with pytest.raises(
+        AdapterExecutionError, match="candidate qualification evidence is invalid"
+    ):
+        build_records_from_evidence(sources, qualification_report=report)
+
+
 def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> None:
     transport = FakeQualificationTransport(request_prefix="bundle-e2e")
     config = _config(tmp_path, transport)
     report = run_qualification(config, transport=transport)
     assert report["promotion_decision"] == "PROMOTE"
 
-    checkpoint = {
-        row["key"]: row
-        for row in _jsonl(Path(report["response_receipts"]["path"]))
-    }
-    evidence_paths: dict[str, Path] = {}
-    for adapter, model in (
-        ("gs343", GS_CANDIDATE),
-        ("r2d2", R2_CANDIDATE),
-    ):
-        row = next(
-            item
-            for item in checkpoint.values()
-            if item["adapter"] == adapter and item["role"] == "candidate"
-        )
-        evidence = tmp_path / f"{adapter}-r5"
-        evidence.mkdir()
-        (evidence / "r5-report.json").write_bytes(
-            (
-                json.dumps(
-                    {
-                        "r5_gate": "PASS",
-                        "run_outcome": "COMPLETE",
-                        "expected_identity": {"target_model": model},
-                        "forge_verification_bundle": {
-                            "public_key_pem": transport.public_key_pem,
-                            "attested_key_id": transport.key_id,
-                        },
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8")
-        )
-        (evidence / "positive-target.json").write_bytes(
-            (
-                json.dumps(
-                    {"status_code": 200, "body": row["response_body"]},
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8")
-        )
-        (evidence / "evidence-manifest.json").write_bytes(
-            (
-                json.dumps(
-                    {"entries": [], "merkle_root": sha256_bytes(b"")},
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8")
-        )
-        evidence_paths[adapter] = evidence
+    sources = _candidate_sources_from_report(tmp_path, report, transport)
 
     output = tmp_path / "adapter-bundle"
     completed = subprocess.run(
@@ -548,9 +645,9 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
             "--qualification-report",
             str(report["report_path"]),
             "--gs343-r5-evidence",
-            str(evidence_paths["gs343"]),
+            str(sources[0].r5_evidence_directory),
             "--r2d2-r5-evidence",
-            str(evidence_paths["r2d2"]),
+            str(sources[1].r5_evidence_directory),
             "--output-directory",
             str(output),
         ],
