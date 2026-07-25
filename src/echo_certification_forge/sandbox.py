@@ -19,8 +19,10 @@ target code — only the journey runs, and only inside the sandbox.
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 # Pinned minimal Python base (same digest the P4 supply-chain pipeline pins). Override per policy.
 DEFAULT_IMAGE = "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
@@ -74,26 +76,65 @@ class DockerSandbox:
         cmd += [self.image, *argv]
         return cmd
 
-    def run(self, argv: list[str], workdir: Path) -> SandboxResult:
+    def run(
+        self,
+        argv: list[str],
+        workdir: Path,
+        execution_guard: Callable[[], None] | None = None,
+    ) -> SandboxResult:
         cmd = self.build_command(argv, workdir)
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True,
-                                  timeout=self.timeout_s, shell=False, check=False)
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=False,
+            )
         except FileNotFoundError as exc:  # docker binary absent
             raise SandboxError(f"docker unavailable: {exc}") from exc
-        except subprocess.TimeoutExpired as exc:
-            partial = str(exc.stdout)[:4000] if isinstance(exc.stdout, str) else ""
-            return SandboxResult(124, partial, "sandbox timeout", True)
-        return SandboxResult(proc.returncode, proc.stdout[-8000:], proc.stderr[-4000:], False)
+        deadline = time.monotonic() + self.timeout_s
+        while True:
+            try:
+                if execution_guard is not None:
+                    execution_guard()
+            except BaseException:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+                proc.communicate()
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+                stdout, _stderr = proc.communicate()
+                return SandboxResult(124, stdout[-8000:], "sandbox timeout", True)
+            try:
+                stdout, stderr = proc.communicate(timeout=min(0.1, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        return SandboxResult(proc.returncode, stdout[-8000:], stderr[-4000:], False)
 
 
-def sandboxed_journey_runner(sandbox: DockerSandbox):
+def sandboxed_journey_runner(
+    sandbox: DockerSandbox,
+    execution_guard: Callable[[], None] | None = None,
+):
     """Adapt a DockerSandbox to the executor's journey-runner signature
     ``(argv, workdir) -> (passed, detail)``. A SandboxError (runtime unavailable) is a HARNESS
     failure surfaced as passed=False with a distinct reason (never silently a pass)."""
     def _run(argv: list[str], workdir: Path) -> tuple[bool, dict]:
         try:
-            result = sandbox.run(argv, workdir)
+            result = sandbox.run(argv, workdir, execution_guard)
         except SandboxError as exc:
             return False, {"executed": True, "isolation": "docker", "error": f"sandbox_unavailable:{exc}"}
         return result.returncode == 0, {

@@ -4,17 +4,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_production_router_requires_v2_and_all_adapter_inputs() -> None:
-    text = (ROOT / "scripts" / "certforge_run_router.py").read_text(encoding="utf-8")
+def test_production_dispatcher_requires_v2_and_all_adapter_inputs() -> None:
+    router = (ROOT / "scripts" / "certforge_run_router.py").read_text(encoding="utf-8")
+    dispatcher = (
+        ROOT / "src" / "echo_certification_forge" / "dispatch_worker.py"
+    ).read_text(encoding="utf-8")
     launch = (
         ROOT / "src" / "echo_certification_forge" / "production_launch.py"
     ).read_text(encoding="utf-8")
-    assert "mandatory-rules.v2.json" in text
-    assert "mandatory-rules.v1.json" not in text
+    assert "existing governed subscriber run" in router
+    assert "mandatory-rules.v2.json" in dispatcher
+    assert "mandatory-rules.v1.json" not in dispatcher
     for option in ("--adapter-response", "--adapter-policy", "--adapter-registry"):
         assert option in launch
+        assert option in dispatcher
     assert "--adapter-runner-signing-key" in launch
-    assert "production_adapter_inputs_unavailable" in text
+    assert "--adapter-runner-signing-key" in dispatcher
+    assert "production_adapter_inputs_unavailable" in dispatcher
 
 
 def test_production_deploy_requires_v2_adapter_artifacts() -> None:

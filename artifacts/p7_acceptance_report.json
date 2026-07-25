@@ -1,0 +1,436 @@
+{
+  "contract_id": "certforge.subscriber-governance.v1",
+  "contract_sha256": "30b3167000f55da99fd513f157f5efae4da650d1bd38a402903e0f7738d1ff76",
+  "generated_at_utc": "2026-07-25T15:07:54.871470Z",
+  "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
+  "manifest_id": "certforge.release-strict.v1",
+  "passed": true,
+  "phase": "P7",
+  "platform": "Windows-11-10.0.22631-SP0",
+  "policy_id": "certforge.subscriber-governance.v1",
+  "policy_sha256": "38b5ebd1c7bf7c256221a1247bf2df489ef7fc97c263341704f29374a05a0969",
+  "python": "3.13.0 (tags/v3.13.0:60403a5, Oct  7 2024, 09:38:07) [MSC v.1941 64 bit (AMD64)]",
+  "release_note": "P7 completion does not override unresolved P5/P6 and hosted-CI blockers.",
+  "release_verdict": "NOT_READY",
+  "scenarios": {
+    "acquired_identity_digest_mismatch_fails_closed": {
+      "customer_code_executed": false,
+      "passed": true,
+      "worker_result": {
+        "detail": "worker_target_identity_mismatch",
+        "error": "subscriber_execution_denied",
+        "run_id": "cert_70c39ec8b6b6b1e6d3d3aa0ed485a36a6cc7e6ac",
+        "signed": false,
+        "state": "INFRASTRUCTURE_FAILURE"
+      }
+    },
+    "api_key_lifecycle": {
+      "detail": "api_key_revoked",
+      "passed": true,
+      "status_code": 401
+    },
+    "atomic_plan_downgrade_reconciliation": {
+      "governance": {
+        "allowed_policy_ids": [],
+        "customer_managed_signing": false,
+        "customer_signing_key_id": null,
+        "local_only_execution": false,
+        "private_worker_only": false,
+        "report_brand_name": null,
+        "report_logo_url": null,
+        "retention_days": 14
+      },
+      "passed": true,
+      "version": 3
+    },
+    "atomic_run_reservation_outbox_invariant": {
+      "passed": true,
+      "violations": []
+    },
+    "audited_validation_and_unhandled_errors": {
+      "audited_outcomes": [
+        [
+          "/v1/subscriber/audit",
+          "denied",
+          422,
+          "request_validation_error"
+        ],
+        [
+          "/v1/subscriber/policy-packs",
+          "error",
+          500,
+          "unhandled_exception"
+        ]
+      ],
+      "passed": true,
+      "unhandled_status": 500,
+      "validation_status": 422
+    },
+    "authoritative_billing_period_quota": {
+      "detail": "monthly_run_quota_exceeded",
+      "passed": true,
+      "rollover_created": true,
+      "usage": {
+        "active_run_reservations": 0,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 25
+        },
+        "organization_id": "org_92d71cff6cde12d3e4665da5",
+        "period_ended_at": "2026-09-03T15:07:49.624586Z",
+        "period_started_at": "2026-06-29T00:00:00Z"
+      }
+    },
+    "authorization_scope": {
+      "detail": "permission_denied",
+      "passed": true,
+      "status_code": 403
+    },
+    "billing_event_tenant_binding": {
+      "detail": "billing_event_conflict",
+      "passed": true
+    },
+    "billing_failure_fail_closed": {
+      "detail": "subscription_past_due",
+      "passed": true,
+      "status_code": 402
+    },
+    "billing_provider_ordering": {
+      "detail": "billing_event_stale",
+      "organization_status": "SUSPENDED",
+      "passed": true,
+      "rejected_event": [
+        10,
+        "REJECTED_STALE"
+      ]
+    },
+    "canonical_identity_reconciliation": {
+      "environment_identity": {
+        "adapter_set_sha256": "78e0289d44b4c8c9d8f7b33f6a3e51a3b1b66baa1a69666785afd181b200f160",
+        "egress_policy_sha256": "d57edca0dc282eb488db5fec5e672fce8a52f671f4f6db61eec85c4682c512ca",
+        "harness_sha256": "78225a66af9182f9a7d9e80da45a29a2a02b1bff16167f42218eeb47a1eceaf0",
+        "model_route_sha256": "e724b572de511842618e1c46f76d5176eb5c90aa4f2199db971edb074e72341c",
+        "os_runtime_sha256": "74220a72d1e3bc9071e2b598c5214e2f69f971d93ea6a9949d6ef469ad54be54",
+        "policy_sha256": "cbd6e2405f35dd2ce11593afe98ea802c3ff3ac5fb6dcd636eb498d2e2a1edb5",
+        "prompt_set_sha256": "a5cb80bed25f9928caf03eb37e7891a07692c0eafbb26462b3f2711eaaf33b61",
+        "runner_image_sha256": "7e41caae2ccabdeed0b99accb01cc0eda2d89d37600f0581bbe7c2b145a7a685",
+        "test_plan_sha256": "659a2c638bfeb091a2298758ea6114aa7fd96aa62ff8752d1a6098acbbe9e8ec"
+      },
+      "passed": true,
+      "target_identity": {
+        "artifact_sha256": "6793e3e537e8241310454934d11f11149228c1dd9cc96fa00aa50390ac74a0c1",
+        "canonical_ref": "C:/ECHO_OMEGA_PRIME/echo-certification-forge-release-integration/var/p7-acceptance-runtime/identity-source",
+        "configuration_sha256": null,
+        "dependency_sha256": null,
+        "source_commit": null,
+        "target_type": "local",
+        "tenant_id": "org_fa0e5901aa54647149b71422"
+      },
+      "worker_result": {
+        "adapter_bundle_response_sha256": null,
+        "adapter_set_sha256": "78e0289d44b4c8c9d8f7b33f6a3e51a3b1b66baa1a69666785afd181b200f160",
+        "blocking_findings": [],
+        "environment_identity_digest": "fde66924d4ba2e7bf74276562edbc2df9974a26ce793637486a9de9009c14d3c",
+        "journey_isolation": "none",
+        "release_verdict": "PRODUCTION_READY",
+        "run_id": "cert_0fcbe3041eb19862b42b68675aa9707537747f99",
+        "run_outcome": "COMPLETE",
+        "signed": true,
+        "signer_public_key_id": "ed25519:35d1f119eed35bad5a8caf995264bc96",
+        "state": "COMPLETED",
+        "target_identity_digest": "44975ac63baae935899a747d58814475e8a329358fd2c450930c3e2109c8ac2c"
+      }
+    },
+    "concurrent_quota": {
+      "detail": "concurrent_run_quota_exceeded",
+      "passed": true,
+      "status_code": 429
+    },
+    "durable_exact_run_dispatch": {
+      "dispatch_attempts": 2,
+      "dispatch_state": "COMPLETE",
+      "passed": true,
+      "run_id": "cert_55d0d4871bca4c1e253e25546c194f9d6fe075ca",
+      "worker_state": "COMPLETED"
+    },
+    "durable_intake_crash_gap_recovery": {
+      "dispatch_state": "COMPLETE",
+      "passed": true,
+      "run_id": "cert_b88ef5c7bfd96ac1a36a56390a82e23009d1d2b9",
+      "worker_state": "COMPLETED"
+    },
+    "expired_lease_cannot_commit_signed_completion": {
+      "passed": true,
+      "recovered_claims": 1,
+      "worker_result": {
+        "detail": "worker_run_claim_inactive",
+        "error": "subscriber_execution_fenced",
+        "run_id": "cert_54ef16b4f516379fdc50ee40544582fc6fd915aa",
+        "signed": false,
+        "state": "CALCULATING_VERDICT"
+      }
+    },
+    "expired_prestart_claim_requeue": {
+      "passed": true,
+      "recovered_claims": 1,
+      "usage": {
+        "active_run_reservations": 1,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 1
+        },
+        "organization_id": "org_6dc93ef5c43c5364fd0472a5",
+        "period_ended_at": "2026-08-24T15:07:51.462500Z",
+        "period_started_at": "2026-07-25T15:07:51.462500Z"
+      }
+    },
+    "expired_subscription_read_only": {
+      "detail": "subscription_period_expired",
+      "passed": true,
+      "read_status": 200,
+      "write_status": 402
+    },
+    "final_request_outcome_audit": {
+      "denied_outcomes": [
+        [
+          "/v1/certifications",
+          429,
+          "concurrent_run_quota_exceeded"
+        ],
+        [
+          "/v1/subscriber/governance",
+          403,
+          "private_workers_not_entitled"
+        ],
+        [
+          "/v1/subscriber/governance",
+          409,
+          "governance_version_conflict"
+        ],
+        [
+          "/v1/subscriber/me",
+          404,
+          "tenant_not_found"
+        ],
+        [
+          "/v1/subscriber/projects",
+          401,
+          "api_key_revoked"
+        ],
+        [
+          "/v1/subscriber/projects",
+          402,
+          "subscription_past_due"
+        ],
+        [
+          "/v1/subscriber/projects",
+          403,
+          "permission_denied"
+        ]
+      ],
+      "passed": true
+    },
+    "global_api_key_rate_limit": {
+      "detail": "rate_limit_exceeded",
+      "passed": true,
+      "retry_after": "60",
+      "status_code": 429
+    },
+    "governed_intake_default_block": {
+      "create_status": 201,
+      "passed": true,
+      "release_verdict": "NOT_READY",
+      "replay_status": 200,
+      "run_id": "cert_02ecbb54b06ec71477cb4e6bd765850f74063999"
+    },
+    "heartbeat_storage_loss_fences_customer_process": {
+      "customer_code_completed": false,
+      "passed": true,
+      "worker_result": {
+        "detail": "worker_run_heartbeat_storage_failed",
+        "error": "subscriber_execution_fenced",
+        "run_id": "cert_bd49eab67b4b57ba2eb58803987a741ab89e95ee",
+        "signed": false,
+        "state": "INFRASTRUCTURE_FAILURE"
+      }
+    },
+    "immutable_audit_chain": {
+      "chain_tip": "a7f076338d4cc6ee9d8556fcfb7e5899cbd29306ece9c1a372f4053990441141",
+      "delete_blocked": true,
+      "denied_audits": 3,
+      "event_count": 28,
+      "passed": true,
+      "update_blocked": true
+    },
+    "leased_worker_heartbeat_crash_recovery": {
+      "dispatch_state": "FAILED",
+      "heartbeat_expiry": "2026-07-25T15:08:21.422534Z",
+      "passed": true,
+      "recovered_claims": 1,
+      "run_state": "INFRASTRUCTURE_FAILURE",
+      "usage": {
+        "active_run_reservations": 0,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 0
+        },
+        "organization_id": "org_bfcdbedbdb341cb00fa730dc",
+        "period_ended_at": "2026-08-24T15:07:51.290642Z",
+        "period_started_at": "2026-07-25T15:07:51.290642Z"
+      }
+    },
+    "member_lifecycle_revocation": {
+      "activate_status": 204,
+      "deactivate_status": 204,
+      "passed": true,
+      "revoked_status": 401
+    },
+    "metering_idempotency": {
+      "passed": true,
+      "usage": {
+        "active_run_reservations": 1,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 1
+        },
+        "organization_id": "org_071758d9dddc707a2503bc46",
+        "period_ended_at": "2026-08-24T15:07:45.502064Z",
+        "period_started_at": "2026-07-25T15:07:45.502064Z"
+      }
+    },
+    "persisted_execution_governance_controls": {
+      "execution_location_denial": "local_execution_required",
+      "passed": true,
+      "platform_dispatch_claimed": false,
+      "positive_state": "COMPLETED",
+      "private_worker_denial": "private_worker_identity_invalid",
+      "signing_denial": "customer_signing_authority_required"
+    },
+    "plan_change_preserves_suspension": {
+      "lifecycle_status": "SUSPENDED",
+      "passed": true,
+      "persisted": [
+        "SUSPENDED",
+        "SUSPENDED",
+        "professional"
+      ]
+    },
+    "required_billing_periods": {
+      "invalid_period_code": "billing_period_invalid",
+      "missing_period_code": "billing_period_required",
+      "passed": true,
+      "prior_state": [
+        "developer",
+        "ACTIVE",
+        "2026-07-25T15:07:49.387846Z",
+        "2026-08-24T15:07:49.387846Z"
+      ],
+      "resulting_state": [
+        "developer",
+        "ACTIVE",
+        "2026-07-25T15:07:49.387846Z",
+        "2026-08-24T15:07:49.387846Z"
+      ]
+    },
+    "resource_lifecycle_revocation": {
+      "passed": true,
+      "project_archive_status": 204,
+      "worker_revoke_status": 204,
+      "worker_status": "REVOKED"
+    },
+    "safe_plan_defaults": {
+      "default_governance": {
+        "allowed_policy_ids": [],
+        "customer_managed_signing": false,
+        "customer_signing_key_id": null,
+        "local_only_execution": false,
+        "private_worker_only": false,
+        "report_brand_name": null,
+        "report_logo_url": null,
+        "retention_days": 7
+      },
+      "detail": "private_workers_not_entitled",
+      "passed": true,
+      "status_code": 403
+    },
+    "stale_reservation_recovery": {
+      "passed": true,
+      "usage": {
+        "active_run_reservations": 1,
+        "limits": {
+          "concurrent_runs": 1,
+          "monthly_certification_runs": 25,
+          "requests_per_minute": 30
+        },
+        "meters": {
+          "certification_runs": 1
+        },
+        "organization_id": "org_0fcc30551bcab27c6b428dd4",
+        "period_ended_at": "2026-08-24T15:07:46.522121Z",
+        "period_started_at": "2026-07-25T15:07:46.522121Z"
+      }
+    },
+    "strict_worker_reservation_claim": {
+      "cleanup_status": 200,
+      "direct_invocation": {
+        "detail": "worker_run_reservation_missing",
+        "error": "subscriber_worker_claim_denied",
+        "run_id": "p7-direct-unreserved"
+      },
+      "duplicate_claim_code": "worker_run_already_claimed",
+      "passed": true
+    },
+    "suspension_wins_execution_boundary": {
+      "boundary_reached": true,
+      "customer_code_executed": false,
+      "passed": true,
+      "worker_result": {
+        "detail": "worker_run_claim_inactive",
+        "error": "subscriber_execution_denied",
+        "run_id": "cert_a07712487bae780ae2fba78d03e3043cbc073b27",
+        "signed": false,
+        "state": "CANCELLED"
+      }
+    },
+    "tenant_isolation": {
+      "detail": "tenant_not_found",
+      "passed": true,
+      "status_code": 404
+    },
+    "transactional_mutation_authorization": {
+      "detail": "organization_suspended",
+      "mutated_projects": 0,
+      "passed": true
+    },
+    "versioned_policy_contract": {
+      "contract_id": "certforge.subscriber-governance.v1",
+      "passed": true,
+      "schema_version": "1.2.2"
+    },
+    "worker_entitlement_and_plan_retention": {
+      "active_state": "COMPLETED",
+      "passed": true,
+      "retention_classes": [
+        "subscriber-7d"
+      ],
+      "suspended_state": null
+    }
+  },
+  "schema_version": "1.2.2"
+}

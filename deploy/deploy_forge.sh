@@ -8,12 +8,15 @@ SOURCE_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"
+DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-main}"
 RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-releases}"
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
+DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
+ENV_FILE="${CERTFORGE_ENV_FILE:-/home/forge/.config/echo/certforge.env}"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 LOCK_FILE="${CERTFORGE_DEPLOY_LOCK:-/run/lock/echo-certforge-deploy.lock}"
 
@@ -46,6 +49,7 @@ mkdir -p \
   "$STATE_ROOT/evidence" \
   "$STATE_ROOT/trusted-public-keys" \
   "$STATE_ROOT/run-output" \
+  "$STATE_ROOT/dispatch-output" \
   "$STATE_ROOT/deploy-scratch"
 trap 'rm -rf "$RELEASE_TMP"' EXIT
 mkdir "$RELEASE_TMP"
@@ -87,6 +91,33 @@ test -f "$ADAPTER_DIR/adapter-runner-signing-key.pem" || {
   echo "!! adapter runner signing key missing"
   exit 1
 }
+test -f "$RELEASE_DIR/policies/subscriber-governance.v1.json" || {
+  echo "!! subscriber governance policy missing"
+  exit 1
+}
+test -f "$ENV_FILE" || {
+  echo "!! subscriber environment file missing: $ENV_FILE"
+  exit 1
+}
+ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
+if (( (8#$ENV_MODE & 077) != 0 )); then
+  echo "!! $ENV_FILE must not be group/world accessible (mode=$ENV_MODE)"
+  exit 1
+fi
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
+STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
+test "${#PROD_PEPPER}" -ge 32 || {
+  echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"
+  exit 1
+}
+test "${#STAGING_PEPPER}" -ge 32 || {
+  echo "!! ECHO_CERTFORGE_STAGING_API_KEY_PEPPER must be at least 32 bytes"
+  exit 1
+}
 
 echo "== [4/8] staging boot on 127.0.0.1:$STAGING_PORT =="
 STAGING_ROOT="$STATE_ROOT/deploy-scratch/staging.$RELEASE_ID"
@@ -105,14 +136,17 @@ if ss -H -ltn "sport = :$STAGING_PORT" | grep -q .; then
   echo "!! staging port $STAGING_PORT is already occupied"
   exit 1
 fi
-export ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3"
-export ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence"
-export ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json"
-export ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys"
-export ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
-export ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
-export ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
-export ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
+ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
+ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence" \
+ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json" \
+ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys" \
+ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json" \
+ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json" \
+ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json" \
+ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem" \
+ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
+ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1 \
+ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
 "$RELEASE_DIR/.venv/bin/python" -m uvicorn echo_certification_forge.app:app \
   --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning \
   >"$STAGING_ROOT/service.log" 2>&1 &
@@ -143,6 +177,9 @@ if [ "$ready" != 1 ]; then
 fi
 
 echo "== [5/8] staging live-smoke =="
+ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
+ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
+ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
 "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
   "http://127.0.0.1:$STAGING_PORT" || {
   echo "!! STAGING SMOKE RED - production untouched"
@@ -159,10 +196,16 @@ if [ -L "$CURRENT_LINK" ]; then
 fi
 PREV_ENABLED="$(systemctl is-enabled "$SERVICE.service" 2>/dev/null || true)"
 PREV_ACTIVE="$(systemctl is-active "$SERVICE.service" 2>/dev/null || true)"
+PREV_DISPATCH_ENABLED="$(systemctl is-enabled "$DISPATCH_SERVICE.service" 2>/dev/null || true)"
+PREV_DISPATCH_ACTIVE="$(systemctl is-active "$DISPATCH_SERVICE.service" 2>/dev/null || true)"
 UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge.service.$RELEASE_ID"
+DISPATCH_UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-dispatcher.service.$RELEASE_ID"
 HAD_UNIT=0
+HAD_DISPATCH_UNIT=0
 UNIT_KIND="missing"
+DISPATCH_UNIT_KIND="missing"
 UNIT_LINK_TARGET=""
+DISPATCH_UNIT_LINK_TARGET=""
 if sudo test -L "$UNIT_PATH"; then
   UNIT_KIND="symlink"
   UNIT_LINK_TARGET="$(sudo readlink "$UNIT_PATH")"
@@ -171,6 +214,15 @@ elif sudo test -f "$UNIT_PATH"; then
   UNIT_KIND="file"
   sudo cat "$UNIT_PATH" >"$UNIT_BACKUP"
   HAD_UNIT=1
+fi
+if sudo test -L "$DISPATCH_UNIT_PATH"; then
+  DISPATCH_UNIT_KIND="symlink"
+  DISPATCH_UNIT_LINK_TARGET="$(sudo readlink "$DISPATCH_UNIT_PATH")"
+  HAD_DISPATCH_UNIT=1
+elif sudo test -f "$DISPATCH_UNIT_PATH"; then
+  DISPATCH_UNIT_KIND="file"
+  sudo cat "$DISPATCH_UNIT_PATH" >"$DISPATCH_UNIT_BACKUP"
+  HAD_DISPATCH_UNIT=1
 fi
 DB_PATH="$STATE_ROOT/certforge.sqlite3"
 DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
@@ -186,6 +238,7 @@ rollback_production() {
   set +e
   echo "!! deployment failed - restoring prior production state"
   rollback_status=0
+  sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
   sudo systemctl stop "$SERVICE.service" >/dev/null 2>&1 || true
   if systemctl is-active --quiet "$SERVICE.service"; then
     rollback_status=1
@@ -256,7 +309,49 @@ rollback_production() {
     sudo rm -f "$UNIT_PATH" || rollback_status=1
     sudo systemctl daemon-reload || rollback_status=1
   fi
-  rm -f "$UNIT_BACKUP" "$DB_BACKUP"
+  if [ "$HAD_DISPATCH_UNIT" = 1 ]; then
+    sudo rm -f "$DISPATCH_UNIT_PATH" || rollback_status=1
+    if [ "$DISPATCH_UNIT_KIND" = "symlink" ]; then
+      sudo ln -s "$DISPATCH_UNIT_LINK_TARGET" "$DISPATCH_UNIT_PATH" ||
+        rollback_status=1
+    else
+      sudo cp "$DISPATCH_UNIT_BACKUP" "$DISPATCH_UNIT_PATH" || rollback_status=1
+    fi
+    sudo systemctl daemon-reload || rollback_status=1
+    case "$PREV_DISPATCH_ENABLED" in
+      enabled)
+        sudo systemctl enable "$DISPATCH_SERVICE.service" >/dev/null ||
+          rollback_status=1
+        ;;
+      enabled-runtime)
+        sudo systemctl enable --runtime "$DISPATCH_SERVICE.service" >/dev/null ||
+          rollback_status=1
+        ;;
+      masked)
+        sudo systemctl mask "$DISPATCH_SERVICE.service" >/dev/null ||
+          rollback_status=1
+        ;;
+      masked-runtime)
+        sudo systemctl mask --runtime "$DISPATCH_SERVICE.service" >/dev/null ||
+          rollback_status=1
+        ;;
+    esac
+    if [ "$PREV_DISPATCH_ACTIVE" = "active" ]; then
+      sudo systemctl start "$DISPATCH_SERVICE.service" || rollback_status=1
+      systemctl is-active --quiet "$DISPATCH_SERVICE.service" ||
+        rollback_status=1
+    else
+      sudo systemctl stop "$DISPATCH_SERVICE.service" || rollback_status=1
+      systemctl is-active --quiet "$DISPATCH_SERVICE.service" &&
+        rollback_status=1
+    fi
+  else
+    sudo systemctl disable --now "$DISPATCH_SERVICE.service" >/dev/null 2>&1 ||
+      true
+    sudo rm -f "$DISPATCH_UNIT_PATH" || rollback_status=1
+    sudo systemctl daemon-reload || rollback_status=1
+  fi
+  rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" "$DB_BACKUP"
   if [ "$rollback_status" = 0 ]; then
     echo "ROLLBACK COMPLETE - prior production state is healthy"
   else
@@ -266,6 +361,13 @@ rollback_production() {
 }
 trap rollback_production EXIT
 
+if [ "$PREV_DISPATCH_ACTIVE" = "active" ]; then
+  sudo systemctl stop "$DISPATCH_SERVICE.service"
+  if systemctl is-active --quiet "$DISPATCH_SERVICE.service"; then
+    echo "!! could not quiesce dispatcher before database snapshot"
+    exit 1
+  fi
+fi
 if [ "$PREV_ACTIVE" = "active" ]; then
   sudo systemctl stop "$SERVICE.service"
   if systemctl is-active --quiet "$SERVICE.service"; then
@@ -307,13 +409,47 @@ Environment=PYTHONUNBUFFERED=1
 Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
+Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
+Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
 Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
 Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
 Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
 Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
+EnvironmentFile=$ENV_FILE
 ExecStart=$CURRENT_LINK/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo rm -f "$DISPATCH_UNIT_PATH"
+sudo tee "$DISPATCH_UNIT_PATH" >/dev/null <<UNIT
+[Unit]
+Description=echo-certification-forge - durable subscriber run dispatcher
+After=network.target $SERVICE.service
+Requires=$SERVICE.service
+
+[Service]
+Type=simple
+User=forge
+WorkingDirectory=$CURRENT_LINK
+Environment=PYTHONUNBUFFERED=1
+Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
+Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
+Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
+Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
+Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
+Environment=ECHO_CERTFORGE_RUN_SIGNING_KEY=$STATE_ROOT/run-signing-key.pem
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
+Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
+Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
+EnvironmentFile=$ENV_FILE
+ExecStart=$CURRENT_LINK/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox
+Restart=always
 RestartSec=5
 
 [Install]
@@ -322,6 +458,8 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE.service"
 sudo systemctl restart "$SERVICE.service"
+sudo systemctl enable "$DISPATCH_SERVICE.service"
+sudo systemctl restart "$DISPATCH_SERVICE.service"
 
 echo "== [8/8] production health + live-smoke =="
 ready=0
@@ -333,8 +471,12 @@ for _ in $(seq 1 40); do
   }
   sleep 0.5
 done
-if [ "$ready" != 1 ] || ! "$RELEASE_DIR/.venv/bin/python" \
-  "$RELEASE_DIR/deploy/smoke_live.py" "http://127.0.0.1:$PROD_PORT"; then
+if [ "$ready" != 1 ] || ! systemctl is-active --quiet "$DISPATCH_SERVICE.service" ||
+  ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+    ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
+    ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
+    "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
+      "http://127.0.0.1:$PROD_PORT"; then
   echo "!! PROD RED"
   exit 1
 fi
@@ -345,6 +487,7 @@ service_owns_port "$PROD_PORT" || {
 
 PROMOTION_ARMED=0
 trap - EXIT
-rm -f "$UNIT_BACKUP" "$DB_BACKUP"
+rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" "$DB_BACKUP"
 echo "DEPLOY GREEN - $SERVICE live on :$PROD_PORT @ $NEW_SHA"
 sudo systemctl status "$SERVICE.service" --no-pager -l | head -6 || true
+sudo systemctl status "$DISPATCH_SERVICE.service" --no-pager -l | head -6 || true

@@ -91,7 +91,8 @@ class EvidenceStore:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             policy_version TEXT,
-            target_reference TEXT
+            target_reference TEXT,
+            project_id TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id, created_at);
 
@@ -192,17 +193,6 @@ class EvidenceStore:
             created_at TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS legal_holds (
-            hold_id TEXT PRIMARY KEY,
-            organization_id TEXT NOT NULL,
-            tenant_id TEXT NOT NULL,
-            run_id TEXT,
-            reason TEXT NOT NULL,
-            active INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            released_at TEXT
-        );
-
         CREATE TRIGGER IF NOT EXISTS no_update_evidence BEFORE UPDATE ON evidence_artifacts
         BEGIN SELECT RAISE(ABORT, 'evidence_artifacts are append-only'); END;
         CREATE TRIGGER IF NOT EXISTS no_delete_evidence BEFORE DELETE ON evidence_artifacts
@@ -231,6 +221,8 @@ class EvidenceStore:
                 connection.execute("ALTER TABLE runs ADD COLUMN policy_version TEXT")
             if "target_reference" not in existing:
                 connection.execute("ALTER TABLE runs ADD COLUMN target_reference TEXT")
+            if "project_id" not in existing:
+                connection.execute("ALTER TABLE runs ADD COLUMN project_id TEXT")
 
     def register_run(
         self,
@@ -283,6 +275,7 @@ class EvidenceStore:
         manifest_digest: str,
         declared_artifact_sha256: str | None = None,
         declared_source_commit: str | None = None,
+        project_id: str | None = None,
     ) -> None:
         """Register a run from a client-declared, pre-computed target identity digest.
 
@@ -290,7 +283,7 @@ class EvidenceStore:
         the full canonical field set, so the digest is stored as the authoritative commitment;
         target acquisition later verifies the acquired artifact hashes to this digest. When a
         declared artifact commitment is provided (platform webhooks), it is stored alongside
-        the digest so `reconcile_declared_target` can bind the run to its acquired identity.
+        the digest so ``reconcile_declared_target`` can bind the run to its acquired identity.
         """
         require_identifier(run_id, "run_id")
         require_identifier(tenant_id, "tenant_id")
@@ -298,6 +291,8 @@ class EvidenceStore:
         require_sha256(target_identity_digest, "target_identity_digest")
         require_sha256(environment_identity_digest, "environment_identity_digest")
         require_identifier(policy_version, "policy_version")
+        if project_id is not None:
+            require_identifier(project_id, "project_id")
         require_identifier(manifest_id, "manifest_id")
         if not target_reference.strip():
             raise ValueError("target_reference is required")
@@ -320,8 +315,9 @@ class EvidenceStore:
                     run_id, tenant_id, target_identity_json, target_identity_digest,
                     environment_identity_json, environment_identity_digest,
                     rule_manifest_id, rule_manifest_digest, run_outcome, state,
-                    created_at, updated_at, policy_version, target_reference
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, policy_version, target_reference,
+                    project_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -338,6 +334,7 @@ class EvidenceStore:
                     now,
                     policy_version,
                     target_reference,
+                    project_id,
                 ),
             )
 
@@ -348,30 +345,10 @@ class EvidenceStore:
         target: TargetIdentity,
         environment: EnvironmentIdentity,
     ) -> None:
-        """Bind a DECLARED run to its ACQUIRED exact identity — pre-execution, fail-closed.
-
-        A run registered from a declared commitment (webhook/intake) carries only a target
-        identity digest plus, when supplied, a declared artifact commitment. Before execution
-        the worker acquires the real artifact and calls this to replace the declared
-        commitment with the full canonical ``TargetIdentity`` — but ONLY when every declared
-        commitment matches the acquired identity exactly:
-
-        * the run must still be pending (CREATED/QUEUED) — the window closes at acquisition;
-        * a declared artifact commitment must exist and equal the acquired artifact digest
-          (a declared run WITHOUT an artifact commitment can never reconcile — fail-closed);
-        * a declared source commit, when present, must equal the acquired one;
-        * the stored commitment must re-hash to the stored identity digest (tamper check);
-        * the execution environment must match the declared environment identity digest.
-
-        Any violation raises ``ValueError`` and the run must not execute. The declared
-        ``target_type`` is a platform classification ("package"/"container"), not the
-        acquisition transport ("local"/"git"); the artifact digest is the semantic
-        commitment, so types are deliberately not compared.
-        """
-        row = self.get_run(run_id, tenant_id)  # KeyError -> unknown run (tenant-scoped)
+        """Bind a pending declared run to its acquired exact identity, fail-closed."""
+        row = self.get_run(run_id, tenant_id)
         target_data: dict[str, Any] = json.loads(str(row["target_identity_json"]))
         if "declared_identity_digest" not in target_data:
-            # Already a full identity: idempotent when identical, refused otherwise.
             if str(row["target_identity_digest"]) == target.identity_digest:
                 return
             raise ValueError("target_already_reconciled_to_different_identity")
@@ -509,7 +486,12 @@ class EvidenceStore:
         run = self.get_run(run_id, tenant_id)
         del run
         created_at = to_utc_iso(utc_now())
-        relative_path = f"{tenant_id}/{run_id}/artifacts/{artifact_id}.bin"
+        artifact_filename = (
+            artifact_id[len(run_id) + 1 :]
+            if artifact_id.startswith(f"{run_id}-")
+            else artifact_id
+        )
+        relative_path = f"{tenant_id}/{run_id}/artifacts/{artifact_filename}.bin"
         destination = contained_path(self.evidence_root, relative_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists():
@@ -538,7 +520,7 @@ class EvidenceStore:
             }
             record_hash = sha256_json(descriptor)
             chain_hash = sha256_bytes(bytes.fromhex(prev_chain_hash) + bytes.fromhex(record_hash))
-            fd, temporary_name = tempfile.mkstemp(prefix=f".{artifact_id}.", dir=destination.parent)
+            fd, temporary_name = tempfile.mkstemp(prefix=".artifact-", dir=destination.parent)
             try:
                 with os.fdopen(fd, "wb") as handle:
                     handle.write(content)
@@ -704,12 +686,7 @@ class EvidenceStore:
                 """SELECT r.artifact_id, r.run_id, a.relative_path
                      FROM evidence_retention r
                      JOIN evidence_artifacts a ON a.artifact_id = r.artifact_id
-                    WHERE r.expires_at <= ? AND r.purged_at IS NULL
-                      AND NOT EXISTS (
-                          SELECT 1 FROM legal_holds h
-                           WHERE h.tenant_id=r.tenant_id AND h.active=1
-                             AND (h.run_id IS NULL OR h.run_id=r.run_id)
-                      )""",
+                    WHERE r.expires_at <= ? AND r.purged_at IS NULL""",
                 (now,),
             ).fetchall()
             for row in rows:

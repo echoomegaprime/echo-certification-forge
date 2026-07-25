@@ -3768,6 +3768,21 @@ no external source transfer;
 customer-controlled model routing;
 customer-controlled evidence storage;
 customer-controlled signing keys.
+
+P7 subscriber-governance hardening requirements
+- Subscriber workers require an existing QUEUED run and a matching BOUND reservation before target acquisition.
+- Reservation claims atomically validate tenant, project, policy, target reference, and target digest, then transition to EXECUTING.
+- Private-worker identity/attestation, local-only execution, and customer-managed signing controls are enforced from persisted governance and revalidated immediately before execution.
+- Every principal-authorized subscriber mutation repeats live authorization inside the same write transaction.
+- Plan changes atomically reconcile retention and unsupported governance controls; all worker retention is capped by the current plan.
+- Activation, renewal, and plan-change billing events require valid authoritative billing-period boundaries.
+- Authenticated validation failures, denials, and unhandled errors are appended to the immutable final-request audit chain.
+- Governed intake atomically materializes the deterministic run, metered BOUND reservation, idempotency record, and exact transactional outbox; legacy partial intake recovery can only complete the same run ID or terminalize cleanly.
+- Dispatcher and worker claims are leased; worker heartbeats renew active leases, heartbeat/storage loss terminates active customer execution, signing and completion require the same active lease, and expired started claims terminalize with concurrency release plus one idempotent original-period meter compensation.
+- After acquisition, canonical target and environment identities must exactly match their declarations and reservation binding; the final execution boundary atomically persists those identities, binds governance/subscription versions, and moves the run/reservation to execution-started before customer code runs.
+- Plan changes preserve PAST_DUE, SUSPENDED, and CANCELLED lifecycle states; risk transitions revoke non-started claims and only explicit ordered activation/reactivation may restore execution.
+- Staging and production smoke use a protected deployment environment with distinct >=32-byte peppers, provision isolated subscriber tenants/projects/API keys, authenticate governed requests with project_id, and test authenticated cross-tenant isolation.
+
 39. Forge Self-Certification
 The ECHO Certification Forge must certify itself.
 • 

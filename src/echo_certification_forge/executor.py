@@ -15,10 +15,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 from .adapters import (
     AdapterAcceptancePolicy,
@@ -50,11 +51,12 @@ class StaticEntitlement:
     """A simple allow-list entitlement. Tenants not in `entitled` are billing-blocked."""
 
     entitled: frozenset[str]
+    denied_reason: str = "entitlement_exhausted"
 
     def check(self, tenant_id: str) -> tuple[bool, str]:
         if tenant_id in self.entitled:
             return True, "entitled"
-        return False, "entitlement_exhausted"
+        return False, self.denied_reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,32 +112,72 @@ class RunExecutor:
         )
         return artifact_id
 
-    def _inprocess_journey(self, argv: list[str], workdir: Path) -> tuple[bool, dict]:
+    def _inprocess_journey(
+        self,
+        argv: list[str],
+        workdir: Path,
+        execution_guard: Callable[[], None] | None = None,
+    ) -> tuple[bool, dict]:
         """Real unisolated execution, safe only for trusted fixtures/tests."""
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 argv,
                 cwd=str(workdir),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=60,
                 shell=False,
-                check=False,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except OSError as exc:
             return False, {
                 "executed": True,
                 "isolation": "none",
                 "error": type(exc).__name__,
                 "argv": argv,
             }
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                if execution_guard is not None:
+                    execution_guard()
+            except BaseException:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+                proc.communicate()
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+                stdout, stderr = proc.communicate()
+                return False, {
+                    "executed": True,
+                    "isolation": "none",
+                    "error": "TimeoutExpired",
+                    "argv": argv,
+                    "stdout_tail": stdout[-2000:],
+                    "stderr_tail": stderr[-2000:],
+                }
+            try:
+                stdout, stderr = proc.communicate(timeout=min(0.1, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
         return proc.returncode == 0, {
             "executed": True,
             "isolation": "none",
             "argv": argv,
             "returncode": proc.returncode,
-            "stdout_tail": proc.stdout[-2000:],
-            "stderr_tail": proc.stderr[-2000:],
+            "stdout_tail": stdout[-2000:],
+            "stderr_tail": stderr[-2000:],
         }
 
     def execute(
@@ -151,6 +193,8 @@ class RunExecutor:
         control_attestations: dict[str, bool] | None = None,
         adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
         adapter_policy: AdapterAcceptancePolicy | None = None,
+        execution_guard: Callable[[], None] | None = None,
+        completion_callback: Callable[[Any], None] | None = None,
     ) -> ExecutionResult:
         retention = retention or RetentionPolicy()
         # Architectural controls the local executor does not itself exercise must be explicitly
@@ -184,12 +228,20 @@ class RunExecutor:
                 halt_reason=reason,
             )
 
-        self._t(run_id, tenant_id, RunState.ACQUIRING_TARGET, "acquire_target")
+        run = self.store.get_run(run_id, tenant_id)
+        if run["state"] == RunState.QUEUED.value:
+            self._t(run_id, tenant_id, RunState.ACQUIRING_TARGET, "acquire_target")
+        elif run["state"] != RunState.ACQUIRING_TARGET.value:
+            raise ValueError(
+                f"execution requires QUEUED or ACQUIRING_TARGET, got {run['state']}"
+            )
         self._t(run_id, tenant_id, RunState.DISCOVERING, "discover")
 
         blocking: list[str] = []
 
         # --- Gate 2: hostile-source scan ---------------------------------------------------------
+        if execution_guard is not None:
+            execution_guard()
         source_scan = scan_target_source(source_root)
         self._evidence(
             run_id,
@@ -256,12 +308,22 @@ class RunExecutor:
             "reason": "no_journey" if journey is None else "hostile_target_skipped",
         }
         if clean and journey is not None:
-            runner = journey_runner or self._inprocess_journey
-            journey_passed, journey_detail = runner(journey, source_root)
+            if execution_guard is not None:
+                execution_guard()
+            if journey_runner is None:
+                journey_passed, journey_detail = self._inprocess_journey(
+                    journey, source_root, execution_guard
+                )
+            else:
+                journey_passed, journey_detail = journey_runner(journey, source_root)
+            if execution_guard is not None:
+                execution_guard()
 
         self._t(run_id, tenant_id, RunState.COLLECTING_EVIDENCE, "collect")
 
         # --- P5 adapter evidence and exact environment-set binding -------------------------------
+        if execution_guard is not None:
+            execution_guard()
         adapter_rule_required = any(rule.id == _ADAPTER_RULE for rule in self.manifest.rules)
         adapter_passed = False
         adapter_detail: dict[str, object] = {
@@ -369,6 +431,8 @@ class RunExecutor:
             ),
         }
         for rule in self.manifest.rules:
+            if execution_guard is not None:
+                execution_guard()
             passed, detail = checks.get(rule.id, (False, {"check": "no_check_implemented"}))
             artifact_id = self._evidence(
                 run_id,
@@ -387,6 +451,8 @@ class RunExecutor:
         self._t(run_id, tenant_id, RunState.CALCULATING_VERDICT, "verdict")
 
         self.store.set_run_outcome(run_id, tenant_id, RunOutcome.COMPLETE)
+        if execution_guard is not None:
+            execution_guard()
         decision = DeterministicVerdictEngine().evaluate(
             self.store,
             run_id,
@@ -394,12 +460,18 @@ class RunExecutor:
             self.manifest,
             self.signer.key_id,
         )
+        if execution_guard is not None:
+            execution_guard()
         envelope = self.signer.sign(decision)
-        self.store.save_signed_verdict(run_id, tenant_id, envelope)
-
-        self._t(run_id, tenant_id, RunState.FINALIZING_REPORT, "finalize")
-        self._t(run_id, tenant_id, RunState.REGISTERING_RESULT, "register")
-        self._t(run_id, tenant_id, RunState.COMPLETED, "complete")
+        if execution_guard is not None:
+            execution_guard()
+        if completion_callback is not None:
+            completion_callback(envelope)
+        else:
+            self.store.save_signed_verdict(run_id, tenant_id, envelope)
+            self._t(run_id, tenant_id, RunState.FINALIZING_REPORT, "finalize")
+            self._t(run_id, tenant_id, RunState.REGISTERING_RESULT, "register")
+            self._t(run_id, tenant_id, RunState.COMPLETED, "complete")
 
         return ExecutionResult(
             run_id,

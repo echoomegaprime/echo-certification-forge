@@ -4,12 +4,13 @@ Echo Certification Forge is a deterministic, evidence-backed release authority f
 
 ## Current phase
 
-P1, P2, P3, and P4 are complete:
+P1, P2, P3, P4, and the independently gated P7 subscriber-governance lane are complete:
 
 - **P1:** immutable target/environment identity, append-only evidence, Merkle roots, deterministic verdicts, signed verdict envelopes, lifecycle checks, and exact-digest deploy-gate evaluation.
 - **P2:** short-lived run credentials, authenticated transport, replay prevention, leases, heartbeats, resumable chunks, safe archive handling, hardened non-root runner containers, and real FORGE resource/timeout/crash acceptance.
 - **P3:** authenticated append-only evidence custody, visibility and legal-hold controls, independent signed root anchoring, isolated verdict signing, public-key publication/rotation/revocation/compromise behavior, public-only offline verification material, and real FORGE failure/recovery acceptance.
 - **P4:** purpose-built role images, sealed twelve-image supply-chain identities, independent builds, vulnerability/malware scans, signatures, hostile runtime matrix, service lifecycle, public-only verifier containment, and purpose-built signer regression on FORGE.
+- **P7:** tenant-isolated organizations/projects/users, role-and-scope authorization, API-key and resource revocation, plan quotas and global abuse controls, billing/subscription enforcement, append-only hash-chained audit, governed intake, and versioned subscriber policy/contract.
 
 Authoritative state:
 
@@ -19,7 +20,7 @@ run_outcome: COMPLETE
 release_verdict: NOT_READY
 ```
 
-The complete product is not production-ready. GS343/R2D2 quality promotion, real deployment-path enforcement, and subscriber governance remain blockers. Central `echo.certforge.*` registration and hosted CI are proven complete.
+The complete product is not production-ready. GS343/R2D2 applied-adapter quality and maturity plus hosted CI resolution remain blockers. P6/P7 implementation does not override those fail-closed blockers.
 
 The verified execution plane uses hardened non-root containers on a **rootful Docker Engine**. This is not a claim of rootless Docker or microVM isolation.
 
@@ -46,6 +47,14 @@ The full acceptance report is 27,322 bytes with SHA-256 `e805e6b9913a8a3712fee47
 
 The rerun6 acceptance report is 124,342 bytes with SHA-256 `c7b5031265883386b7b0df6409600dd51a622a796ccdd75abd221c0e373b4c56`.
 The sealed image manifest SHA-256 is `bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a`.
+
+## P7 evidence
+
+- Executable acceptance: `python scripts/p7_acceptance.py`
+- Acceptance report: `artifacts/p7_acceptance_report.json`
+- Subscriber policy: `policies/subscriber-governance.v1.json`
+- Subscriber API/authorization contract: `contracts/subscriber-governance.v1.json`
+- Targeted suite: `tests/test_p7_subscriber_governance.py`
 
 ## Development and verification
 
