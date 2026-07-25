@@ -22,6 +22,8 @@ class DeployGate:
         target_identity_digest: str,
         environment_identity_digest: str,
         rule_manifest_digest: str,
+        evidence_merkle_root: str | None = None,
+        signing_key_id: str | None = None,
         at: datetime | None = None,
     ) -> DeployGateDecision:
         reasons: list[str] = []
@@ -50,6 +52,13 @@ class DeployGate:
             reasons.append("environment_identity_mismatch")
         if payload.get("rule_manifest_digest") != rule_manifest_digest:
             reasons.append("rule_manifest_mismatch")
+        if (
+            evidence_merkle_root is not None
+            and payload.get("evidence_merkle_root") != evidence_merkle_root
+        ):
+            reasons.append("requested_evidence_root_mismatch")
+        if signing_key_id is not None and payload.get("signing_key_id") != signing_key_id:
+            reasons.append("requested_signing_key_mismatch")
         now = at or utc_now()
         if parse_utc_iso(str(payload["expires_at"])) <= now:
             reasons.append("verdict_expired")

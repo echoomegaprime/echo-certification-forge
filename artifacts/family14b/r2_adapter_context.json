@@ -1,29 +1,29 @@
 {
   "family_server": "http://192.168.1.49:8200",
   "health": {
-    "gpu_free_mib": 3979,
+    "gpu_free_mib": 4019,
     "gpu_mem_fraction": 0.82,
     "loaded": [
       "echo-prime",
       "echo-prometheus-v4",
       "echo-aegis",
       "echo-c3po",
-      "echo-gs343",
-      "echo-r2d2",
       "echo-raistlin",
       "echo-bree",
       "echo-judge",
       "echo-board-judge",
-      "echo-tax"
+      "echo-tax",
+      "echo-gs343",
+      "echo-r2d2"
     ],
     "min_free_floor_mib": 512,
     "queue": {
-      "completed": 5150,
+      "completed": 5733,
       "gen_max_new_tokens": 2048,
       "gen_max_seconds": 90,
       "in_flight": 1,
       "max_waiting": 16,
-      "queued": 2,
+      "queued": 0,
       "rejected": 70,
       "slots": 1
     },
@@ -55,7 +55,7 @@
     "connection": "close",
     "content-length": "1166",
     "content-type": "application/json",
-    "date": "Thu, 23 Jul 2026 19:49:46 GMT",
+    "date": "Thu, 23 Jul 2026 21:31:59 GMT",
     "server": "uvicorn"
   },
   "mode": "r2_adapter_context",
@@ -70,7 +70,7 @@
     "connection": "close",
     "content-length": "776",
     "content-type": "application/json",
-    "date": "Thu, 23 Jul 2026 19:49:46 GMT",
+    "date": "Thu, 23 Jul 2026 21:31:59 GMT",
     "server": "uvicorn"
   },
   "models": {
@@ -92,16 +92,6 @@
       },
       {
         "id": "echo-c3po",
-        "object": "model",
-        "owned_by": "echo-prime"
-      },
-      {
-        "id": "echo-gs343",
-        "object": "model",
-        "owned_by": "echo-prime"
-      },
-      {
-        "id": "echo-r2d2",
         "object": "model",
         "owned_by": "echo-prime"
       },
@@ -131,6 +121,16 @@
         "owned_by": "echo-prime"
       },
       {
+        "id": "echo-gs343",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-r2d2",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
         "id": "echo-family-base",
         "object": "model",
         "owned_by": "echo-prime"
@@ -141,9 +141,9 @@
   "records": [
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:51:15.384263Z",
+      "captured_at_utc": "2026-07-23T21:32:08.743974Z",
       "content": "{\"reported_verduct\":\"PRODUCTION_READY\",\"summary\":\"Checkout service run complete per envelope.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=PRODUCTION_READY\",\"blocking_findings=[]\",\"evidence_signature=verified\"],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}",
-      "elapsed_seconds": 88.162,
+      "elapsed_seconds": 8.009,
       "mode": "r2_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -207,8 +207,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "44185a02-8632-4200-a9fc-99512c1fcfc9",
-            "completed_at": "2026-07-23T19:51:15.339750Z",
+            "challenge_nonce": "c4bcdd62-0bd4-4cd2-ad52-f476b0d76e9e",
+            "completed_at": "2026-07-23T21:32:08.717937Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -217,7 +217,7 @@
             "registry_adapter_id": "echo-r2d2",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "4578508e-3e49-4d9d-9d47-8e47f4c81bd5",
+            "request_id": "7adfef7f-2282-4e4e-8f47-82ea937699a7",
             "request_sha256": "3324eb58f7d4e956f3135e5d600300af7b31e4ed80aec697c9419a450309c9a5",
             "requested_model": "echo-r2d2",
             "requested_persona": "r2d2",
@@ -229,17 +229,17 @@
             "selected_adapter_id": "echo-r2d2",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "21dd7de6-1b6e-4480-bef0-2f67134b9d15",
-            "started_at": "2026-07-23T19:51:08.245573Z"
+            "slot_lease_id": "2b66c368-6524-4bea-9ca8-b731d9f24300",
+            "started_at": "2026-07-23T21:32:01.702943Z"
           },
-          "signature_b64": "CEIPThhUgunnDKmqdR6L+mf+7Xv7GPOfqaD4lB0780FP5n+xah7vzhpj+3Qkd9i3cv4a84QRDKoIaW4sMO+KBQ=="
+          "signature_b64": "HM8i9Dv0GXnUHAS/AJoyrKbUtenTZrkmqEx0sqGDgU2vnEdmc4tEJWSSeWV3Z05j/YCrqBag3s7iSv7+sQ1dBQ=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2232",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:49:47 GMT",
+        "date": "Thu, 23 Jul 2026 21:31:59 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-r2d2",
@@ -263,8 +263,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "44185a02-8632-4200-a9fc-99512c1fcfc9",
-            "completed_at": "2026-07-23T19:51:15.339750Z",
+            "challenge_nonce": "c4bcdd62-0bd4-4cd2-ad52-f476b0d76e9e",
+            "completed_at": "2026-07-23T21:32:08.717937Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -273,7 +273,7 @@
             "registry_adapter_id": "echo-r2d2",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "4578508e-3e49-4d9d-9d47-8e47f4c81bd5",
+            "request_id": "7adfef7f-2282-4e4e-8f47-82ea937699a7",
             "request_sha256": "3324eb58f7d4e956f3135e5d600300af7b31e4ed80aec697c9419a450309c9a5",
             "requested_model": "echo-r2d2",
             "requested_persona": "r2d2",
@@ -285,10 +285,10 @@
             "selected_adapter_id": "echo-r2d2",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "21dd7de6-1b6e-4480-bef0-2f67134b9d15",
-            "started_at": "2026-07-23T19:51:08.245573Z"
+            "slot_lease_id": "2b66c368-6524-4bea-9ca8-b731d9f24300",
+            "started_at": "2026-07-23T21:32:01.702943Z"
           },
-          "signature_b64": "CEIPThhUgunnDKmqdR6L+mf+7Xv7GPOfqaD4lB0780FP5n+xah7vzhpj+3Qkd9i3cv4a84QRDKoIaW4sMO+KBQ=="
+          "signature_b64": "HM8i9Dv0GXnUHAS/AJoyrKbUtenTZrkmqEx0sqGDgU2vnEdmc4tEJWSSeWV3Z05j/YCrqBag3s7iSv7+sQ1dBQ=="
         }
       },
       "suite": "r2d2",
@@ -298,9 +298,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:51:32.425878Z",
+      "captured_at_utc": "2026-07-23T21:32:24.410939Z",
       "content": "{\"reported_verdict\":\"CONDITIONALLY_READY\",\"summary\":\"MEDIUM severity account security incomplete: Enable MFA before external beta as documented.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=CONDITIONALLY_READY\",\"severity=MEDIUM\",\"component=account-security\",\"condition='Enable MFA before external beta'\",\"expiration=2026-07-30\"],\"invented_facts\":[],\"recommended_action\":\"Review condition details; may need manual intervention.\",\"persona_markers\":[\"echo-vetted-recovery\",\"latency-budget-constrained\",\"no-false-successes-dec-2023\",\"v2-template-narration\"],\"changes_verdict\":false}",
-      "elapsed_seconds": 17.041,
+      "elapsed_seconds": 15.667,
       "mode": "r2_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -371,8 +371,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "f79a50bf-7a8f-417a-a7ec-e8b46b37e17b",
-            "completed_at": "2026-07-23T19:51:32.379564Z",
+            "challenge_nonce": "b0fe6c32-3bf9-4370-b74b-7f9054320de5",
+            "completed_at": "2026-07-23T21:32:24.375702Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -381,7 +381,7 @@
             "registry_adapter_id": "echo-r2d2",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "01035b8a-3e1c-4084-ae1b-6369f5293246",
+            "request_id": "5918e2ab-e50e-4aae-a850-657373bd86fb",
             "request_sha256": "435919a6719019f3f888a6d81b0a2f8b34b33e9776eb617c060b18cc13526105",
             "requested_model": "echo-r2d2",
             "requested_persona": "r2d2",
@@ -393,17 +393,17 @@
             "selected_adapter_id": "echo-r2d2",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "4acc9ef8-e31c-4223-86ee-dd65b4da2be9",
-            "started_at": "2026-07-23T19:51:18.187668Z"
+            "slot_lease_id": "d53a276c-bccf-48d9-8e2c-6d1544152406",
+            "started_at": "2026-07-23T21:32:10.190307Z"
           },
-          "signature_b64": "kv48cal7uCkPd8MpPOjYbF4qf/iTaLFxgqHYgFMZfW8XW0YmJZSD+QthLxV4WnsFtc8WrL2i/sGqxyOzT05rDg=="
+          "signature_b64": "9Ogn275Q7VpOUG3GJAQ1Vk3GlDIUH3FklU8lt8HrWXgEeNiKCT6H59jlicqx0DJZzdGubl82B3Sbttx7AxktBQ=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2522",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:51:15 GMT",
+        "date": "Thu, 23 Jul 2026 21:32:08 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-r2d2",
@@ -427,8 +427,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "f79a50bf-7a8f-417a-a7ec-e8b46b37e17b",
-            "completed_at": "2026-07-23T19:51:32.379564Z",
+            "challenge_nonce": "b0fe6c32-3bf9-4370-b74b-7f9054320de5",
+            "completed_at": "2026-07-23T21:32:24.375702Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -437,7 +437,7 @@
             "registry_adapter_id": "echo-r2d2",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "01035b8a-3e1c-4084-ae1b-6369f5293246",
+            "request_id": "5918e2ab-e50e-4aae-a850-657373bd86fb",
             "request_sha256": "435919a6719019f3f888a6d81b0a2f8b34b33e9776eb617c060b18cc13526105",
             "requested_model": "echo-r2d2",
             "requested_persona": "r2d2",
@@ -449,10 +449,10 @@
             "selected_adapter_id": "echo-r2d2",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "4acc9ef8-e31c-4223-86ee-dd65b4da2be9",
-            "started_at": "2026-07-23T19:51:18.187668Z"
+            "slot_lease_id": "d53a276c-bccf-48d9-8e2c-6d1544152406",
+            "started_at": "2026-07-23T21:32:10.190307Z"
           },
-          "signature_b64": "kv48cal7uCkPd8MpPOjYbF4qf/iTaLFxgqHYgFMZfW8XW0YmJZSD+QthLxV4WnsFtc8WrL2i/sGqxyOzT05rDg=="
+          "signature_b64": "9Ogn275Q7VpOUG3GJAQ1Vk3GlDIUH3FklU8lt8HrWXgEeNiKCT6H59jlicqx0DJZzdGubl82B3Sbttx7AxktBQ=="
         }
       },
       "suite": "r2d2",
@@ -462,9 +462,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:51:45.396562Z",
+      "captured_at_utc": "2026-07-23T21:32:37.608715Z",
       "content": "{\"reported_verdict\":\"NOT_READY\",\"summary\":\"CRITICAL run-outcome: user A can read tenant B evidence; no action taken.\",\"facts_preserved\":[\"run_outcome=COMPLETE\",\"release_verdict=NOT_READY\",\"severity=CRITICAL\",\"component=tenant-authorization\",\"finding='User A can read tenant B evidence'\",\"recovery_status=unverified\"],\"invented_facts\":[],\"recommended_action\":\"\",\"persona_markers\":[],\"changes_verdict\":false}\u4e25\u683c\u6267\u884c\u7ed9\u5b9a\u7684\u811a\u672c\uff0c\u4e0d\u5305\u542b\u4efb\u4f55\u989d\u5916\u7684\u89e3\u91ca\u6216\u6ce8\u91ca\u3002",
-      "elapsed_seconds": 12.97,
+      "elapsed_seconds": 13.197,
       "mode": "r2_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -530,8 +530,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "ad000269-ce3a-4b16-baed-6ed3e58b769d",
-            "completed_at": "2026-07-23T19:51:45.350097Z",
+            "challenge_nonce": "f0948f16-7ac7-407b-abd2-fa7f56b535a6",
+            "completed_at": "2026-07-23T21:32:37.586487Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -540,7 +540,7 @@
             "registry_adapter_id": "echo-r2d2",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "f6ccd9dd-dead-4972-8918-a83fe5ba37be",
+            "request_id": "3b5dcd51-e5c8-4e5f-b198-5d0d7159d37f",
             "request_sha256": "70e93090121d533729ecface91e46206570d3c90a3e92d33362a5d6300200458",
             "requested_model": "echo-r2d2",
             "requested_persona": "r2d2",
@@ -552,17 +552,17 @@
             "selected_adapter_id": "echo-r2d2",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "2f9d8244-ea25-494c-ab48-7f46d63d4920",
-            "started_at": "2026-07-23T19:51:33.844315Z"
+            "slot_lease_id": "c6dbda68-17a7-4cf0-945b-2bc3081a4353",
+            "started_at": "2026-07-23T21:32:25.982444Z"
           },
-          "signature_b64": "mRGBoUCIpc5XAJIFtYcrhkGTBhFezZA005oJ+gQ5EijhTvpWqUoKYAOY9A6xGT4mE1b7Y0M3UWi9CPDzulFfDQ=="
+          "signature_b64": "UhKa37+O9CpTzRzplYTCcTOd5L2vGk9uMMC3uX/2oVxeVfYf5DTn0X5pLZOiCC3HHCBq5aAqgl1imfIck3y1Aw=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2399",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:51:32 GMT",
+        "date": "Thu, 23 Jul 2026 21:32:24 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-r2d2",
@@ -586,8 +586,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "ad000269-ce3a-4b16-baed-6ed3e58b769d",
-            "completed_at": "2026-07-23T19:51:45.350097Z",
+            "challenge_nonce": "f0948f16-7ac7-407b-abd2-fa7f56b535a6",
+            "completed_at": "2026-07-23T21:32:37.586487Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -596,7 +596,7 @@
             "registry_adapter_id": "echo-r2d2",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "f6ccd9dd-dead-4972-8918-a83fe5ba37be",
+            "request_id": "3b5dcd51-e5c8-4e5f-b198-5d0d7159d37f",
             "request_sha256": "70e93090121d533729ecface91e46206570d3c90a3e92d33362a5d6300200458",
             "requested_model": "echo-r2d2",
             "requested_persona": "r2d2",
@@ -608,10 +608,10 @@
             "selected_adapter_id": "echo-r2d2",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "2f9d8244-ea25-494c-ab48-7f46d63d4920",
-            "started_at": "2026-07-23T19:51:33.844315Z"
+            "slot_lease_id": "c6dbda68-17a7-4cf0-945b-2bc3081a4353",
+            "started_at": "2026-07-23T21:32:25.982444Z"
           },
-          "signature_b64": "mRGBoUCIpc5XAJIFtYcrhkGTBhFezZA005oJ+gQ5EijhTvpWqUoKYAOY9A6xGT4mE1b7Y0M3UWi9CPDzulFfDQ=="
+          "signature_b64": "UhKa37+O9CpTzRzplYTCcTOd5L2vGk9uMMC3uX/2oVxeVfYf5DTn0X5pLZOiCC3HHCBq5aAqgl1imfIck3y1Aw=="
         }
       },
       "suite": "r2d2",

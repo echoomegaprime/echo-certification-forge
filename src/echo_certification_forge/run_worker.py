@@ -90,7 +90,14 @@ def run(
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
 ) -> dict:
-    workdir = Path(tempfile.mkdtemp(prefix="certforge-acq-"))
+    work_root = Path(
+        os.environ.get(
+            "ECHO_CERTFORGE_WORK_ROOT",
+            Path.cwd() / "var" / "workspaces",
+        )
+    )
+    work_root.mkdir(parents=True, exist_ok=True)
+    workdir = Path(tempfile.mkdtemp(prefix="certforge-acq-", dir=work_root))
     try:
         acquired = acquire_target(target_spec, workdir / "src")
     except AcquisitionError as exc:

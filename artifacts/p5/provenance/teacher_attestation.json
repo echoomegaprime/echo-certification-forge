@@ -1,0 +1,19 @@
+{
+  "key_id": "ed25519:e8ada8be0904c239d9fdc28d45f32f19",
+  "payload": {
+    "adapter_counts": {
+      "gs343": 1600,
+      "r2d2": 1600
+    },
+    "issued_at_utc": "2026-07-25T06:51:03.014270Z",
+    "request_count": 3200,
+    "requests_file_sha256": "7ac0188f449f1647d6f8e7f16b42873c8eb63e178747db9be9ffa483a438c24b",
+    "response_count": 3200,
+    "responses_file_sha256": "a8db38174c634a86131bdace27007ff8bc7984fb8950775f76f0939e53753dee",
+    "schema_version": "p5-teacher-attestation.v1",
+    "signer_identity": "certforge-p5-xai-teacher-operator",
+    "signing_key_id": "ed25519:e8ada8be0904c239d9fdc28d45f32f19"
+  },
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAKkZIwoI42EZChGX/fSw3DfsTWefp+6GCVmRrZK7zvs=\n-----END PUBLIC KEY-----\n",
+  "signature_b64": "gi+E9NJQ9+3GLZReWmwVVRTLSqzEVAv+6L2VxUdargcJJJJEaKpYALS2e0D/MR54IF8nwm9K4NP39FmJhC0mAw=="
+}

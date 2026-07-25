@@ -1,0 +1,50 @@
+{
+  "adapter": "gs343",
+  "composition_gate": {
+    "minimum_domain_core_ratio": 0.6,
+    "minimum_eval_rows": 200,
+    "minimum_teacher_rows": 1500,
+    "minimum_total_rows": 2500,
+    "promotion_ratio_over_incumbent": 1.05
+  },
+  "curriculum_source": {
+    "path": "artifacts\\p5\\curriculum\\gs343_curriculum_v1.jsonl",
+    "provenance": "curriculum-seeded",
+    "selected_seed_rows": 1600,
+    "sha256": "15ae9004d7592a4e67aa31c130508ed9825dc1a50e524d3d03aefc361461c8f4",
+    "teacher_credit": false
+  },
+  "dataset_version": "p5-v1",
+  "purpose": "Certification Forge P5 semantic qualification corrective training",
+  "schema_version": "p5-corrective-corpus.v1",
+  "teacher_target_provenance": {
+    "attestation_path": "artifacts\\p5\\provenance\\teacher_attestation.json",
+    "requests_path": "artifacts\\p5\\provenance\\teacher_requests.jsonl",
+    "responses_path": "artifacts\\p5\\provenance\\teacher_responses.jsonl",
+    "trusted_key_directory": "artifacts\\p5\\provenance\\trusted-public-keys",
+    "verified_target_rows": 1600
+  },
+  "validation": {
+    "domain_core_ratio": 1.0,
+    "domain_core_rows": 2740,
+    "eval_rows": 240,
+    "eval_sha256": "158f63780f7a10c540505b66887e3ea2cf657382819c68b1e90e97a316e07d88",
+    "label_counts": {
+      "application-defect": 305,
+      "budget-exhausted": 303,
+      "dependency-defect": 305,
+      "environment-defect": 305,
+      "harness-defect": 305,
+      "inconclusive": 304,
+      "multi-cause": 305,
+      "test-data-defect": 305,
+      "unsafe-repair": 303
+    },
+    "total_rows": 2740,
+    "train_eval_curriculum_source_overlap": 0,
+    "train_eval_prompt_overlap": 0,
+    "train_rows": 2500,
+    "train_sha256": "81acd5a8018fe5c41424630e7646c05dc16c6f63c4608e6f84d7512377f786af",
+    "verified_teacher_target_rows": 1600
+  }
+}

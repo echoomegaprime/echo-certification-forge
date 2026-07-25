@@ -191,6 +191,17 @@ class EvidenceStore:
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS legal_holds (
+            hold_id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT,
+            reason TEXT NOT NULL,
+            active INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            released_at TEXT
+        );
+
         CREATE TRIGGER IF NOT EXISTS no_update_evidence BEFORE UPDATE ON evidence_artifacts
         BEGIN SELECT RAISE(ABORT, 'evidence_artifacts are append-only'); END;
         CREATE TRIGGER IF NOT EXISTS no_delete_evidence BEFORE DELETE ON evidence_artifacts
@@ -606,7 +617,12 @@ class EvidenceStore:
                 """SELECT r.artifact_id, r.run_id, a.relative_path
                      FROM evidence_retention r
                      JOIN evidence_artifacts a ON a.artifact_id = r.artifact_id
-                    WHERE r.expires_at <= ? AND r.purged_at IS NULL""",
+                    WHERE r.expires_at <= ? AND r.purged_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM legal_holds h
+                           WHERE h.tenant_id=r.tenant_id AND h.active=1
+                             AND (h.run_id IS NULL OR h.run_id=r.run_id)
+                      )""",
                 (now,),
             ).fetchall()
             for row in rows:

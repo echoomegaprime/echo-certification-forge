@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-07-23T19:52:40.549969Z",
+  "generated_at_utc": "2026-07-23T21:32:37.879328Z",
   "global_blockers": [
     "required P5 modes failed semantic quality thresholds: ['gs_adapter_context', 'r2_adapter_context']"
   ],

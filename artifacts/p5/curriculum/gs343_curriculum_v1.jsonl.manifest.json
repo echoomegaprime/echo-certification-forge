@@ -1,0 +1,17 @@
+{
+  "adapter": "gs343",
+  "derivation_algorithm": "non-expressive-certification-scenarios.v1",
+  "ledger": {
+    "path": "/home/anvil/adapter_training/datasets/certification_forge_p5/curriculum/gs343_curriculum_v1.jsonl",
+    "sha256": "15ae9004d7592a4e67aa31c130508ed9825dc1a50e524d3d03aefc361461c8f4"
+  },
+  "rights_basis": "non-expressive-digest-derivation",
+  "row_count": 1600,
+  "schema_version": "p5-attribution-free-curriculum-manifest.v1",
+  "source": {
+    "expressive_content_copied": false,
+    "path": "/home/anvil/adapter_training/datasets/gs343/gs343_final_train.jsonl",
+    "sha256": "6cf3c6749ab08b0d0be9fdff1edb85b1c7ae9f66e2271dbdeed2f93ae2b5fca3"
+  },
+  "source_license_claim": "none"
+}

@@ -20,5 +20,8 @@ app = create_app(
         store=EvidenceStore(_db, _evidence),
         manifest=RuleManifest.load(_policy),
         trusted_keys=TrustedPublicKeyRegistry.from_directory(_public_keys),
+        billing_webhook_secret=os.environ.get(
+            "ECHO_CERTFORGE_BILLING_WEBHOOK_SECRET", ""
+        ),
     )
 )

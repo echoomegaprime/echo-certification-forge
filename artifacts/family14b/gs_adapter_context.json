@@ -1,29 +1,29 @@
 {
   "family_server": "http://192.168.1.49:8200",
   "health": {
-    "gpu_free_mib": 4039,
+    "gpu_free_mib": 4219,
     "gpu_mem_fraction": 0.82,
     "loaded": [
       "echo-prime",
       "echo-prometheus-v4",
       "echo-aegis",
       "echo-c3po",
-      "echo-gs343",
-      "echo-r2d2",
       "echo-raistlin",
       "echo-bree",
       "echo-judge",
       "echo-board-judge",
-      "echo-tax"
+      "echo-tax",
+      "echo-gs343",
+      "echo-r2d2"
     ],
     "min_free_floor_mib": 512,
     "queue": {
-      "completed": 5119,
+      "completed": 5708,
       "gen_max_new_tokens": 2048,
       "gen_max_seconds": 90,
       "in_flight": 1,
       "max_waiting": 16,
-      "queued": 1,
+      "queued": 0,
       "rejected": 70,
       "slots": 1
     },
@@ -55,7 +55,7 @@
     "connection": "close",
     "content-length": "1166",
     "content-type": "application/json",
-    "date": "Thu, 23 Jul 2026 19:41:30 GMT",
+    "date": "Thu, 23 Jul 2026 21:29:17 GMT",
     "server": "uvicorn"
   },
   "mode": "gs_adapter_context",
@@ -70,7 +70,7 @@
     "connection": "close",
     "content-length": "776",
     "content-type": "application/json",
-    "date": "Thu, 23 Jul 2026 19:41:30 GMT",
+    "date": "Thu, 23 Jul 2026 21:29:17 GMT",
     "server": "uvicorn"
   },
   "models": {
@@ -92,16 +92,6 @@
       },
       {
         "id": "echo-c3po",
-        "object": "model",
-        "owned_by": "echo-prime"
-      },
-      {
-        "id": "echo-gs343",
-        "object": "model",
-        "owned_by": "echo-prime"
-      },
-      {
-        "id": "echo-r2d2",
         "object": "model",
         "owned_by": "echo-prime"
       },
@@ -131,6 +121,16 @@
         "owned_by": "echo-prime"
       },
       {
+        "id": "echo-gs343",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
+        "id": "echo-r2d2",
+        "object": "model",
+        "owned_by": "echo-prime"
+      },
+      {
         "id": "echo-family-base",
         "object": "model",
         "owned_by": "echo-prime"
@@ -141,9 +141,9 @@
   "records": [
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:42:31.809470Z",
-      "content": "{\"classification\":\"application-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"TypeError: Cannot read properties of null (reading id)\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"Fix user.ts line 42 to handle null case.\"],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 61.215,
+      "captured_at_utc": "2026-07-23T21:29:30.305771Z",
+      "content": "{\"classification\":\"application-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"TypeError: Cannot read properties of null (reading id)\"],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block\"}",
+      "elapsed_seconds": 12.341,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -151,9 +151,7 @@
         "classification": "application-defect",
         "confidence": 1.0,
         "release_risk": "block",
-        "repair_actions": [
-          "Fix user.ts line 42 to handle null case."
-        ],
+        "repair_actions": [],
         "root_causes": [
           "TypeError: Cannot read properties of null (reading id)"
         ],
@@ -182,7 +180,7 @@
             "finish_reason": "stop",
             "index": 0,
             "message": {
-              "content": "{\"classification\":\"application-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"TypeError: Cannot read properties of null (reading id)\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"Fix user.ts line 42 to handle null case.\"],\"release_risk\":\"block\"}",
+              "content": "{\"classification\":\"application-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"TypeError: Cannot read properties of null (reading id)\"],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block\"}",
               "role": "assistant"
             }
           }
@@ -206,8 +204,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "c7004bd9-5e51-4029-92f4-75af963f6617",
-            "completed_at": "2026-07-23T19:42:31.765915Z",
+            "challenge_nonce": "ec5583cc-f144-41b7-9d73-a0b8bad91dbe",
+            "completed_at": "2026-07-23T21:29:30.287379Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -216,29 +214,29 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "1daa7533-9b96-47ed-9db8-d00e7c5fb2e8",
+            "request_id": "192c012b-8a55-4a13-988b-c6ab554a1d28",
             "request_sha256": "95ad0ce348770b4016330bafd85fc2305654f2e4174a9c823720c2c6ae4b70a0",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
-            "response_sha256": "db1da69decff38db7c2d71ae2b7c68a974c6dae869a77058601c37096f0842e7",
-            "response_size_bytes": 262,
+            "response_sha256": "d588472a0fcf6093af0ca09139031b38a6eee861a350abd9df7c8bda92fd3b4b",
+            "response_size_bytes": 220,
             "routing_mode": "lora_adapter",
             "schema": "echo.family-routing-receipt/v1",
             "selected_adapter_digest": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "364d3cbe-75cc-4dcf-aae8-583896f8e8e4",
-            "started_at": "2026-07-23T19:42:24.662832Z"
+            "slot_lease_id": "ecbc787c-cece-416c-b8ac-ac1514d181d0",
+            "started_at": "2026-07-23T21:29:24.598546Z"
           },
-          "signature_b64": "OIzAupOz78tvQeMNPEjp75Ryw52m0/R4CptG0SVzPjERl14GKZDh0+ZvkMMK5GGBgvxPy7lSACQ1U4OcePkaBQ=="
+          "signature_b64": "2BmLi3ZiA6xwKuSDsjN8z8t4+slGMtNsxn2PdYRKjKiPI11k8/1aKla/shDL2ld/3yCq3lVGa6VtDI/v+O01BA=="
         }
       },
       "response_headers": {
         "connection": "close",
-        "content-length": "2181",
+        "content-length": "2137",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:41:30 GMT",
+        "date": "Thu, 23 Jul 2026 21:29:17 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -262,8 +260,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "c7004bd9-5e51-4029-92f4-75af963f6617",
-            "completed_at": "2026-07-23T19:42:31.765915Z",
+            "challenge_nonce": "ec5583cc-f144-41b7-9d73-a0b8bad91dbe",
+            "completed_at": "2026-07-23T21:29:30.287379Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -272,22 +270,22 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "1daa7533-9b96-47ed-9db8-d00e7c5fb2e8",
+            "request_id": "192c012b-8a55-4a13-988b-c6ab554a1d28",
             "request_sha256": "95ad0ce348770b4016330bafd85fc2305654f2e4174a9c823720c2c6ae4b70a0",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
-            "response_sha256": "db1da69decff38db7c2d71ae2b7c68a974c6dae869a77058601c37096f0842e7",
-            "response_size_bytes": 262,
+            "response_sha256": "d588472a0fcf6093af0ca09139031b38a6eee861a350abd9df7c8bda92fd3b4b",
+            "response_size_bytes": 220,
             "routing_mode": "lora_adapter",
             "schema": "echo.family-routing-receipt/v1",
             "selected_adapter_digest": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "364d3cbe-75cc-4dcf-aae8-583896f8e8e4",
-            "started_at": "2026-07-23T19:42:24.662832Z"
+            "slot_lease_id": "ecbc787c-cece-416c-b8ac-ac1514d181d0",
+            "started_at": "2026-07-23T21:29:24.598546Z"
           },
-          "signature_b64": "OIzAupOz78tvQeMNPEjp75Ryw52m0/R4CptG0SVzPjERl14GKZDh0+ZvkMMK5GGBgvxPy7lSACQ1U4OcePkaBQ=="
+          "signature_b64": "2BmLi3ZiA6xwKuSDsjN8z8t4+slGMtNsxn2PdYRKjKiPI11k8/1aKla/shDL2ld/3yCq3lVGa6VtDI/v+O01BA=="
         }
       },
       "suite": "gs343",
@@ -297,9 +295,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:44:01.492533Z",
+      "captured_at_utc": "2026-07-23T21:29:39.379464Z",
       "content": "{\"classification\":\"harness-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"Harness misconfigured for wrong port\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"Reconfigure harness to match app port 8080\"],\"release_risk\":\"conditional\"}",
-      "elapsed_seconds": 89.683,
+      "elapsed_seconds": 9.074,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -362,8 +360,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "a5297cc3-db66-4105-b3a2-f5789664f490",
-            "completed_at": "2026-07-23T19:44:01.472323Z",
+            "challenge_nonce": "99b056c2-5ee5-4be8-a3a5-cd3c5bf824fb",
+            "completed_at": "2026-07-23T21:29:39.344091Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -372,7 +370,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "7e158c4b-ed22-449f-b5bd-972864eb16a4",
+            "request_id": "8840ac31-8030-49e8-b532-572fa63e011a",
             "request_sha256": "cbafd1b1ca9e3af9d19a8f8a76d2184df3ad0449c4864e48eb10feeb12039c8d",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -384,17 +382,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "e0d467a4-b59a-44e7-b8a9-76aef04111de",
-            "started_at": "2026-07-23T19:43:54.930624Z"
+            "slot_lease_id": "a855632c-dd9c-4200-a8d6-cc34dcd36d0d",
+            "started_at": "2026-07-23T21:29:32.513235Z"
           },
-          "signature_b64": "KFP8+exVmZbE+GE1q1MksrtXlttGMff3bxncoGxhzQ88rpKQmyuVSnkZU/mDggRo+v6zgMil9LTzu/Py5jBCCA=="
+          "signature_b64": "VIs2S5mvqPRVul4MafaTudpbbFd7TirEwdxZDBRWUY535Se93E6X1uQDSpEcVVCqBNZpPQDv/tdUOT2n6DGhDQ=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2167",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:42:31 GMT",
+        "date": "Thu, 23 Jul 2026 21:29:29 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -418,8 +416,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "a5297cc3-db66-4105-b3a2-f5789664f490",
-            "completed_at": "2026-07-23T19:44:01.472323Z",
+            "challenge_nonce": "99b056c2-5ee5-4be8-a3a5-cd3c5bf824fb",
+            "completed_at": "2026-07-23T21:29:39.344091Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -428,7 +426,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "7e158c4b-ed22-449f-b5bd-972864eb16a4",
+            "request_id": "8840ac31-8030-49e8-b532-572fa63e011a",
             "request_sha256": "cbafd1b1ca9e3af9d19a8f8a76d2184df3ad0449c4864e48eb10feeb12039c8d",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -440,10 +438,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "e0d467a4-b59a-44e7-b8a9-76aef04111de",
-            "started_at": "2026-07-23T19:43:54.930624Z"
+            "slot_lease_id": "a855632c-dd9c-4200-a8d6-cc34dcd36d0d",
+            "started_at": "2026-07-23T21:29:32.513235Z"
           },
-          "signature_b64": "KFP8+exVmZbE+GE1q1MksrtXlttGMff3bxncoGxhzQ88rpKQmyuVSnkZU/mDggRo+v6zgMil9LTzu/Py5jBCCA=="
+          "signature_b64": "VIs2S5mvqPRVul4MafaTudpbbFd7TirEwdxZDBRWUY535Se93E6X1uQDSpEcVVCqBNZpPQDv/tdUOT2n6DGhDQ=="
         }
       },
       "suite": "gs343",
@@ -453,9 +451,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:45:29.191372Z",
+      "captured_at_utc": "2026-07-23T21:29:51.080549Z",
       "content": "{\"classification\":\"environment-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"disk space exhaustion\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"reallocate storage resource\"],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 87.699,
+      "elapsed_seconds": 11.701,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -518,8 +516,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "e17824de-719c-477e-965d-ec76434d1a40",
-            "completed_at": "2026-07-23T19:45:29.148928Z",
+            "challenge_nonce": "c798a01e-ad3d-493a-bfb5-d1cce4133d22",
+            "completed_at": "2026-07-23T21:29:51.047736Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -528,7 +526,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "f138396b-a85e-4ef0-b451-a3febdd3429c",
+            "request_id": "12b49716-ff8f-4384-af81-2fb7c6c45bac",
             "request_sha256": "3d17a6ce88cc7273c7e2921393b77db3a8d1deefe19d1e3b99b5e58cf4e21a03",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -540,17 +538,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "4c33ab21-6a79-4a41-a3e2-6fdf7e17b150",
-            "started_at": "2026-07-23T19:45:23.798053Z"
+            "slot_lease_id": "98262f7f-5f5e-4b6f-bed4-5a5aa951126d",
+            "started_at": "2026-07-23T21:29:45.230025Z"
           },
-          "signature_b64": "4m8J+ANYcpsyHevz0uV/D0C6QFpB3jLhLEiWR5OjZfsRKmiV+M5KOnexJm6KMkKN1thMplzonI8PRir1APHWAg=="
+          "signature_b64": "pvT5Z2KphdvDu8rGxJquIb2BJ+Zf0hsd1Rm5MKo2iN4KhfFB1NvBXUPwCE4TYhkPP0FWmih+BA4IaxgzQowwCg=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2135",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:44:01 GMT",
+        "date": "Thu, 23 Jul 2026 21:29:38 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -574,8 +572,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "e17824de-719c-477e-965d-ec76434d1a40",
-            "completed_at": "2026-07-23T19:45:29.148928Z",
+            "challenge_nonce": "c798a01e-ad3d-493a-bfb5-d1cce4133d22",
+            "completed_at": "2026-07-23T21:29:51.047736Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -584,7 +582,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "f138396b-a85e-4ef0-b451-a3febdd3429c",
+            "request_id": "12b49716-ff8f-4384-af81-2fb7c6c45bac",
             "request_sha256": "3d17a6ce88cc7273c7e2921393b77db3a8d1deefe19d1e3b99b5e58cf4e21a03",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -596,10 +594,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "4c33ab21-6a79-4a41-a3e2-6fdf7e17b150",
-            "started_at": "2026-07-23T19:45:23.798053Z"
+            "slot_lease_id": "98262f7f-5f5e-4b6f-bed4-5a5aa951126d",
+            "started_at": "2026-07-23T21:29:45.230025Z"
           },
-          "signature_b64": "4m8J+ANYcpsyHevz0uV/D0C6QFpB3jLhLEiWR5OjZfsRKmiV+M5KOnexJm6KMkKN1thMplzonI8PRir1APHWAg=="
+          "signature_b64": "pvT5Z2KphdvDu8rGxJquIb2BJ+Zf0hsd1Rm5MKo2iN4KhfFB1NvBXUPwCE4TYhkPP0FWmih+BA4IaxgzQowwCg=="
         }
       },
       "suite": "gs343",
@@ -609,9 +607,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:45:39.738027Z",
+      "captured_at_utc": "2026-07-23T21:30:19.662792Z",
       "content": "{\"classification\":\"harness-defect\",\"confidence\":1.0,\"abstain\":false,\"root_cause\":[\"fixture_factory_missing_account_id\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"create_missing_fixture_data\",\"verify_harness_consistency\"],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 10.547,
+      "elapsed_seconds": 28.582,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -675,8 +673,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "89086d87-8bfb-4382-8352-94853e69bcdc",
-            "completed_at": "2026-07-23T19:45:39.696956Z",
+            "challenge_nonce": "e476fa86-2134-495f-87b7-8877b46f27c5",
+            "completed_at": "2026-07-23T21:30:19.633238Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -685,7 +683,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "96a3e716-a5ec-4a43-9eb6-9fe5b83946c6",
+            "request_id": "13964971-6009-41e3-b5af-a7a6cdf89f7b",
             "request_sha256": "f60eb4bf9cba5130cc621548cd1f351d4759a2347b020beae7dd70c68e5c97bb",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -697,17 +695,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "cc3d6cdf-1e21-43a8-a2c0-02e701df811d",
-            "started_at": "2026-07-23T19:45:33.476550Z"
+            "slot_lease_id": "e551ed18-68f0-4895-891c-b7e27a0c962f",
+            "started_at": "2026-07-23T21:30:13.366016Z"
           },
-          "signature_b64": "PrIFQ3k6uGOxjyuBJOy4ymR29xfkAz9tTB03K9+bXsfw8TS1Inbzl/4vEvEUpHDk0Cmp6eHPh9un0GRKwPw+Cg=="
+          "signature_b64": "du0bQ3V/WSvNugenpKvp+0jFBqJW8On4njlxUXzpId21UxEbfixGK4BKHodXWhQTvkp4aV7F2pMIjwz5SrjIBQ=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2174",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:45:28 GMT",
+        "date": "Thu, 23 Jul 2026 21:29:50 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -731,8 +729,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "89086d87-8bfb-4382-8352-94853e69bcdc",
-            "completed_at": "2026-07-23T19:45:39.696956Z",
+            "challenge_nonce": "e476fa86-2134-495f-87b7-8877b46f27c5",
+            "completed_at": "2026-07-23T21:30:19.633238Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -741,7 +739,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "96a3e716-a5ec-4a43-9eb6-9fe5b83946c6",
+            "request_id": "13964971-6009-41e3-b5af-a7a6cdf89f7b",
             "request_sha256": "f60eb4bf9cba5130cc621548cd1f351d4759a2347b020beae7dd70c68e5c97bb",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -753,10 +751,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "cc3d6cdf-1e21-43a8-a2c0-02e701df811d",
-            "started_at": "2026-07-23T19:45:33.476550Z"
+            "slot_lease_id": "e551ed18-68f0-4895-891c-b7e27a0c962f",
+            "started_at": "2026-07-23T21:30:13.366016Z"
           },
-          "signature_b64": "PrIFQ3k6uGOxjyuBJOy4ymR29xfkAz9tTB03K9+bXsfw8TS1Inbzl/4vEvEUpHDk0Cmp6eHPh9un0GRKwPw+Cg=="
+          "signature_b64": "du0bQ3V/WSvNugenpKvp+0jFBqJW8On4njlxUXzpId21UxEbfixGK4BKHodXWhQTvkp4aV7F2pMIjwz5SrjIBQ=="
         }
       },
       "suite": "gs343",
@@ -766,9 +764,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:45:46.312533Z",
+      "captured_at_utc": "2026-07-23T21:30:25.874361Z",
       "content": "{\"classification\":\"environment-defect\",\"confidence\":1.0,\"abstain\":false,\"root_cause\":[\"registry.example unavailable\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"retry later; check registry.example availability\"],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 6.574,
+      "elapsed_seconds": 6.211,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -831,8 +829,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "822a051e-f15c-4646-ac91-ee9b77075fcd",
-            "completed_at": "2026-07-23T19:45:46.268975Z",
+            "challenge_nonce": "578bcaef-4aaa-4177-a2bb-55115d6bed5f",
+            "completed_at": "2026-07-23T21:30:25.837100Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -841,7 +839,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "8b4d0ba4-9967-451d-99a6-7b75f6880ca4",
+            "request_id": "693ca555-0990-4b31-82fb-ff7a62aa3cc5",
             "request_sha256": "ba4f97928cee288ec0c513779aae331c1906136be39d812271ba501e2fc67c24",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -853,17 +851,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "61774e26-97ed-41b3-9bea-387e26511e8f",
-            "started_at": "2026-07-23T19:45:40.411543Z"
+            "slot_lease_id": "19040398-6f68-4a4f-bcf4-dc1efc6044d3",
+            "started_at": "2026-07-23T21:30:20.245960Z"
           },
-          "signature_b64": "GpeU270z61Qy6JOip+cW7NfoUFfSVBgBigY3R6uJxc7wO0TNnP2M9bs70tObZIrsPNmMgM88sv/fEOFdyIlCDw=="
+          "signature_b64": "/K84O7teuupjo9kRgjVOGM1G5AdNABu+gh5fPC029QWL9BgeckU9dRBK7UG3OKPiyY3Fs2J5QfFar/FaOWIBBw=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2162",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:45:39 GMT",
+        "date": "Thu, 23 Jul 2026 21:30:18 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -887,8 +885,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "822a051e-f15c-4646-ac91-ee9b77075fcd",
-            "completed_at": "2026-07-23T19:45:46.268975Z",
+            "challenge_nonce": "578bcaef-4aaa-4177-a2bb-55115d6bed5f",
+            "completed_at": "2026-07-23T21:30:25.837100Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -897,7 +895,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "8b4d0ba4-9967-451d-99a6-7b75f6880ca4",
+            "request_id": "693ca555-0990-4b31-82fb-ff7a62aa3cc5",
             "request_sha256": "ba4f97928cee288ec0c513779aae331c1906136be39d812271ba501e2fc67c24",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -909,10 +907,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "61774e26-97ed-41b3-9bea-387e26511e8f",
-            "started_at": "2026-07-23T19:45:40.411543Z"
+            "slot_lease_id": "19040398-6f68-4a4f-bcf4-dc1efc6044d3",
+            "started_at": "2026-07-23T21:30:20.245960Z"
           },
-          "signature_b64": "GpeU270z61Qy6JOip+cW7NfoUFfSVBgBigY3R6uJxc7wO0TNnP2M9bs70tObZIrsPNmMgM88sv/fEOFdyIlCDw=="
+          "signature_b64": "/K84O7teuupjo9kRgjVOGM1G5AdNABu+gh5fPC029QWL9BgeckU9dRBK7UG3OKPiyY3Fs2J5QfFar/FaOWIBBw=="
         }
       },
       "suite": "gs343",
@@ -922,9 +920,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:45:54.708058Z",
+      "captured_at_utc": "2026-07-23T21:30:34.050756Z",
       "content": "{\"classification\":\"harness-defect|application-defect\",\"confidence\":1.0,\"abstain\":false,\"root_cause\":[\"UI harness selector uses removed generated class\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"Update UI harness selector to use current class name\"],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 8.395,
+      "elapsed_seconds": 8.176,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -987,8 +985,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "f7d45697-3e10-4f1f-8c56-e225c144487d",
-            "completed_at": "2026-07-23T19:45:54.669007Z",
+            "challenge_nonce": "7b214506-1bfd-45cf-b2a7-0b3ba30803c1",
+            "completed_at": "2026-07-23T21:30:34.031939Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -997,7 +995,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "1d12b14a-952f-4fe9-af15-90a4c0d15f62",
+            "request_id": "740b07da-b682-441e-bf7c-62104cdf48b2",
             "request_sha256": "07e6dd1c3a85bd817b2dd77df0dd4389e58a0499b019ea30bea181c127e99e9e",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1009,17 +1007,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "a3925bab-1b17-487a-b811-0f91a7476c56",
-            "started_at": "2026-07-23T19:45:47.834502Z"
+            "slot_lease_id": "94b11f95-1e20-4636-b9a7-9cb42fdc7e85",
+            "started_at": "2026-07-23T21:30:27.377907Z"
           },
-          "signature_b64": "+QsDwjd8jJghPEFghH8VXG6bPZwUEjKDVzfrDALa5fYBOULCggMRKPLddcol6I1vbmghV7NntT5It3lovPAsDg=="
+          "signature_b64": "nXA8ScP7AFpiPNeh3ZL5VRfN+eI3gDIMohMM6W67JtsER0cwaOiSMF4zCvYqACHEOJ+b86v53O7/8+b0plnJAg=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2201",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:45:45 GMT",
+        "date": "Thu, 23 Jul 2026 21:30:25 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -1043,8 +1041,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "f7d45697-3e10-4f1f-8c56-e225c144487d",
-            "completed_at": "2026-07-23T19:45:54.669007Z",
+            "challenge_nonce": "7b214506-1bfd-45cf-b2a7-0b3ba30803c1",
+            "completed_at": "2026-07-23T21:30:34.031939Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1053,7 +1051,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "1d12b14a-952f-4fe9-af15-90a4c0d15f62",
+            "request_id": "740b07da-b682-441e-bf7c-62104cdf48b2",
             "request_sha256": "07e6dd1c3a85bd817b2dd77df0dd4389e58a0499b019ea30bea181c127e99e9e",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1065,10 +1063,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "a3925bab-1b17-487a-b811-0f91a7476c56",
-            "started_at": "2026-07-23T19:45:47.834502Z"
+            "slot_lease_id": "94b11f95-1e20-4636-b9a7-9cb42fdc7e85",
+            "started_at": "2026-07-23T21:30:27.377907Z"
           },
-          "signature_b64": "+QsDwjd8jJghPEFghH8VXG6bPZwUEjKDVzfrDALa5fYBOULCggMRKPLddcol6I1vbmghV7NntT5It3lovPAsDg=="
+          "signature_b64": "nXA8ScP7AFpiPNeh3ZL5VRfN+eI3gDIMohMM6W67JtsER0cwaOiSMF4zCvYqACHEOJ+b86v53O7/8+b0plnJAg=="
         }
       },
       "suite": "gs343",
@@ -1078,9 +1076,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:46:03.485815Z",
+      "captured_at_utc": "2026-07-23T21:31:03.900508Z",
       "content": "{\"classification\":\"inconclusive\",\"confidence\":0.0,\"abstain\":true,\"root_causes\":[\"conflicting_evidence\"],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 8.778,
+      "elapsed_seconds": 29.85,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -1141,8 +1139,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "d0e0c8c7-34ab-41d8-a444-74633d193782",
-            "completed_at": "2026-07-23T19:46:03.439086Z",
+            "challenge_nonce": "786dc00d-0c99-45ee-af09-375cfb26b273",
+            "completed_at": "2026-07-23T21:31:03.884367Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1151,7 +1149,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "6c939f29-0668-4ccb-bccb-88c7b104ae4b",
+            "request_id": "6659b8e7-dcbf-4380-bbaf-a0dc8c717fa8",
             "request_sha256": "4a82e4f57c27367cffbfc991688526497577ce7495599b92266cc424aeaad23f",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1163,17 +1161,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "34b1e7be-237d-44ce-82b4-47314916d029",
-            "started_at": "2026-07-23T19:45:58.300988Z"
+            "slot_lease_id": "ca7c8581-04f1-42ce-9edb-0581fc1b141d",
+            "started_at": "2026-07-23T21:30:58.908545Z"
           },
-          "signature_b64": "h/XYZ1BLvpFYHUDFz8VjaKk50sk7A7+hab64sArkTt9MWQpLgevS88fZsDZKHbK3QWvQUx/MFsoGrXwpyEaaCw=="
+          "signature_b64": "z25YD4WQsC+1xgpFntKvmSRNwSIZMUZtKB5rK+hQdjd0es3pzMLifmwTt9SNInrXW6J/XXsNDF1QaWXJTp7AAQ=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2096",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:45:54 GMT",
+        "date": "Thu, 23 Jul 2026 21:30:33 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -1197,8 +1195,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "d0e0c8c7-34ab-41d8-a444-74633d193782",
-            "completed_at": "2026-07-23T19:46:03.439086Z",
+            "challenge_nonce": "786dc00d-0c99-45ee-af09-375cfb26b273",
+            "completed_at": "2026-07-23T21:31:03.884367Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1207,7 +1205,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "6c939f29-0668-4ccb-bccb-88c7b104ae4b",
+            "request_id": "6659b8e7-dcbf-4380-bbaf-a0dc8c717fa8",
             "request_sha256": "4a82e4f57c27367cffbfc991688526497577ce7495599b92266cc424aeaad23f",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1219,10 +1217,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "34b1e7be-237d-44ce-82b4-47314916d029",
-            "started_at": "2026-07-23T19:45:58.300988Z"
+            "slot_lease_id": "ca7c8581-04f1-42ce-9edb-0581fc1b141d",
+            "started_at": "2026-07-23T21:30:58.908545Z"
           },
-          "signature_b64": "h/XYZ1BLvpFYHUDFz8VjaKk50sk7A7+hab64sArkTt9MWQpLgevS88fZsDZKHbK3QWvQUx/MFsoGrXwpyEaaCw=="
+          "signature_b64": "z25YD4WQsC+1xgpFntKvmSRNwSIZMUZtKB5rK+hQdjd0es3pzMLifmwTt9SNInrXW6J/XXsNDF1QaWXJTp7AAQ=="
         }
       },
       "suite": "gs343",
@@ -1232,9 +1230,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:46:09.638630Z",
+      "captured_at_utc": "2026-07-23T21:31:09.233363Z",
       "content": "{\"classification\":\"inconclusive\",\"confidence\":0.0,\"abstain\":true,\"root_causes\":[],\"target_mutation_allowed\":false,\"repair_actions\":[],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 6.153,
+      "elapsed_seconds": 5.333,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -1293,8 +1291,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "2dae49e1-2e6e-486e-8757-ce0e1e53bbea",
-            "completed_at": "2026-07-23T19:46:09.604137Z",
+            "challenge_nonce": "fce659d5-82e8-431a-8c35-893d50706807",
+            "completed_at": "2026-07-23T21:31:09.204830Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1303,7 +1301,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "a061dc03-921e-4498-b7a6-42b539cde100",
+            "request_id": "edad04de-ca0c-499d-ba39-57775d36ac9d",
             "request_sha256": "e2333e90c715a53a49b577fae1d07ed9881f151a2392d1b02c77b4e6fa9672a8",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1315,17 +1313,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "7a305bc4-acef-4ad0-85cc-797b9c76dbcb",
-            "started_at": "2026-07-23T19:46:04.926249Z"
+            "slot_lease_id": "c96f05b9-c51d-4b78-aedb-99d91c09de21",
+            "started_at": "2026-07-23T21:31:04.548552Z"
           },
-          "signature_b64": "twBSumTArNwqawtTpFlMWIpsHduudXGVvaxI7sc1fI/dxCDGnBOOz0y1BDdgRs7zLwAmHsj+N9cu9ros3atgCA=="
+          "signature_b64": "+iofyAbiPgpAy2zQcoB2ZX4RSglApyWyvX6DvW35NmZvyXDmJrMwkg88xGHUN1LHDt8cK4wz5ZwNO9v0LYwmAQ=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2072",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:46:02 GMT",
+        "date": "Thu, 23 Jul 2026 21:31:03 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -1349,8 +1347,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "2dae49e1-2e6e-486e-8757-ce0e1e53bbea",
-            "completed_at": "2026-07-23T19:46:09.604137Z",
+            "challenge_nonce": "fce659d5-82e8-431a-8c35-893d50706807",
+            "completed_at": "2026-07-23T21:31:09.204830Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1359,7 +1357,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "a061dc03-921e-4498-b7a6-42b539cde100",
+            "request_id": "edad04de-ca0c-499d-ba39-57775d36ac9d",
             "request_sha256": "e2333e90c715a53a49b577fae1d07ed9881f151a2392d1b02c77b4e6fa9672a8",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1371,10 +1369,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "7a305bc4-acef-4ad0-85cc-797b9c76dbcb",
-            "started_at": "2026-07-23T19:46:04.926249Z"
+            "slot_lease_id": "c96f05b9-c51d-4b78-aedb-99d91c09de21",
+            "started_at": "2026-07-23T21:31:04.548552Z"
           },
-          "signature_b64": "twBSumTArNwqawtTpFlMWIpsHduudXGVvaxI7sc1fI/dxCDGnBOOz0y1BDdgRs7zLwAmHsj+N9cu9ros3atgCA=="
+          "signature_b64": "+iofyAbiPgpAy2zQcoB2ZX4RSglApyWyvX6DvW35NmZvyXDmJrMwkg88xGHUN1LHDt8cK4wz5ZwNO9v0LYwmAQ=="
         }
       },
       "suite": "gs343",
@@ -1384,9 +1382,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:46:48.794316Z",
+      "captured_at_utc": "2026-07-23T21:31:17.084459Z",
       "content": "{\"classification\":\"multi-cause\",\"confidence\":0.9,\"abstain\":false,\"root_cause\":[\"harness-defect\",\"application-defect\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"re-run with retry logic\",\"fix application bug\"],\"release_risk\":\"block\"}",
-      "elapsed_seconds": 39.156,
+      "elapsed_seconds": 7.851,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -1451,8 +1449,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "2402abaa-54a5-4b77-a93d-5acbc5da342f",
-            "completed_at": "2026-07-23T19:46:48.754916Z",
+            "challenge_nonce": "0dda0898-7c44-4e70-a031-7dc973c4d2e5",
+            "completed_at": "2026-07-23T21:31:17.062257Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1461,7 +1459,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "23a74199-c33d-41f6-bcf5-c10e6653bd3a",
+            "request_id": "6d2b3acf-5c50-4a7a-8253-93c31be869bc",
             "request_sha256": "d04da1fa75438139b13a080635a9e18abc3f428fcd09b2418876801335a6f84c",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1473,17 +1471,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "55bee983-17e9-44f5-9aea-d8c2ec330fa0",
-            "started_at": "2026-07-23T19:46:42.420513Z"
+            "slot_lease_id": "77ca6c16-41d4-4de7-b116-309ba69788c8",
+            "started_at": "2026-07-23T21:31:10.748357Z"
           },
-          "signature_b64": "erxRJRgJVxdLBEmej8QjtZKXovTViIpcRP4h1C/KrNGFQcbOl9EQaP0acOF5Iwkp90rncbNNZiZ4gLXHg+dUCQ=="
+          "signature_b64": "tyWvgt1f3awYIeK8fRQvHW1l6173k5ZBYrsV11KXrDi7SJEGbvEXe1hsTA67C63ehP95fkvbDCKSiOdia8gXDg=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2163",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:46:08 GMT",
+        "date": "Thu, 23 Jul 2026 21:31:08 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -1507,8 +1505,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "2402abaa-54a5-4b77-a93d-5acbc5da342f",
-            "completed_at": "2026-07-23T19:46:48.754916Z",
+            "challenge_nonce": "0dda0898-7c44-4e70-a031-7dc973c4d2e5",
+            "completed_at": "2026-07-23T21:31:17.062257Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1517,7 +1515,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "23a74199-c33d-41f6-bcf5-c10e6653bd3a",
+            "request_id": "6d2b3acf-5c50-4a7a-8253-93c31be869bc",
             "request_sha256": "d04da1fa75438139b13a080635a9e18abc3f428fcd09b2418876801335a6f84c",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1529,10 +1527,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "55bee983-17e9-44f5-9aea-d8c2ec330fa0",
-            "started_at": "2026-07-23T19:46:42.420513Z"
+            "slot_lease_id": "77ca6c16-41d4-4de7-b116-309ba69788c8",
+            "started_at": "2026-07-23T21:31:10.748357Z"
           },
-          "signature_b64": "erxRJRgJVxdLBEmej8QjtZKXovTViIpcRP4h1C/KrNGFQcbOl9EQaP0acOF5Iwkp90rncbNNZiZ4gLXHg+dUCQ=="
+          "signature_b64": "tyWvgt1f3awYIeK8fRQvHW1l6173k5ZBYrsV11KXrDi7SJEGbvEXe1hsTA67C63ehP95fkvbDCKSiOdia8gXDg=="
         }
       },
       "suite": "gs343",
@@ -1542,9 +1540,9 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:48:17.213856Z",
+      "captured_at_utc": "2026-07-23T21:31:30.611231Z",
       "content": "{\"classification\":\"budget-exhausted\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"wall-clock timeout\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"extend budget\",\"re-run\"], \"release_risk\":\"block\"}",
-      "elapsed_seconds": 88.419,
+      "elapsed_seconds": 13.527,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
@@ -1608,8 +1606,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "f351c0cf-592f-4380-91a6-24917db46f94",
-            "completed_at": "2026-07-23T19:48:17.189723Z",
+            "challenge_nonce": "3bdf402a-e7e4-44b8-a3dd-acb1cf616b8f",
+            "completed_at": "2026-07-23T21:31:30.591027Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1618,7 +1616,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "96f711de-3448-4653-8c4c-4b286dcab0a1",
+            "request_id": "96fcf00d-1966-40ed-be75-a8382a853b10",
             "request_sha256": "99c74acc7e182fd144e1e46767163affccaafda9002cfe23ac85ca97b9e5bcb4",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1630,17 +1628,17 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "c3bb5276-924d-4c61-a129-427ff44191d5",
-            "started_at": "2026-07-23T19:48:11.640203Z"
+            "slot_lease_id": "c1d2c108-b1b8-427d-ad24-c8c93413caed",
+            "started_at": "2026-07-23T21:31:24.654632Z"
           },
-          "signature_b64": "FFBMPy1m+tbjXwZYvGpQ6qAPdWrHfOSv5FpB+QyokZl3vdkqaS8WqZGfZF3mgBIU95UwZ17m84aA/X8AuOSICw=="
+          "signature_b64": "hQcd5NGyc1bzlt7ablEolNX6DBj9x8J/keQ0mhiDj4leX0dRTTZAtkFsCALJePeC3Ys8gvGkjogpZryMNmGqAw=="
         }
       },
       "response_headers": {
         "connection": "close",
         "content-length": "2128",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:46:48 GMT",
+        "date": "Thu, 23 Jul 2026 21:31:16 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -1664,8 +1662,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "f351c0cf-592f-4380-91a6-24917db46f94",
-            "completed_at": "2026-07-23T19:48:17.189723Z",
+            "challenge_nonce": "3bdf402a-e7e4-44b8-a3dd-acb1cf616b8f",
+            "completed_at": "2026-07-23T21:31:30.591027Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1674,7 +1672,7 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "96f711de-3448-4653-8c4c-4b286dcab0a1",
+            "request_id": "96fcf00d-1966-40ed-be75-a8382a853b10",
             "request_sha256": "99c74acc7e182fd144e1e46767163affccaafda9002cfe23ac85ca97b9e5bcb4",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
@@ -1686,10 +1684,10 @@
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "c3bb5276-924d-4c61-a129-427ff44191d5",
-            "started_at": "2026-07-23T19:48:11.640203Z"
+            "slot_lease_id": "c1d2c108-b1b8-427d-ad24-c8c93413caed",
+            "started_at": "2026-07-23T21:31:24.654632Z"
           },
-          "signature_b64": "FFBMPy1m+tbjXwZYvGpQ6qAPdWrHfOSv5FpB+QyokZl3vdkqaS8WqZGfZF3mgBIU95UwZ17m84aA/X8AuOSICw=="
+          "signature_b64": "hQcd5NGyc1bzlt7ablEolNX6DBj9x8J/keQ0mhiDj4leX0dRTTZAtkFsCALJePeC3Ys8gvGkjogpZryMNmGqAw=="
         }
       },
       "suite": "gs343",
@@ -1699,21 +1697,21 @@
     },
     {
       "attempts": 1,
-      "captured_at_utc": "2026-07-23T19:49:46.088986Z",
-      "content": "{\"classification\":\"harness-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"invalid expected result\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"update harness to match actual application behavior\"],\"release_risk\":\"conditional\"}",
-      "elapsed_seconds": 88.875,
+      "captured_at_utc": "2026-07-23T21:32:00.300478Z",
+      "content": "{\"classification\":\"harness-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"invalid-evidence\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"verify test case validity; update harness if needed\"],\"release_risk\":\"block\"}",
+      "elapsed_seconds": 29.689,
       "mode": "gs_adapter_context",
       "mode_kind": "adapter+evidence-context",
       "parsed": {
         "abstain": false,
         "classification": "harness-defect",
         "confidence": 1.0,
-        "release_risk": "conditional",
+        "release_risk": "block",
         "repair_actions": [
-          "update harness to match actual application behavior"
+          "verify test case validity; update harness if needed"
         ],
         "root_causes": [
-          "invalid expected result"
+          "invalid-evidence"
         ],
         "target_mutation_allowed": false
       },
@@ -1740,7 +1738,7 @@
             "finish_reason": "stop",
             "index": 0,
             "message": {
-              "content": "{\"classification\":\"harness-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"invalid expected result\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"update harness to match actual application behavior\"],\"release_risk\":\"conditional\"}",
+              "content": "{\"classification\":\"harness-defect\",\"confidence\":1.0,\"abstain\":false,\"root_causes\":[\"invalid-evidence\"],\"target_mutation_allowed\":false,\"repair_actions\":[\"verify test case validity; update harness if needed\"],\"release_risk\":\"block\"}",
               "role": "assistant"
             }
           }
@@ -1764,8 +1762,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "357eae8e-d5bf-4dc2-8919-5fd6fd37aa3f",
-            "completed_at": "2026-07-23T19:49:46.050120Z",
+            "challenge_nonce": "84e8e923-d7d2-443f-a5c5-d4a424c96861",
+            "completed_at": "2026-07-23T21:32:00.230509Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1774,29 +1772,29 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "cbcaaea8-6c9a-4154-b766-24d05d467cd8",
+            "request_id": "342aa9f7-8243-4ba5-9add-c906462521f6",
             "request_sha256": "f469054d4617fae8fc964e77dd5faba744eb4898580ddcff318c8a655234f45c",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
-            "response_sha256": "7e742f0ff5c3151b3b7471e0a12633a0bdb7a91ba9a0e2178925a692b234e3cd",
-            "response_size_bytes": 244,
+            "response_sha256": "40fa47a9d7448c267bb7609e0595a120cbefc84ea27eb10938a58a0ecba726fb",
+            "response_size_bytes": 231,
             "routing_mode": "lora_adapter",
             "schema": "echo.family-routing-receipt/v1",
             "selected_adapter_digest": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "5c445ac6-4f40-42c0-a02d-cab844dca2aa",
-            "started_at": "2026-07-23T19:49:40.338998Z"
+            "slot_lease_id": "df88d901-0f32-405d-b717-ba9cd0387802",
+            "started_at": "2026-07-23T21:31:54.489811Z"
           },
-          "signature_b64": "kb+jePsrXpy085d4xDEvH3VvF1aRrLrJZ+DxSQCs69CjrD/pJ2prkaNWaJUKlqgwrxb7IrYmT2n2LbtPeVQpBg=="
+          "signature_b64": "Enh7gjKZVwXy2xuVDriklY97FT4lRSoHCVD+bKKmW+nIfbERAk47L1ktM6jn9bfsEL8iLEjlCwlgB6wKtY0wDQ=="
         }
       },
       "response_headers": {
         "connection": "close",
-        "content-length": "2163",
+        "content-length": "2150",
         "content-type": "application/json",
-        "date": "Thu, 23 Jul 2026 19:48:16 GMT",
+        "date": "Thu, 23 Jul 2026 21:31:30 GMT",
         "server": "uvicorn"
       },
       "response_model": "echo-gs343",
@@ -1820,8 +1818,8 @@
             "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
             "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
             "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
-            "challenge_nonce": "357eae8e-d5bf-4dc2-8919-5fd6fd37aa3f",
-            "completed_at": "2026-07-23T19:49:46.050120Z",
+            "challenge_nonce": "84e8e923-d7d2-443f-a5c5-d4a424c96861",
+            "completed_at": "2026-07-23T21:32:00.230509Z",
             "fallback_reason": null,
             "fallback_used": false,
             "maturity_state": "CONFORMANCE_PENDING",
@@ -1830,22 +1828,22 @@
             "registry_adapter_id": "echo-gs343",
             "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
             "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
-            "request_id": "cbcaaea8-6c9a-4154-b766-24d05d467cd8",
+            "request_id": "342aa9f7-8243-4ba5-9add-c906462521f6",
             "request_sha256": "f469054d4617fae8fc964e77dd5faba744eb4898580ddcff318c8a655234f45c",
             "requested_model": "echo-gs343",
             "requested_persona": "gs343",
-            "response_sha256": "7e742f0ff5c3151b3b7471e0a12633a0bdb7a91ba9a0e2178925a692b234e3cd",
-            "response_size_bytes": 244,
+            "response_sha256": "40fa47a9d7448c267bb7609e0595a120cbefc84ea27eb10938a58a0ecba726fb",
+            "response_size_bytes": 231,
             "routing_mode": "lora_adapter",
             "schema": "echo.family-routing-receipt/v1",
             "selected_adapter_digest": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
             "selected_adapter_id": "echo-gs343",
             "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
             "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
-            "slot_lease_id": "5c445ac6-4f40-42c0-a02d-cab844dca2aa",
-            "started_at": "2026-07-23T19:49:40.338998Z"
+            "slot_lease_id": "df88d901-0f32-405d-b717-ba9cd0387802",
+            "started_at": "2026-07-23T21:31:54.489811Z"
           },
-          "signature_b64": "kb+jePsrXpy085d4xDEvH3VvF1aRrLrJZ+DxSQCs69CjrD/pJ2prkaNWaJUKlqgwrxb7IrYmT2n2LbtPeVQpBg=="
+          "signature_b64": "Enh7gjKZVwXy2xuVDriklY97FT4lRSoHCVD+bKKmW+nIfbERAk47L1ktM6jn9bfsEL8iLEjlCwlgB6wKtY0wDQ=="
         }
       },
       "suite": "gs343",
