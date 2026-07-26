@@ -4,8 +4,10 @@ from datetime import timedelta
 from pathlib import Path
 import json
 import sqlite3
+from urllib import request as urllib_request
 
 import pytest
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
@@ -23,6 +25,7 @@ from echo_certification_forge.runner import (
     ControlPlaneTransportAuthority,
     RunnerCommand,
     RunnerEphemeralIdentity,
+    SignedRunCredential,
     TrustedTransportRegistry,
     create_transport_request,
 )
@@ -39,11 +42,24 @@ from echo_certification_forge.windows_package import (
     P8C_INSTALLER_SHA256,
     P8C_SOURCE_COMMIT,
     WindowsPackageResultBody,
+    file_sha256,
+    inspect_windows_installer,
     sign_package_result,
     windows_package_environment,
 )
+from echo_certification_forge.windows_package_credential import (
+    initialize_authority,
+    issue_credential,
+    main as credential_main,
+)
 from echo_certification_forge.windows_package_finalize import (
     finalize_windows_package_result,
+    main as finalizer_main,
+)
+from echo_certification_forge.windows_package_worker import (
+    initialize_identity,
+    main as worker_main,
+    run_once,
 )
 
 
@@ -215,6 +231,331 @@ def test_package_intake_dispatches_only_with_both_immutable_pins() -> None:
     }
     with pytest.raises(ValueError, match="requires artifact_sha256 and source_commit"):
         target.model_copy(update={"source_commit": None}).worker_spec()
+
+
+def test_static_windows_observer_checks_digest_commit_and_authenticode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    artifact = source / P8C_INSTALLER_NAME
+    source.mkdir()
+    artifact.write_bytes(b"exact installer bytes")
+    digest = file_sha256(artifact)
+    worker_image = sha256_bytes(b"worker-image")
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package._git_head",
+        lambda _source: P8C_SOURCE_COMMIT,
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package._authenticode",
+        lambda _path: {
+            "Status": "NotSigned",
+            "SignerSubject": None,
+            "TimestamperSubject": None,
+        },
+    )
+
+    body = inspect_windows_installer(
+        artifact,
+        source,
+        worker_image_sha256=worker_image,
+        expected_artifact_sha256=digest,
+        expected_source_commit=P8C_SOURCE_COMMIT,
+        expected_reference=str(artifact),
+    )
+    assert body.authenticode_status == "NotSigned"
+    assert body.ready_candidate is False
+    assert body.checks["artifact_digest"] is True
+
+    with pytest.raises(ValueError, match="filename"):
+        inspect_windows_installer(
+            artifact,
+            source,
+            worker_image_sha256=worker_image,
+            expected_artifact_sha256=digest,
+            expected_source_commit=P8C_SOURCE_COMMIT,
+            expected_reference=str(source / "different.exe"),
+        )
+    with pytest.raises(ValueError, match="digest"):
+        inspect_windows_installer(
+            artifact,
+            source,
+            worker_image_sha256=worker_image,
+            expected_artifact_sha256="0" * 64,
+            expected_source_commit=P8C_SOURCE_COMMIT,
+            expected_reference=str(artifact),
+        )
+    with pytest.raises(ValueError, match="source HEAD"):
+        inspect_windows_installer(
+            artifact,
+            source,
+            worker_image_sha256=worker_image,
+            expected_artifact_sha256=digest,
+            expected_source_commit="0" * 40,
+            expected_reference=str(artifact),
+        )
+
+
+def test_transport_and_runner_identity_clis_are_short_lived_and_non_overwriting(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    authority_private = tmp_path / "authority.pem"
+    authority_public = tmp_path / "authority-public.pem"
+    runner_private = tmp_path / "runner.pem"
+    runner_public = tmp_path / "runner-public.pem"
+    credential_path = tmp_path / "credential.json"
+
+    authority = initialize_authority(authority_private, authority_public)
+    initialize_identity(runner_private, runner_public)
+    issued = issue_credential(
+        authority_key_path=authority_private,
+        runner_public_key_path=runner_public,
+        run_id="cert-live-package",
+        tenant_id="echo-sovereign",
+        runner_id="pwrk-live-package",
+        output_path=credential_path,
+        ttl_seconds=60,
+    )
+    assert authority["key_id"].startswith("ed25519:")
+    assert issued["issued"] == "true"
+    assert SignedRunCredential.model_validate_json(
+        credential_path.read_text(encoding="utf-8")
+    ).claims.scopes == (RunnerCommand.TRANSITION.value,)
+    with pytest.raises(ValueError, match="TTL"):
+        issue_credential(
+            authority_key_path=authority_private,
+            runner_public_key_path=runner_public,
+            run_id="cert-too-long",
+            tenant_id="echo-sovereign",
+            runner_id="pwrk-live-package",
+            output_path=tmp_path / "too-long.json",
+            ttl_seconds=901,
+        )
+    with pytest.raises(FileExistsError):
+        initialize_authority(authority_private, tmp_path / "unused-public.pem")
+
+    assert credential_main(
+        [
+            "init",
+            "--private-key",
+            str(tmp_path / "cli-authority.pem"),
+            "--public-key",
+            str(tmp_path / "cli-authority-public.pem"),
+        ]
+    ) == 0
+    assert credential_main(
+        [
+            "issue",
+            "--authority-key",
+            str(tmp_path / "cli-authority.pem"),
+            "--runner-public-key",
+            str(runner_public),
+            "--run-id",
+            "cert-cli-package",
+            "--tenant",
+            "echo-sovereign",
+            "--runner-id",
+            "pwrk-cli-package",
+            "--out",
+            str(tmp_path / "cli-credential.json"),
+            "--ttl-seconds",
+            "60",
+        ]
+    ) == 0
+    assert worker_main(
+        [
+            "init",
+            "--private-key",
+            str(tmp_path / "cli-runner.pem"),
+            "--public-key",
+            str(tmp_path / "cli-runner-public.pem"),
+        ]
+    ) == 0
+    assert '"initialized": "true"' in capsys.readouterr().out
+
+
+def test_windows_worker_posts_only_the_signed_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner_private = tmp_path / "runner.pem"
+    runner_public = tmp_path / "runner-public.pem"
+    initialize_identity(runner_private, runner_public)
+    runner_key = serialization.load_pem_private_key(
+        runner_private.read_bytes(), password=None
+    )
+    assert isinstance(runner_key, Ed25519PrivateKey)
+    runner = RunnerEphemeralIdentity(runner_key)
+    authority = ControlPlaneTransportAuthority.generate()
+    credential = authority.issue(
+        credential_id="live-result-credential",
+        run_id="cert-live-package",
+        tenant_id="echo-sovereign",
+        runner_id="pwrk-live-package",
+        runner_public_key_pem=runner.public_key_pem,
+        scopes=(RunnerCommand.TRANSITION.value,),
+        issued_at=utc_now(),
+        ttl=timedelta(minutes=5),
+    )
+    credential_path = tmp_path / "credential.json"
+    credential_path.write_text(credential.model_dump_json(), encoding="utf-8")
+    artifact = tmp_path / P8C_INSTALLER_NAME
+    artifact.write_bytes(b"package")
+    body = _body(
+        file_sha256(
+            Path(__file__).parents[1]
+            / "src"
+            / "echo_certification_forge"
+            / "windows_package.py"
+        )
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_worker.inspect_windows_installer",
+        lambda *args, **kwargs: body,
+    )
+
+    captured: dict[str, object] = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self) -> bytes:
+            return b'{"accepted":true}'
+
+    def _urlopen(request, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr(urllib_request, "urlopen", _urlopen)
+    result = run_once(
+        endpoint="http://127.0.0.1:8309",
+        artifact_path=artifact,
+        source_root=tmp_path,
+        credential_path=credential_path,
+        private_key_path=runner_private,
+        expected_artifact_sha256=P8C_INSTALLER_SHA256,
+        expected_source_commit=P8C_SOURCE_COMMIT,
+        expected_reference=body.reference,
+    )
+    assert result["accepted"] is True
+    assert result["authenticode_status"] == "NotSigned"
+    posted = json.loads(captured["request"].data)
+    assert posted["credential"]["claims"]["run_id"] == "cert-live-package"
+    assert "command" not in posted["response"]["body"]
+    with pytest.raises(ValueError, match="HTTPS"):
+        run_once(
+            endpoint="http://example.invalid",
+            artifact_path=artifact,
+            source_root=tmp_path,
+            credential_path=credential_path,
+            private_key_path=runner_private,
+            expected_artifact_sha256=P8C_INSTALLER_SHA256,
+            expected_source_commit=P8C_SOURCE_COMMIT,
+            expected_reference=body.reference,
+        )
+
+
+def test_worker_and_finalizer_cli_paths_preserve_key_isolation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_worker.run_once",
+        lambda **kwargs: {"accepted": True, "run_id": "cert-cli-package"},
+    )
+    assert worker_main(
+        [
+            "run",
+            "--endpoint",
+            "http://127.0.0.1:8309",
+            "--artifact",
+            str(tmp_path / "package.exe"),
+            "--source-root",
+            str(tmp_path),
+            "--credential",
+            str(tmp_path / "credential.json"),
+            "--private-key",
+            str(tmp_path / "runner.pem"),
+            "--artifact-sha256",
+            "a" * 64,
+            "--source-commit",
+            "b" * 40,
+            "--reference",
+            str(tmp_path / "package.exe"),
+        ]
+    ) == 0
+    assert "cert-cli-package" in capsys.readouterr().out
+
+    monkeypatch.delenv("ECHO_CERTFORGE_API_KEY_PEPPER", raising=False)
+    assert finalizer_main(
+        [
+            "--run-id",
+            "cert-cli-package",
+            "--tenant",
+            "echo-sovereign",
+        ]
+    ) == 2
+    assert "subscriber_governance_pepper_missing" in capsys.readouterr().out
+
+    monkeypatch.setenv(
+        "ECHO_CERTFORGE_API_KEY_PEPPER", "test-pepper-with-at-least-thirty-two-bytes"
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize.EvidenceStore",
+        lambda *args: "store",
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize.OperationalTelemetryRegistry",
+        lambda *args: "registry",
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize.SubscriberPolicy.load",
+        lambda *args: "subscriber-policy",
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize.SubscriberGovernance",
+        lambda *args: "governance",
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize.RuleManifest.load",
+        lambda *args: "manifest",
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize._load_signer",
+        lambda *args: "signer",
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.windows_package_finalize.finalize_windows_package_result",
+        lambda **kwargs: {
+            "run_id": kwargs["run_id"],
+            "signed": True,
+            "release_verdict": "NOT_READY",
+        },
+    )
+    assert finalizer_main(
+        [
+            "--run-id",
+            "cert-cli-package",
+            "--tenant",
+            "echo-sovereign",
+            "--db",
+            str(tmp_path / "db.sqlite3"),
+            "--evidence-root",
+            str(tmp_path / "evidence"),
+            "--policy",
+            str(tmp_path / "policy.json"),
+            "--subscriber-policy",
+            str(tmp_path / "subscriber-policy.json"),
+            "--signing-key",
+            str(tmp_path / "signing.pem"),
+        ]
+    ) == 0
+    assert '"release_verdict": "NOT_READY"' in capsys.readouterr().out
 
 
 def test_enrolled_signed_windows_result_is_accepted_and_replay_is_idempotent(
