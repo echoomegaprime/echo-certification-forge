@@ -551,12 +551,13 @@ if [ "$ADAPTER_MODE" = required ]; then
 fi
 
 echo "== [9/9] persist and verify complete SDK schemas =="
-sudo -n -u postgres psql -1 -v ON_ERROR_STOP=1 -d echo \
-  -f "$RELEASE_DIR/scripts/register_certforge_caps.sql" \
-  -f "$RELEASE_DIR/scripts/register_certforge_run_cap.sql" \
-  -f "$RELEASE_DIR/scripts/register_certforge_r5_async_caps.sql" \
-  -f "$RELEASE_DIR/scripts/register_certification_forge_r5_cap.sql" \
-  -f "$RELEASE_DIR/scripts/register_certforge_sdk_schemas.sql"
+cat \
+  "$RELEASE_DIR/scripts/register_certforge_caps.sql" \
+  "$RELEASE_DIR/scripts/register_certforge_run_cap.sql" \
+  "$RELEASE_DIR/scripts/register_certforge_r5_async_caps.sql" \
+  "$RELEASE_DIR/scripts/register_certification_forge_r5_cap.sql" \
+  "$RELEASE_DIR/scripts/register_certforge_sdk_schemas.sql" \
+  | sudo -n -u postgres psql -1 -v ON_ERROR_STOP=1 -d echo
 
 PROMOTION_ARMED=0
 trap - EXIT

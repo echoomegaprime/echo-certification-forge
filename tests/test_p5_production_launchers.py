@@ -53,6 +53,25 @@ def test_deploy_clears_stale_systemd_start_limits_before_start_and_rollback() ->
     assert promotion.index(dispatcher_reset) < promotion.index(dispatcher_restart)
 
 
+def test_deploy_streams_private_sdk_sql_into_one_postgres_transaction() -> None:
+    text = (ROOT / "deploy" / "deploy_forge.sh").read_text(encoding="utf-8")
+    registration = text.split(
+        'echo "== [9/9] persist and verify complete SDK schemas =="', 1
+    )[1].split("PROMOTION_ARMED=0", 1)[0]
+
+    assert registration.lstrip().startswith("cat \\")
+    for name in (
+        "register_certforge_caps.sql",
+        "register_certforge_run_cap.sql",
+        "register_certforge_r5_async_caps.sql",
+        "register_certification_forge_r5_cap.sql",
+        "register_certforge_sdk_schemas.sql",
+    ):
+        assert f'"$RELEASE_DIR/scripts/{name}"' in registration
+    assert "| sudo -n -u postgres psql -1 -v ON_ERROR_STOP=1 -d echo" in registration
+    assert '-f "$RELEASE_DIR/scripts/' not in registration
+
+
 def test_runtime_defaults_use_v2_manifest() -> None:
     for relative in (
         "src/echo_certification_forge/app.py",
