@@ -25,6 +25,23 @@ def sdk_params(capability: str, params: dict[str, Any]) -> dict[str, Any]:
     return {"command": capability.rsplit(".", 1)[-1], **params}
 
 
+def new_hold_actions(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    hold_id: str,
+) -> set[str]:
+    """Return hold actions added after the bounded pre-smoke audit window."""
+    before_ids = {row.get("event_id") for row in before}
+    return {
+        str(row.get("action"))
+        for row in after
+        if row.get("event_id") not in before_ids
+        and row.get("resource_type") == "legal_hold"
+        and row.get("resource_id") == hold_id
+        and row.get("action")
+    }
+
+
 def sovereign_key(path: Path) -> str:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("SOVEREIGN_KEY="):
@@ -148,15 +165,12 @@ async def smoke(args: argparse.Namespace) -> dict[str, Any]:
             params={"limit": 100},
             tier=1,
         )
-    actions = {
-        str(row.get("action"))
-        for row in audit_after
-        if isinstance(row, dict) and row.get("action")
-    }
+    actions = new_hold_actions(audit_before, audit_after, hold_id)
     report.update(
         {
             "audit_before": len(audit_before),
             "audit_after": len(audit_after),
+            "new_hold_actions": sorted(actions),
             "audit_actions_verified": {
                 "legal_hold.create",
                 "legal_hold.release",
@@ -168,7 +182,6 @@ async def smoke(args: argparse.Namespace) -> dict[str, Any]:
             report["created"],
             report["released"],
             report["audit_actions_verified"],
-            report["audit_after"] >= report["audit_before"] + 2,
         )
     )
     return report
