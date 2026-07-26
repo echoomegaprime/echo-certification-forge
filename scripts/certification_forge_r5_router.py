@@ -10,8 +10,9 @@ Fail-closed governance:
   * Sovereign key required even while the route is un-registered.
   * A matching ACTIVE, unexpired row in ``arcanum_sdk.action_broker_grants``
     (agent/task/scope FIXED in code) is required — no grant, no run.
-  * Request model forbids extra fields; the operator command is a FIXED template
-    over validated identity values (no shell/script/url/token is accepted).
+  * Request model forbids extra fields; the operator command is a fixed template
+    over validated identity values and a closed family selector (no shell,
+    script, URL, model name, adapter name, or token is accepted).
   * The maintenance lease/token never leaves the ANVIL operator process.
   * FORGE re-verifies every Ed25519 receipt itself (``core.verify_forge_bundle``).
   * ``dry_run=true`` (default) runs a read-only preflight that mutates NOTHING.
@@ -23,7 +24,7 @@ import hmac
 import json
 import os
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -71,6 +72,7 @@ class R5Request(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     command: str | None = Field(default=None, min_length=1, max_length=64)
+    target_family: Literal["gs343", "r2d2"]
     expected_server_build_digest: str = Field(..., min_length=64, max_length=64)
     expected_registry_snapshot_digest: str = Field(..., min_length=64, max_length=64)
     expected_registry_revision: str = Field(..., min_length=6, max_length=128)
@@ -157,6 +159,7 @@ async def run_negative_controls(
         mode=mode,
         evidence_run_id=run_id,
         evidence_run_nonce=req.evidence_run_nonce,
+        target_family=req.target_family,
     )
     timeout = 120.0 if mode == "preflight" else 900.0
 
@@ -192,6 +195,7 @@ async def run_negative_controls(
             mode=mode,
             expected_run_id=run_id,
             expected_run_nonce=req.evidence_run_nonce,
+            target_family=req.target_family,
         )
     except core.R5CoreError as exc:
         forge_verify = {"all_ok": False, "reason": str(exc), "receipts": [],

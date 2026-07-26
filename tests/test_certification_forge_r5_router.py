@@ -179,11 +179,12 @@ def test_build_command_is_fixed_and_quoted():
         mode="preflight",
         evidence_run_id="run-1",
         evidence_run_nonce="run-1-nonce-00000001",
+        target_family="gs343",
     )
     assert cmd.startswith("python3 " + core.OPERATOR_PATH)
     assert "--mode preflight" in cmd
-    assert "--target-model echo-gs343" in cmd
-    assert "--wrong-model echo-r2d2" in cmd
+    assert "--target-model echo-gs343-candidate" in cmd
+    assert "--wrong-model echo-r2d2-candidate" in cmd
     assert "--signature-key-id" in cmd
     assert "--signing-key-id" not in cmd
     assert core.EVIDENCE_ROOT + "/run-1" in cmd
@@ -200,6 +201,7 @@ def test_build_command_rejects_bad_mode_and_runid():
             mode="destroy",
             evidence_run_id="x",
             evidence_run_nonce="destroy-nonce-000001",
+            target_family="gs343",
         )
     with pytest.raises(core.R5CoreError):
         core.build_operator_command(
@@ -207,6 +209,7 @@ def test_build_command_rejects_bad_mode_and_runid():
             mode="full",
             evidence_run_id="../etc",
             evidence_run_nonce="invalid-run-id-nonce",
+            target_family="gs343",
         )
 
 
@@ -218,24 +221,49 @@ def test_async_reservation_digest_is_exact_and_conflict_safe():
         mode="full",
         evidence_run_id="async-reservation",
         evidence_run_nonce="async-reservation-nonce-01",
+        target_family="gs343",
     )
     repeated, repeated_sha = core.build_async_request_binding(
         identity,
         mode="full",
         evidence_run_id="async-reservation",
         evidence_run_nonce="async-reservation-nonce-01",
+        target_family="gs343",
     )
     _, mismatch_sha = core.build_async_request_binding(
         identity,
         mode="full",
         evidence_run_id="async-reservation",
         evidence_run_nonce="async-reservation-nonce-02",
+        target_family="gs343",
     )
     assert first == repeated and first_sha == repeated_sha
     assert mismatch_sha != first_sha
     assert core.async_reservation_decision(None, first_sha) == "launch"
     assert core.async_reservation_decision(first_sha, repeated_sha) == "idempotent"
     assert core.async_reservation_decision(first_sha, mismatch_sha) == "conflict"
+
+
+def test_reversed_target_family_swaps_models_and_digest_orientation():
+    _, _, kid = _keypair()
+    ident = core.validate_identity(_identity(kid))
+    command = core.build_operator_command(
+        ident,
+        mode="full",
+        evidence_run_id="r2-reversed",
+        evidence_run_nonce="r2-reversed-nonce-01",
+        target_family="r2d2",
+    )
+    assert "--target-model echo-r2d2-candidate" in command
+    assert "--wrong-model echo-gs343-candidate" in command
+    assert f"--target-adapter-digest {D2}" in command
+    assert f"--wrong-adapter-digest {D}" in command
+
+
+@pytest.mark.parametrize("bad", ["", "gs", "echo-gs343", "GS343", None])
+def test_target_family_is_closed_to_two_exact_values(bad):
+    with pytest.raises(core.R5CoreError):
+        core.validate_target_family(bad)
 
 
 def test_async_router_reserves_before_launch_and_persists_failures():

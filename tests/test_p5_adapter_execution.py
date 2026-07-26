@@ -407,6 +407,24 @@ def test_non_stable_adapter_signs_but_acceptance_blocks(
     assert "maturity_not_stable:gs343" in report["reasons"]
 
 
+def test_verified_promote_elevates_only_evaluation_candidates(
+    tmp_path: Path, complete_qualification
+) -> None:
+    qualification, trust = complete_qualification
+    records = build_records(
+        sources(
+            tmp_path / "evaluation-candidate",
+            gs_maturity="EVALUATION_CANDIDATE",
+            r2_maturity="EVALUATION_CANDIDATE",
+        ),
+        qualification,
+        trust,
+    )
+    assert {record.identity.maturity for record in records} == {
+        AdapterMaturity.STABLE
+    }
+
+
 def test_writes_complete_verifiable_artifact_set(
     tmp_path: Path, complete_qualification
 ) -> None:

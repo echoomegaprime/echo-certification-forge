@@ -14,14 +14,15 @@ synchronous ``certification_forge_r5_router``) provides an async submit/poll pai
                                                     the row is finalized to COMPLETE.
 
 Same fail-closed governance as the sync path: sovereign key required, active Action-Broker grant
-required, FIXED operator command over validated identity values, FORGE re-verifies every receipt.
+required, fixed operator command over validated identity values and a closed family selector,
+FORGE re-verifies every receipt.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import shlex
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -130,6 +131,7 @@ def _salvage_json(text: str) -> dict[str, Any]:
 class R5AsyncSubmit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     command: str | None = Field(default=None, min_length=1, max_length=64)
+    target_family: Literal["gs343", "r2d2"]
     expected_server_build_digest: str = Field(..., min_length=64, max_length=64)
     expected_registry_snapshot_digest: str = Field(..., min_length=64, max_length=64)
     expected_registry_revision: str = Field(..., min_length=6, max_length=128)
@@ -181,6 +183,7 @@ async def submit_async(req: R5AsyncSubmit, x_echo_api_key: str | None = Header(N
         mode=mode,
         evidence_run_id=run_id,
         evidence_run_nonce=req.evidence_run_nonce,
+        target_family=req.target_family,
     )
     await _ensure_table()
     pool = await pg_pool()
@@ -273,6 +276,7 @@ async def submit_async(req: R5AsyncSubmit, x_echo_api_key: str | None = Header(N
         mode=mode,
         evidence_run_id=run_id,
         evidence_run_nonce=req.evidence_run_nonce,
+        target_family=req.target_family,
     )
     launch = _launch_command(operator_cmd, run_id)
     try:
@@ -376,6 +380,7 @@ async def status(run_id: str, x_echo_api_key: str | None = Header(None)) -> dict
             mode=mode,
             expected_run_id=run_id,
             expected_run_nonce=request_data["evidence_run_nonce"],
+            target_family=request_data["target_family"],
         )
     except core.R5CoreError as exc:
         forge_verify = {"all_ok": False, "reason": str(exc), "receipts": [],

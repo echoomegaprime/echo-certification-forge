@@ -7,10 +7,10 @@ echo-worker-server, so the unit suite runs standalone. The FastAPI/DB/SSH
 wiring lives in ``certification_forge_r5_router.py`` and calls into here.
 
 Security posture (fail-closed):
-  * The caller supplies ONLY expected identity digests + an evidence run id.
-    No shell, script path, URL, adapter name, key, or maintenance token is ever
-    accepted — the request model forbids extra fields and the command is built
-    from a FIXED template over already-validated identity values.
+  * The caller supplies expected identity digests, an evidence run id, and one
+    closed target-family selector (``gs343`` or ``r2d2``). No shell, script
+    path, URL, model name, adapter name, key, or maintenance token is accepted;
+    the command is built from a fixed template over validated values.
   * FORGE re-verifies every Ed25519 receipt itself; the ANVIL operator's
     self-report is never trusted as proof.
 """
@@ -35,8 +35,11 @@ GRANT_SCOPE = "exec.shell"
 ANVIL_NODE = "anvil"
 OPERATOR_PATH = "/home/anvil/echo_certification_forge/family_r5_operator.py"
 EVIDENCE_ROOT = "/home/anvil/echo_certification_forge/evidence"
-TARGET_MODEL = "echo-gs343"
-WRONG_MODEL = "echo-r2d2"
+GS343_MODEL = "echo-gs343-candidate"
+R2D2_MODEL = "echo-r2d2-candidate"
+# Backward-compatible names for the default GS343-target orientation.
+TARGET_MODEL = GS343_MODEL
+WRONG_MODEL = R2D2_MODEL
 LOOPBACK_URL = "http://127.0.0.1:8200"  # informational; the operator enforces it
 
 RECEIPT_SCHEMA = "echo.family-routing-receipt/v1"
@@ -108,12 +111,34 @@ def validate_run_id(evidence_run_id: Any) -> str:
     return evidence_run_id
 
 
+def validate_target_family(target_family: Any) -> str:
+    if target_family not in {"gs343", "r2d2"}:
+        raise R5CoreError("target_family must be 'gs343' or 'r2d2'")
+    return str(target_family)
+
+
+def _oriented_identity(
+    identity: Mapping[str, str], target_family: str
+) -> tuple[dict[str, str], str, str]:
+    """Return operator-facing identity/model values for one exact family direction."""
+    family = validate_target_family(target_family)
+    oriented = validate_identity_reverse(identity)
+    if family == "gs343":
+        return oriented, GS343_MODEL, R2D2_MODEL
+    oriented["target_adapter_digest"], oriented["wrong_adapter_digest"] = (
+        oriented["wrong_adapter_digest"],
+        oriented["target_adapter_digest"],
+    )
+    return oriented, R2D2_MODEL, GS343_MODEL
+
+
 def build_async_request_binding(
     identity: Mapping[str, str],
     *,
     mode: str,
     evidence_run_id: str,
     evidence_run_nonce: str,
+    target_family: str,
 ) -> tuple[dict[str, Any], str]:
     if mode not in {"full", "preflight"}:
         raise R5CoreError("mode must be 'full' or 'preflight'")
@@ -124,6 +149,7 @@ def build_async_request_binding(
         "run_id": run_id,
         "identity": validate_identity_reverse(identity),
         "mode": mode,
+        "target_family": validate_target_family(target_family),
         "evidence_run_nonce": evidence_run_nonce,
         "evidence_run_nonce_sha256": sha256_bytes(
             evidence_run_nonce.encode("utf-8")
@@ -153,6 +179,7 @@ def build_operator_command(
     mode: str,
     evidence_run_id: str,
     evidence_run_nonce: str,
+    target_family: str,
     operator_path: str = OPERATOR_PATH,
     evidence_root: str = EVIDENCE_ROOT,
 ) -> str:
@@ -164,13 +191,13 @@ def build_operator_command(
     run_id = validate_run_id(evidence_run_id)
     if not isinstance(evidence_run_nonce, str) or len(evidence_run_nonce) < 16:
         raise R5CoreError("evidence_run_nonce must contain at least 16 characters")
-    identity = validate_identity_reverse(identity)  # revalidate the flag-keyed dict
+    identity, target_model, wrong_model = _oriented_identity(identity, target_family)
     evidence_dir = f"{evidence_root.rstrip('/')}/{run_id}"
     argv = [
         "python3", operator_path,
         "--mode", mode,
-        "--target-model", TARGET_MODEL,
-        "--wrong-model", WRONG_MODEL,
+        "--target-model", target_model,
+        "--wrong-model", wrong_model,
         "--evidence-directory", evidence_dir,
         "--evidence-run-id", run_id,
         "--evidence-run-nonce", evidence_run_nonce,
@@ -215,6 +242,7 @@ def verify_forge_bundle(
     mode: str,
     expected_run_id: str | None = None,
     expected_run_nonce: str | None = None,
+    target_family: str = "gs343",
 ) -> dict[str, Any]:
     """Independent FORGE-side verification of the operator's evidence bundle.
 
@@ -223,7 +251,7 @@ def verify_forge_bundle(
     equals what the caller expected, and (full mode) re-verifies each negative
     control's Ed25519 signature over its canonical payload. Never trusts the
     operator's own pass/fail claim."""
-    ident = validate_identity_reverse(identity)
+    ident, target_model, wrong_model = _oriented_identity(identity, target_family)
     problems: list[str] = []
     if not isinstance(bundle, Mapping):
         return {"all_ok": False, "identity_ok": False, "key_id_ok": False,
@@ -262,34 +290,34 @@ def verify_forge_bundle(
             "positive_target": {
                 "status": 200,
                 "error": None,
-                "model": TARGET_MODEL,
+                "model": target_model,
                 "digest": ident["target_adapter_digest"],
                 "routing_mode": "lora_adapter",
                 "adapter_applied": True,
                 "persona_applied": True,
                 "challenge": (
                     f"certforge-r5:{run_id}:{expected_run_nonce}:"
-                    f"positive:{TARGET_MODEL}:"
+                    f"positive:{target_model}:"
                 ),
             },
             "positive_wrong": {
                 "status": 200,
                 "error": None,
-                "model": WRONG_MODEL,
+                "model": wrong_model,
                 "digest": ident["wrong_adapter_digest"],
                 "routing_mode": "lora_adapter",
                 "adapter_applied": True,
                 "persona_applied": True,
                 "challenge": (
                     f"certforge-r5:{run_id}:{expected_run_nonce}:"
-                    f"positive:{WRONG_MODEL}:"
+                    f"positive:{wrong_model}:"
                 ),
             },
             "wrong_active_adapter": {
                 "status": 409,
                 "error": "ADAPTER_IDENTITY_MISMATCH",
-                "model": TARGET_MODEL,
-                "selected": WRONG_MODEL,
+                "model": target_model,
+                "selected": wrong_model,
                 "digest": None,
                 "routing_mode": "failure",
                 "adapter_applied": False,
@@ -301,7 +329,7 @@ def verify_forge_bundle(
             "unloaded_adapter": {
                 "status": 503,
                 "error": "ADAPTER_NOT_ACTIVE",
-                "model": TARGET_MODEL,
+                "model": target_model,
                 "selected": None,
                 "digest": None,
                 "routing_mode": "failure",

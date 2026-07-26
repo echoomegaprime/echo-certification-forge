@@ -36,6 +36,7 @@ def _r5_input() -> dict[str, Any]:
     sha = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
     properties = {
         "command": COMMAND_SCHEMA,
+        "target_family": {"type": "string", "enum": ["gs343", "r2d2"]},
         "expected_server_build_digest": sha,
         "expected_registry_snapshot_digest": sha,
         "expected_registry_revision": {"type": "string", "minLength": 6, "maxLength": 128},

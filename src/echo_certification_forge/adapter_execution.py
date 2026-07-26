@@ -431,6 +431,23 @@ def _record_from_source(
         raise AdapterExecutionError(
             f"R5 artifact digest differs from external pin for {source.adapter_id}"
         )
+    quality = _quality_report(
+        source.adapter_id,
+        source.quality_mode,
+        qualification_report,
+        target_model=source.target_model,
+        artifact_sha256=selected_digest,
+        verified_qualification=verified_qualification,
+        manifest_sha256=sha256_json(full_r5["manifest"]),
+    )
+    observed_maturity = _maturity(payload.get("maturity_state"))
+    promotion_proven = (
+        str(payload.get("maturity_state") or "").strip().upper()
+        == "EVALUATION_CANDIDATE"
+        and quality.passed_cases == quality.total_cases
+        and quality.total_cases > 0
+        and not quality.critical_failures
+    )
     identity = AdapterIdentity(
         adapter_id=source.adapter_id,
         version=_identifier_or_default(payload.get("adapter_version"), "adapter_version", default="unknown"),
@@ -451,20 +468,13 @@ def _record_from_source(
                 "signature_key_id": payload.get("signature_key_id"),
             }
         ),
-        maturity=_maturity(payload.get("maturity_state")),
+        maturity=(
+            AdapterMaturity.STABLE if promotion_proven else observed_maturity
+        ),
         provenance=(
             f"anvil-family-r5:{source.target_model}:"
             f"{payload.get('registry_revision')}:{payload.get('signature_key_id')}"
         ),
-    )
-    quality = _quality_report(
-        source.adapter_id,
-        source.quality_mode,
-        qualification_report,
-        target_model=source.target_model,
-        artifact_sha256=selected_digest,
-        verified_qualification=verified_qualification,
-        manifest_sha256=sha256_json(full_r5["manifest"]),
     )
     result_payload = {
         "identity": identity.to_dict(),

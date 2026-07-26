@@ -9,7 +9,7 @@ INSERT INTO arcanum_sdk.sdk_capabilities
 VALUES
   (
     'echo.certification_forge.r5.run_negative_controls',
-    'Certification Forge: run fixed GS343 wrong-active and unloaded-adapter R5 controls; dry_run performs read-only identity preflight.',
+    'Certification Forge: run fixed candidate-bound R5 controls in the selected GS343 or R2D2 direction; dry_run performs read-only identity preflight.',
     'router',
     '/sdk/certification-forge/r5/run-negative-controls',
     'POST',
@@ -20,6 +20,7 @@ VALUES
       "additionalProperties":false,
       "required":[
         "command",
+        "target_family",
         "expected_server_build_digest",
         "expected_registry_snapshot_digest",
         "expected_registry_revision",
@@ -33,6 +34,7 @@ VALUES
       ],
       "properties":{
         "command":{"type":"string","minLength":1,"maxLength":64},
+        "target_family":{"type":"string","enum":["gs343","r2d2"]},
         "expected_server_build_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
         "expected_registry_snapshot_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
         "expected_registry_revision":{"type":"string","pattern":"^[0-9a-fA-F]{6,128}$"},

@@ -50,7 +50,9 @@ _REQUEST = {
 }
 
 
-def _operator_argv(mode: str, run_id: str = "run-contract-1") -> list[str]:
+def _operator_argv(
+    mode: str, run_id: str = "run-contract-1", target_family: str = "gs343"
+) -> list[str]:
     """Build the fixed command exactly as the router does, then split it the way
     a POSIX shell on ANVIL would."""
     identity = core.validate_identity(_REQUEST)
@@ -59,6 +61,7 @@ def _operator_argv(mode: str, run_id: str = "run-contract-1") -> list[str]:
         mode=mode,
         evidence_run_id=run_id,
         evidence_run_nonce="operator-contract-nonce-01",
+        target_family=target_family,
     )
     argv = shlex.split(command)
     assert argv[0] == "python3"
@@ -82,6 +85,14 @@ def test_operator_accepts_an_isolated_loopback_evaluator_port() -> None:
     args = op._args(_operator_argv("full") + ["--base-url", "http://127.0.0.1:8210"])
     assert args.base_url == "http://127.0.0.1:8210"
     assert op.LoopbackTransport(args.base_url).base_url == "http://127.0.0.1:8210"
+
+
+def test_reversed_family_command_round_trips_real_operator_argparse() -> None:
+    args = op._args(_operator_argv("full", target_family="r2d2"))
+    assert args.target_model == core.R2D2_MODEL
+    assert args.wrong_model == core.GS343_MODEL
+    assert args.target_adapter_digest == _REQUEST["expected_r2d2_digest"]
+    assert args.wrong_adapter_digest == _REQUEST["expected_gs343_digest"]
 
 
 def test_operator_rejects_non_loopback_evaluator_host() -> None:

@@ -1591,10 +1591,18 @@
             "maxLength": 128,
             "minLength": 8,
             "type": "string"
+          },
+          "target_family": {
+            "enum": [
+              "gs343",
+              "r2d2"
+            ],
+            "type": "string"
           }
         },
         "required": [
           "command",
+          "target_family",
           "expected_server_build_digest",
           "expected_registry_snapshot_digest",
           "expected_registry_revision",
@@ -2188,10 +2196,18 @@
             "maxLength": 128,
             "minLength": 8,
             "type": "string"
+          },
+          "target_family": {
+            "enum": [
+              "gs343",
+              "r2d2"
+            ],
+            "type": "string"
           }
         },
         "required": [
           "command",
+          "target_family",
           "expected_server_build_digest",
           "expected_registry_snapshot_digest",
           "expected_registry_revision",

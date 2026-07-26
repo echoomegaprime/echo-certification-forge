@@ -12,6 +12,7 @@ _CAP_ID = "echo.certification_forge.r5.run_negative_controls"
 _ROUTE = "/sdk/certification-forge/r5/run-negative-controls"
 _REQUIRED = {
     "command",
+    "target_family",
     "expected_server_build_digest",
     "expected_registry_snapshot_digest",
     "expected_registry_revision",
@@ -64,6 +65,10 @@ def test_registration_schema_is_closed_and_identity_only() -> None:
         "maxLength": 64,
     }
     assert schema["properties"]["dry_run"] == {"type": "boolean", "default": True}
+    assert schema["properties"]["target_family"] == {
+        "type": "string",
+        "enum": ["gs343", "r2d2"],
+    }
 
     forbidden = {
         "shell",
