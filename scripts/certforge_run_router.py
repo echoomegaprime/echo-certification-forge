@@ -19,7 +19,11 @@ from routers._common import audit, rate_limit
 router = APIRouter(prefix="/sdk/certification-forge", tags=["certification-forge-run"])
 
 _SOVEREIGN_KEY_FILE = "/home/forge/.echo_sovereign_key"
-_REPO = "/home/forge/echo-certification-forge"
+# Production is atomically promoted through this stable symlink. The legacy
+# checkout at /home/forge/echo-certification-forge holds mutable state only and
+# can contain an older schema, so the dispatcher must never resolve its DB
+# relative to that source checkout.
+_REPO = "/home/forge/echo-certification-forge-current"
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 

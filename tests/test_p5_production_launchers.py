@@ -13,6 +13,8 @@ def test_production_dispatcher_requires_v2_and_all_adapter_inputs() -> None:
         ROOT / "src" / "echo_certification_forge" / "production_launch.py"
     ).read_text(encoding="utf-8")
     assert "existing governed subscriber run" in router
+    assert '_REPO = "/home/forge/echo-certification-forge-current"' in router
+    assert '_REPO = "/home/forge/echo-certification-forge"' not in router
     assert "mandatory-rules.v2.json" in dispatcher
     assert "mandatory-rules.v1.json" not in dispatcher
     for option in ("--adapter-response", "--adapter-policy", "--adapter-registry"):
