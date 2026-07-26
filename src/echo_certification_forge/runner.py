@@ -14,10 +14,10 @@ import stat
 import tarfile
 import zipfile
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import TYPE_CHECKING, Any, Iterable, Literal
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -35,6 +35,9 @@ from .canonical import (
     to_utc_iso,
     utc_now,
 )
+
+if TYPE_CHECKING:
+    from .supply_chain import ImageAdmissionPolicy, ImageAttestation
 
 
 class RunnerError(RuntimeError):
