@@ -74,6 +74,7 @@ class ServiceContext:
 
 class DeployGateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     run_id: str = Field(min_length=1, max_length=128)
     target_identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     environment_identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -84,6 +85,7 @@ class DeployGateRequest(BaseModel):
 
 class SubscriberSubmitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     target: SubmitTarget
     environment: SubmitEnvironment
     policy_version: str = Field(min_length=1, max_length=128)
@@ -92,11 +94,13 @@ class SubscriberSubmitRequest(BaseModel):
 
 class RerunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
 class UsageMeterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     unit: Literal["worker_minutes", "model_tokens", "evidence_storage_bytes"]
     amount: int = Field(gt=0)
     idempotency_key: str = Field(min_length=8, max_length=128)
@@ -104,6 +108,7 @@ class UsageMeterRequest(BaseModel):
 
 class ReleaseEventRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     source: Literal["git", "build", "registry", "staging"]
     event_id: str = Field(min_length=1, max_length=128)
     target_reference: str = Field(min_length=1, max_length=2048)
@@ -116,6 +121,7 @@ class ReleaseEventRequest(BaseModel):
 
 class ProductionDeploymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     attempt_id: str = Field(min_length=1, max_length=128)
     run_id: str = Field(min_length=1, max_length=128)
     deployment_environment: Literal["production"]
@@ -129,6 +135,7 @@ class ProductionDeploymentRequest(BaseModel):
 
 class LegalHoldRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     hold_id: str = Field(min_length=1, max_length=128)
     run_id: str | None = Field(default=None, min_length=1, max_length=128)
     reason: str = Field(min_length=1, max_length=2048)
@@ -136,6 +143,7 @@ class LegalHoldRequest(BaseModel):
 
 class LifecycleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     event_type: VerdictLifecycleEvent
     reason: str = Field(min_length=1, max_length=2048)
     replacement_run_id: str | None = Field(default=None, min_length=1, max_length=128)
@@ -143,6 +151,7 @@ class LifecycleRequest(BaseModel):
 
 class OperationalQuarantineRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     subject_type: Literal["runner", "adapter"]
     subject_id: str = Field(min_length=1, max_length=128)
     reason: str = Field(min_length=8, max_length=2048)
@@ -150,11 +159,13 @@ class OperationalQuarantineRequest(BaseModel):
 
 class OperationalQuarantineReleaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     reason: str = Field(min_length=8, max_length=2048)
 
 
 class OperationalKeyRotationStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     old_key_id: str = Field(min_length=1, max_length=128)
     new_public_key_pem: str = Field(min_length=80, max_length=8192)
     overlap_seconds: int = Field(default=3600, ge=60, le=86_400)
@@ -163,11 +174,13 @@ class OperationalKeyRotationStartRequest(BaseModel):
 
 class RunnerEnrollmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     runner_id: str = Field(min_length=1, max_length=128)
 
 
 class OperationalReasonRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     reason: str = Field(min_length=8, max_length=2048)
 
 
@@ -1082,7 +1095,7 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "verdict.lifecycle",
                 "certification",
                 run_id,
-                request.model_dump(mode="json"),
+                request.model_dump(mode="json", exclude={"command"}),
             )
             return {
                 "run_id": run_id,
