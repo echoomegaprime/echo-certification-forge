@@ -151,7 +151,6 @@ def main() -> int:
                     "identity_digest": target.identity_digest,
                     "reference": acquired.canonical_ref,
                     "path": acquired.canonical_ref,
-                    "artifact_sha256": acquired.artifact_sha256,
                 },
                 "environment": {
                     "identity_digest": environment_digest,
