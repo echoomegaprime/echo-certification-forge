@@ -1,35 +1,1046 @@
-[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 51%]
-[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m    [100%][0m
-================================ tests coverage ================================
-_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+........................................................................ [ 13%]
+........................................................................ [ 27%]
+........................................................................ [ 41%]
+........................................................................ [ 55%]
+........................................................................ [ 69%]
+........................................................................ [ 83%]
+..............................................s......................... [ 97%]
+.............                                                            [100%]
+============================== warnings summary ===============================
+..\..\..\..\tmp\certforge-ci-venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\tmp\certforge-ci-venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
 
-Name                                              Stmts   Miss Branch BrPart  Cover   Missing
----------------------------------------------------------------------------------------------
-src/echo_certification_forge/__init__.py              3      0      0      0   100%
-src/echo_certification_forge/__main__.py              2      2      0      0     0%   1-3
-src/echo_certification_forge/anchor.py              259     26     70     21    86%   65, 71, 100, 154, 187, 207, 209->215, 257, 265, 275, 284, 287, 310, 313, 316, 330->329, 345, 353-355, 368-369, 371, 375, 386, 403, 406-407
-src/echo_certification_forge/app.py                  13     13      0      0     0%   2-18
-src/echo_certification_forge/canonical.py            44      2     12      2    93%   46, 64
-src/echo_certification_forge/cli.py                  38      5      4      2    83%   48-57, 61
-src/echo_certification_forge/custody.py             395     59    118     36    79%   98, 100, 102, 124, 127-128, 130, 132, 137, 339-345, 382, 390, 393, 402-404, 446, 454, 457, 463, 475, 518, 521, 531-533, 547, 550, 577, 659-662, 687, 694, 710, 712, 764-767, 822, 824, 832-833, 869, 887, 891, 897-901, 903, 912, 970
-src/echo_certification_forge/deploy_gate.py          46      6     24      6    83%   30, 39, 44, 46, 61, 63
-src/echo_certification_forge/evidence.py            213     22     52     13    87%   244-248, 262, 269, 289, 310, 356-359, 365, 371, 378, 380, 422, 470, 472, 495-496, 517, 547
-src/echo_certification_forge/hostile.py             188     17     76     18    87%   77, 79, 97, 120, 133, 143, 147, 151, 161, 169, 171->176, 173, 223-224, 226, 241, 244->246, 249-250, 253->258, 260->221
-src/echo_certification_forge/models.py              144      1      8      3    97%   82, 84->86, 86->exit
-src/echo_certification_forge/p3_runtime.py           26      0      6      0   100%
-src/echo_certification_forge/p3_service.py          130     31     18      5    72%   64, 66, 71-75, 87-88, 109-110, 116-117, 123-124, 132-137, 145, 159, 190-193, 201-202, 208-209
-src/echo_certification_forge/p4_manifest.py         217     32     88     32    79%   102, 110, 112, 114, 116, 118, 139, 141, 145, 151, 153, 155, 157, 163->165, 171, 192, 194, 198, 227, 229, 243, 245, 247, 252, 256, 259, 261, 263, 267, 269, 272, 284, 322
-src/echo_certification_forge/policy.py               44      2     10      2    93%   38, 60
-src/echo_certification_forge/runner.py              683     50    210     42    89%   175, 178, 180, 186, 190, 230, 294, 338, 372, 446, 583-589, 639, 663-664, 703, 736, 748, 750, 781, 792, 796, 800, 842, 854, 856, 858, 904, 911, 913, 919, 947-948, 1114, 1127, 1218->1217, 1243, 1246-1247, 1276-1277, 1293-1294, 1296, 1299, 1302, 1315->exit, 1343, 1368->exit, 1370, 1373-1374, 1375->1368
-src/echo_certification_forge/service.py              73      5      4      0    94%   42, 69-70, 101-102
-src/echo_certification_forge/signer_cli.py           51      2      4      2    93%   44, 100
-src/echo_certification_forge/signing.py              67      4     14      5    89%   29, 49, 71->74, 79, 97
-src/echo_certification_forge/signing_service.py     481     50    134     42    84%   81, 125, 129, 156, 159, 231, 245, 251-252, 255, 259, 302, 304, 307, 370, 372, 375, 379, 484-486, 499, 507-509, 528, 530, 533, 538, 557, 560, 659, 671, 730, 736, 738, 755, 793, 795, 798, 806, 824, 828, 833-834, 836, 838, 840, 851, 859
-src/echo_certification_forge/state_machine.py         6      0      2      0   100%
-src/echo_certification_forge/supply_chain.py        306     30    122     26    87%   61, 63, 65, 69, 74, 92, 95, 125, 161, 163, 165, 195, 199, 202, 211, 234, 292, 312, 339-340, 345, 379, 409, 415, 418, 423, 441, 444, 447-448, 449->437
-src/echo_certification_forge/verdict.py              61     12     34      9    76%   29, 36, 38, 40, 42, 55, 58-61, 63, 74-75
-src/echo_certification_forge/verifier_cli.py         30      1      4      1    94%   50
----------------------------------------------------------------------------------------------
-TOTAL                                              3520    372   1014    267    85%
-[32mRequired test coverage of 85.0% reached. Total coverage: 85.33%
-[0m[32m[32m[1m141 passed[0m[32m in 43.41s[0m[0m
+tests/test_additional_contracts.py::test_api_verification_and_deploy_gate
+  <frozen importlib._bootstrap>:416: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C8AB100>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_additional_contracts.py::test_api_missing_verdict_and_unknown_run
+  C:\Program Files\Python313\Lib\typing.py:1294: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFC6D0>
+    def _is_dunder(attr):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_capability_surface.py::test_every_openapi_operation_is_mapped_or_a_signed_inbound_boundary
+  C:\Program Files\Python313\Lib\inspect.py:3057: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C897D30>
+    params = OrderedDict((param.name, param) for param in parameters)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_capability_surface.py::test_public_responses_get_production_security_headers
+  C:\Program Files\Python313\Lib\typing.py:1358: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFD030>
+    def __getattr__(self, attr):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFEC50>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFD5D0>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFFE20>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFFC40>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFC130>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFF100>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_family_r5_parity.py::test_only_sanctioned_structural_delta_between_the_two_copies
+  C:\Program Files\Python313\Lib\ast.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFCA90>
+    return compile(source, filename, mode, flags,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C789300>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C788400>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C789C60>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C7893F0>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78AA70>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78AE30>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78A020>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78B2E0>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78A110>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C7897B0>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78B1F0>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_operational_telemetry.py::test_service_ingests_signed_reports_and_projects_tenant_truth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C78AC50>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p3_runtime.py::test_custody_runtime_factory_and_fail_closed_environment
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A85E0>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p3_runtime.py::test_custody_runtime_factory_and_fail_closed_environment
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A9210>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p3_runtime.py::test_custody_runtime_factory_and_fail_closed_environment
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A9D50>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p5_adapter_execution.py::test_input_container_validation_fails_closed
+  C:\ECHO_OMEGA_PRIME\.codex\worktrees\echo-certforge-completion\src\echo_certification_forge\p5_corpus.py:1674: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C788E50>
+    if tuple(message.get("role") for message in messages) != expected_roles:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p5_adapter_execution.py::test_input_container_validation_fails_closed
+  C:\ECHO_OMEGA_PRIME\.codex\worktrees\echo-certforge-completion\src\echo_certification_forge\p5_corpus.py:1674: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A88B0>
+    if tuple(message.get("role") for message in messages) != expected_roles:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_full_release_flow
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A8F40>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_admission_requires_tenant_and_is_fail_closed
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CB970>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_mutations_require_deployment_credentials
+  C:\Program Files\Python313\Lib\typing.py:2523: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CBD30>
+    def get_origin(tp):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_mutation_signature_binds_method_path_tenant_body
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic_core\core_schema.py:4349: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AA4D0>
+    def _dict_not_none(**kwargs: Any) -> Any:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_mutation_exact_replay_rejected
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic_core\core_schema.py:4350: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1C98A0>
+    return {k: v for k, v in kwargs.items() if v is not None}
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_binding_refuses_unsigned_run_and_foreign_tenant
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CAD40>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_rollback_target_and_outcome_errors
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AAA70>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_build_webhook_creates_run_and_deduplicates
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2921: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5ABA60>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_registry_webhook_maps_container_target
+  C:\Program Files\Python313\Lib\typing.py:2104: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CA7A0>
+    if not getattr(cls, "_is_protocol", False):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_webhook_signature_enforcement_is_fail_closed
+  <frozen abc>:119: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5ABB50>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_webhook_tenant_mismatch_between_header_and_body
+  C:\Program Files\Python313\Lib\typing.py:1294: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AB970>
+    def _is_dunder(attr):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_webhook_declared_run_reconciles_certifies_and_deploys_end_to_end
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:333: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A89A0>
+    return ConfigDict()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_reconciliation_refuses_mismatched_artifact_and_run_stays_undeployable
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1C88B0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_reconciliation_window_closes_at_acquisition
+  C:\Program Files\Python313\Lib\typing.py:1295: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5ABE20>
+    return attr.startswith('__') and attr.endswith('__')
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_run_worker_executes_webhook_declared_run_end_to_end
+  <frozen abc>:119: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AB880>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_policy_rollover_creates_new_recertification_run
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AB790>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_policy_rollover_creates_new_recertification_run
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A8A90>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_policy_rollover_creates_new_recertification_run
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AA110>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_policy_rollover_creates_new_recertification_run
+  C:\Program Files\Python313\Lib\inspect.py:3057: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A9300>
+    params = OrderedDict((param.name, param) for param in parameters)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_enforce_admission_sh_records_real_outcomes_end_to_end
+  <frozen importlib._bootstrap_external>:780: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1C8310>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_terminal_outcome_transitions_fail_closed
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C180130>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_enforce_admission_sh_rolls_back_even_when_outcome_recording_is_down
+  C:\Program Files\Python313\Lib\typing.py:1427: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5532E0>
+    self.__args__ = tuple(... if a is _TypingEllipsis else
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_http_outcome_operation_id_idempotency
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2921: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5523E0>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_enforce_admission_sh_recovers_committed_outcome_when_response_is_dropped
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5533D0>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_registry_webhook_oci_run_certifies_and_deploys_end_to_end
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2767: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5535B0>
+    self._recursively_seen = set()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_registry_webhook_oci_journey_without_sandbox_fails_closed
+  <frozen importlib._bootstrap>:649: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C896890>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_registry_webhook_oci_journey_without_sandbox_fails_closed
+  <frozen importlib._bootstrap>:649: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CB100>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_enforce_admission_sh_rolls_back_when_success_cannot_be_ledgered
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:996: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5A9C60>
+    args = (_typing_extra._make_forward_ref(a) if isinstance(a, str) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p6_platform_integration.py::test_enforce_admission_sh_rolls_back_when_success_cannot_be_ledgered
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:996: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C181E40>
+    args = (_typing_extra._make_forward_ref(a) if isinstance(a, str) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_active_manifest_rollover_creates_distinct_subscriber_reservation
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C180040>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_active_manifest_rollover_creates_distinct_subscriber_reservation
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C183F10>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_active_manifest_rollover_creates_distinct_subscriber_reservation
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1809A0>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_active_manifest_rollover_creates_distinct_subscriber_reservation
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CB5B0>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_active_manifest_rollover_creates_distinct_subscriber_reservation
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C8973D0>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_oci_without_sandbox_fails_and_releases_claim
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5ABD30>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_oci_without_sandbox_fails_and_releases_claim
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFEE30>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_tenant_authentication_isolation_and_project_quota
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5ABC40>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_role_and_api_key_scopes_prevent_privilege_escalation
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2766: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C8966B0>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_governed_submission_is_idempotent_metered_and_concurrency_limited
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:333: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1824D0>
+    return ConfigDict()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_rejected_submission_compensates_meter_and_preserves_default_block
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2227: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348BCFD990>
+    def inner_handler(obj: Any) -> CoreSchema:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_persisted_rate_limit_returns_retry_after
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_utils.py:106: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CAA70>
+    return isinstance(cls, type) and issubclass(cls, class_or_tuple)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_billing_lifecycle_is_idempotent_and_fail_closed
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CB6A0>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_governance_controls_enforce_plan_entitlements_and_versions
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_known_annotated_metadata.py:128: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CAB60>
+    FieldInfo = import_cached_field_info()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_enterprise_private_worker_and_developer_release_gate_are_plan_gated
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F551E40>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_api_key_revocation_and_audit_chain_are_immutable
+  C:\Program Files\Python313\Lib\typing.py:2099: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1822F0>
+    def __instancecheck__(cls, instance):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_storage_failure_returns_service_unavailable_without_legacy_fallback
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F6549A0>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_storage_failure_returns_service_unavailable_without_legacy_fallback
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F656E30>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_rate_limit_is_global_and_denied_requests_are_immutably_audited
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F655D50>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_membership_lifecycle_is_tenant_scoped_and_revokes_credentials
+  C:\Program Files\Python313\Lib\typing.py:2104: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F552A70>
+    if not getattr(cls, "_is_protocol", False):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_membership_lifecycle_is_tenant_scoped_and_revokes_credentials
+  C:\Program Files\Python313\Lib\typing.py:2104: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F552E30>
+    if not getattr(cls, "_is_protocol", False):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_project_and_private_worker_lifecycle_release_plan_capacity
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:323: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1CA2F0>
+    def prepare_config(config: ConfigDict | dict[str, Any] | type[Any] | None) -> ConfigDict:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_lifecycle_mutations_cannot_cross_tenant_boundaries
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E6C50>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_billing_events_are_tenant_bound_and_expired_period_is_read_only
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\fields.py:687: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F552F20>
+    continue
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_stale_reservation_is_released_and_metering_is_compensated
+  C:\Program Files\Python313\Lib\typing.py:1295: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F550220>
+    return attr.startswith('__') and attr.endswith('__')
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_stale_reservation_is_released_and_metering_is_compensated
+  C:\Program Files\Python313\Lib\typing.py:1295: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F550F40>
+    return attr.startswith('__') and attr.endswith('__')
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_enforces_live_subscriber_entitlement[SUSPENDED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:901: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F551C60>
+    def _generate_schema_from_get_schema_method(self, obj: Any, source: Any) -> core_schema.CoreSchema | None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_enforces_live_subscriber_entitlement[CANCELLED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:904: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F552C50>
+    get_schema = getattr(obj, '__get_pydantic_core_schema__', None)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_enforces_live_subscriber_entitlement[CANCELLED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:904: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AAE30>
+    get_schema = getattr(obj, '__get_pydantic_core_schema__', None)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_uses_plan_retention_immediately_before_execution
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2766: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C1C97B0>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_uses_plan_retention_immediately_before_execution
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2766: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F654310>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_fails_closed_when_retention_lookup_fails
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:904: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E48B0>
+    get_schema = getattr(obj, '__get_pydantic_core_schema__', None)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_worker_fails_closed_when_retention_lookup_fails
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:904: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E5B70>
+    get_schema = getattr(obj, '__get_pydantic_core_schema__', None)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_worker_requires_bound_queued_run_before_acquisition
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F6558A0>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_worker_reservation_is_atomically_consumed
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:247: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F550040>
+    def __init__(self, config_wrapper: ConfigWrapper):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_worker_revalidates_queued_state_immediately_before_execution
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F654040>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_worker_revalidates_queued_state_immediately_before_execution
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F6575B0>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_worker_enforces_private_local_and_customer_signing_controls
+  <string>:0: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5531F0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_mutation_reauthorizes_inside_write_transaction
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E56C0>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_downgrade_reconciles_and_caps_retention_atomically
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5508B0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_downgrade_reconciles_and_caps_retention_atomically
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E45E0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_downgrade_reconciles_and_caps_retention_atomically
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E4A90>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_required_billing_periods_fail_closed_and_preserve_subscription
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E7F10>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_required_billing_periods_fail_closed_and_preserve_subscription
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E76A0>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_validation_and_unhandled_errors_are_finally_audited
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C896980>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_validation_and_unhandled_errors_are_finally_audited
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F5534C0>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_validation_and_unhandled_errors_are_finally_audited
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C5AB3D0>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_billing_provider_order_rejects_delayed_reactivation
+  C:\Program Files\Python313\Lib\typing.py:2523: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F657B50>
+    def get_origin(tp):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_billing_provider_order_rejects_delayed_reactivation
+  C:\Program Files\Python313\Lib\typing.py:2523: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F6562F0>
+    def get_origin(tp):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_final_request_outcomes_audit_post_auth_denials
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F655120>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_final_request_outcomes_audit_post_auth_denials
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F654C70>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_final_request_outcomes_audit_post_auth_denials
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F6571F0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_final_request_outcomes_audit_post_auth_denials
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F654A90>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_quota_uses_authoritative_cross_month_billing_period
+  C:\Program Files\Python313\Lib\typing.py:2523: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E5990>
+    def get_origin(tp):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_run_quota_uses_authoritative_cross_month_billing_period
+  C:\Program Files\Python313\Lib\typing.py:2523: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C180B80>
+    def get_origin(tp):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_api_submission_dispatches_exact_bound_run_to_worker
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E54E0>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_api_submission_dispatches_exact_bound_run_to_worker
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E7970>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_api_submission_dispatches_exact_bound_run_to_worker
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E66B0>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_api_submission_dispatches_exact_bound_run_to_worker
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E64D0>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_dispatcher_recovers_crash_after_durable_reservation[reserved]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:247: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F655F30>
+    def __init__(self, config_wrapper: ConfigWrapper):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_dispatcher_recovers_crash_after_durable_reservation[reserved]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:247: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E4D60>
+    def __init__(self, config_wrapper: ConfigWrapper):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_dispatcher_recovers_crash_after_durable_reservation[run_created]
+  <frozen importlib._bootstrap>:649: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E6110>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_worker_lease_heartbeat_and_started_crash_recovery
+  C:\Program Files\Python313\Lib\typing.py:1427: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F656020>
+    self.__args__ = tuple(... if a is _TypingEllipsis else
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_expired_prestart_worker_claim_requeues_without_compensation
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:333: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E4C70>
+    return ConfigDict()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_expired_prestart_worker_claim_requeues_without_compensation
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:333: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F654220>
+    return ConfigDict()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_dispatch_retry_exhaustion_terminalizes_and_compensates
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:996: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E5C60>
+    args = (_typing_extra._make_forward_ref(a) if isinstance(a, str) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_dispatch_retry_exhaustion_terminalizes_and_compensates
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:996: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7AE30>
+    args = (_typing_extra._make_forward_ref(a) if isinstance(a, str) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_change_preserves_risk_lifecycle_state[payment.failed-PAST_DUE]
+  <frozen importlib._bootstrap>:649: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F6554E0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_change_preserves_risk_lifecycle_state[payment.failed-PAST_DUE]
+  <frozen importlib._bootstrap>:649: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E49A0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_change_preserves_risk_lifecycle_state[subscription.suspended-SUSPENDED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\fields.py:257: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E7A60>
+    alias_is_set = any(alias is not None for alias in (self.alias, self.validation_alias, self.serialization_alias))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_change_preserves_risk_lifecycle_state[subscription.suspended-SUSPENDED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\fields.py:257: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E7C40>
+    alias_is_set = any(alias is not None for alias in (self.alias, self.validation_alias, self.serialization_alias))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_change_preserves_risk_lifecycle_state[subscription.cancelled-CANCELLED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348F8E62F0>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_plan_change_preserves_risk_lifecycle_state[subscription.cancelled-CANCELLED]
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED79300>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_concurrent_suspension_wins_before_execution_boundary
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7A7A0>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_concurrent_suspension_wins_before_execution_boundary
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED79120>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_api_worker_reconciles_canonical_identities_and_rejects_digest_drift
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:93: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7A200>
+    def __init__(self, config: ConfigDict | dict[str, Any] | type[Any] | None, *, check: bool = True):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalizes
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED78E50>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_heartbeat_storage_loss_terminates_customer_process_before_signing
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED78D60>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_heartbeat_storage_loss_terminates_customer_process_before_signing
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED78A90>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_heartbeat_storage_loss_terminates_customer_process_before_signing
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7AC50>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_heartbeat_storage_loss_terminates_customer_process_before_signing
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7BA60>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_expired_lease_cannot_commit_signed_completion
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7AB60>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_artifact_download_is_bounded_tenant_scoped_and_audited
+  C:\Program Files\Python313\Lib\typing.py:2523: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C229C60>
+    def get_origin(tp):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_artifact_download_rejects_unverified_bytes
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED785E0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_telemetry_is_bounded_tenant_scoped_and_truthful
+  C:\Program Files\Python313\Lib\inspect.py:1808: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7BE20>
+    *[make_weakref(entry) for entry in _static_getmro(klass)]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_rerun_creates_immutable_lineage_without_mutating_source
+  C:\Program Files\Python313\Lib\typing.py:1295: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA548B0>
+    return attr.startswith('__') and attr.endswith('__')
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_rerun_creates_immutable_lineage_without_mutating_source
+  C:\Program Files\Python313\Lib\typing.py:1295: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA55210>
+    return attr.startswith('__') and attr.endswith('__')
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_subscriber_rerun_creates_immutable_lineage_without_mutating_source
+  C:\Program Files\Python313\Lib\typing.py:1295: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7B010>
+    return attr.startswith('__') and attr.endswith('__')
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_p7_subscriber_governance.py::test_legal_hold_lifecycle_and_public_verification_use_hardened_subscriber_auth
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2766: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7B100>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_state_and_api.py::test_api_requires_tenant_and_hides_cross_tenant_run
+  C:\Program Files\Python313\Lib\typing.py:211: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA544F0>
+    def _should_unflatten_callable_args(typ, args):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_state_and_api.py::test_health_truthfully_reports_completed_p8c_and_remaining_product_gate
+  C:\Program Files\Python313\Lib\typing.py:1427: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED794E0>
+    self.__args__ = tuple(... if a is _TypingEllipsis else
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_state_and_api.py::test_required_adapter_status_publishes_customer_environment
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:904: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7B6A0>
+    get_schema = getattr(obj, '__get_pydantic_core_schema__', None)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_submit_creates_queued_run_bound_to_declared_target
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2767: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED796C0>
+    self._recursively_seen = set()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_submit_creates_queued_run_bound_to_declared_target
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2767: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7AD40>
+    self._recursively_seen = set()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_submit_creates_queued_run_bound_to_declared_target
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2767: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348ED7B3D0>
+    self._recursively_seen = set()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_submit_creates_queued_run_bound_to_declared_target
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2767: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA57970>
+    self._recursively_seen = set()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_idempotent_replay_returns_same_run
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\fields.py:257: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA546D0>
+    alias_is_set = any(alias is not None for alias in (self.alias, self.validation_alias, self.serialization_alias))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_shared_idempotency_key_is_isolated_across_tenants
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2227: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA55A80>
+    def inner_handler(obj: Any) -> CoreSchema:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_idempotency_key_reuse_with_different_target_conflicts
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_schema_generation_shared.py:72: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348FA56980>
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_status_returns_durable_record_across_store_reopen
+  C:\Program Files\Python313\Lib\typing.py:1427: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C22B5B0>
+    self.__args__ = tuple(... if a is _TypingEllipsis else
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_status_returns_durable_record_across_store_reopen
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C228A90>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p1_intake.py::test_submit_rejects_tenant_mismatch_and_unknown_policy
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_config.py:247: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C22B2E0>
+    def __init__(self, config_wrapper: ConfigWrapper):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p2_read_surface.py::test_cross_tenant_reads_and_cancel_are_404_no_leak
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2766: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C2295D0>
+    def __init__(self) -> None:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p2_read_surface.py::test_cancel_transitions_then_fails_closed_on_second
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2227: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C2289A0>
+    def inner_handler(obj: Any) -> CoreSchema:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p2_read_surface.py::test_findings_endpoint_lists_recorded_findings
+  C:\Program Files\Python313\Lib\typing.py:1294: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C228130>
+    def _is_dunder(attr):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p2_read_surface.py::test_evidence_index_is_redacted_metadata_only
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C22AB60>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p2_read_surface.py::test_verify_detects_tampered_artifact
+  C:\Program Files\Python313\Lib\inspect.py:1826: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C22B1F0>
+    if type not in _static_getmro(objtype):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p2_read_surface.py::test_verdict_endpoint_404_until_signed_then_returns_envelope
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:2767: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C22A7A0>
+    self._recursively_seen = set()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_t4p3_signer_anchor.py::test_control_plane_holds_no_private_signing_key
+  C:\tmp\certforge-ci-venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:997: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x000002348C22A890>
+    args = tuple(self._resolve_forward_ref(a) if isinstance(a, ForwardRef) else a for a in args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.13.0-final-0 _______________
+
+Name                                                    Stmts   Miss Branch BrPart  Cover   Missing
+---------------------------------------------------------------------------------------------------
+src\echo_certification_forge\__init__.py                    3      0      0      0   100%
+src\echo_certification_forge\__main__.py                    2      2      0      0     0%   1-3
+src\echo_certification_forge\acquisition.py               230     45    100     25    76%   69, 80, 81->85, 87, 89, 99-100, 102, 132, 145, 151, 177, 180-184, 195-196, 201-206, 210, 213, 218, 246, 251, 264-265, 273, 283-284, 301, 363, 366, 372, 376, 386, 391-392, 396-400
+src\echo_certification_forge\adapter_execution.py         212     20     58     18    86%   77, 94, 190, 232-233, 237, 266, 400, 431, 506, 520, 539, 543, 547, 551, 556, 560, 565, 570, 647
+src\echo_certification_forge\adapter_policy.py             38      5     14      5    81%   26, 40, 45, 47, 52
+src\echo_certification_forge\adapter_registry.py           69     11     18      7    79%   59-60, 62, 69, 81, 101, 109, 125, 134, 165-166
+src\echo_certification_forge\adapter_transport.py          87     11     42      9    84%   28, 80, 82, 106-107, 152, 156, 174, 176, 190, 202
+src\echo_certification_forge\adapters.py                  175     10     66     10    92%   58, 60, 93, 101, 106, 140, 173, 175, 187, 196
+src\echo_certification_forge\anchor.py                    259     26     70     21    86%   65, 71, 100, 154, 187, 207, 209->215, 257, 265, 275, 284, 287, 310, 313, 316, 330->329, 345, 353-355, 368-369, 371, 375, 386, 403, 406-407
+src\echo_certification_forge\app.py                        46     46     10      0     0%   2-94
+src\echo_certification_forge\bootstrap.py                  39      2      4      1    93%   54, 78
+src\echo_certification_forge\canonical.py                  44      2     12      2    93%   46, 64
+src\echo_certification_forge\cli.py                        38      5      4      2    83%   48-57, 61
+src\echo_certification_forge\custody.py                   395     59    118     36    79%   98, 100, 102, 124, 127-128, 130, 132, 137, 339-345, 382, 390, 393, 402-404, 446, 454, 457, 463, 475, 518, 521, 531-533, 547, 550, 577, 659-662, 687, 694, 710, 712, 764-767, 822, 824, 832-833, 869, 887, 891, 897-901, 903, 912, 970
+src\echo_certification_forge\deploy_gate.py                50      6     28      6    85%   41, 48, 59, 61, 70, 72
+src\echo_certification_forge\deployment.py                379     23    116     15    92%   134, 279-281, 425->423, 455, 487, 535, 585-587, 588->612, 597, 621->626, 631->636, 834, 845-846, 881, 884, 887->911, 895-897, 906->887, 912-915
+src\echo_certification_forge\deployment_service.py        152     12     24      2    92%   149, 152-153, 205-206, 217-218, 234-235, 270, 289-290
+src\echo_certification_forge\dispatch_worker.py           117     71     32      6    38%   60, 62, 66, 81-98, 113-118, 124, 129-313, 317
+src\echo_certification_forge\evidence.py                  370     45    116     33    83%   239, 241, 243, 245, 247, 334, 337, 353-359, 408-410, 414, 417, 422, 433, 435, 536, 563, 589, 635-638, 644, 650, 657, 659, 701, 764, 774, 779, 782, 785-786, 788, 833->835, 850, 887, 889, 915-916, 937, 967
+src\echo_certification_forge\executor.py                  201     17     50      2    92%   131-132, 147-149, 154-161, 235, 344-345, 389
+src\echo_certification_forge\family_r5.py                 558    123    204     71    73%   75-78, 89-105, 131, 133, 135, 149, 151, 173-174, 205-206, 230, 254, 257, 301, 304, 314, 338, 348, 351, 361, 366, 368, 382, 387-396, 408-412, 417, 421, 423, 425, 427, 456-462, 477, 496-497, 499, 506-507, 509, 522-523, 525, 532, 540, 548, 552-553, 560, 562, 569, 580, 612, 615, 644, 665, 668, 711, 714, 721, 736, 739, 763, 767, 801, 828, 840, 845, 848, 853, 860, 931, 939, 943, 949, 951, 955, 969, 973, 983, 986, 1002, 1007, 1010, 1013, 1015, 1017, 1127-1147, 1151
+src\echo_certification_forge\hostile.py                   188     16     76     17    88%   77, 79, 97, 120, 133, 143, 147, 151, 161, 169, 171->176, 173, 223-224, 241, 244->246, 249-250, 253->258, 260->221
+src\echo_certification_forge\intake.py                    116     27     34      5    72%   61-64, 75-76, 133-135, 192, 227-267
+src\echo_certification_forge\models.py                    146      1      8      1    99%   82
+src\echo_certification_forge\operational_telemetry.py     143     19     42     14    82%   139, 151, 153, 155, 176, 208, 211-212, 214, 216, 236, 288, 297-298, 300, 308, 320, 404-405
+src\echo_certification_forge\p3_runtime.py                 26      0      6      0   100%
+src\echo_certification_forge\p3_service.py                130     31     18      5    72%   64, 66, 71-75, 87-88, 109-110, 116-117, 123-124, 132-137, 145, 159, 190-193, 201-202, 208-209
+src\echo_certification_forge\p4_manifest.py               217     32     88     32    79%   102, 110, 112, 114, 116, 118, 139, 141, 145, 151, 153, 155, 157, 163->165, 171, 192, 194, 198, 227, 229, 243, 245, 247, 252, 256, 259, 261, 263, 267, 269, 272, 284, 322
+src\echo_certification_forge\p5_corpus.py                 847    170    434    145    75%   167-168, 175, 178-179, 183, 194-215, 248, 250, 256, 320, 323-324, 342, 355, 360, 369, 373, 377, 381, 385, 389, 395, 399, 403, 408, 414, 426, 432, 436, 726, 753, 756, 767, 769, 771, 773, 775, 779, 783, 785, 791, 793, 795, 797, 802, 805, 807, 837, 844, 847, 870, 878-879, 881, 894, 908, 917, 925-926, 928, 938, 940, 943, 946, 949, 952, 954, 957, 960, 963, 968, 980, 985, 1010, 1012, 1014, 1017, 1019, 1026, 1042, 1049-1050, 1054, 1059, 1062, 1090-1092, 1171, 1181-1182, 1184, 1192, 1194, 1199, 1206-1207, 1212, 1214, 1241, 1244, 1246, 1250, 1252, 1255, 1257, 1262-1263, 1270, 1273, 1277, 1279, 1305-1307, 1325, 1327, 1330-1331, 1333, 1338, 1348, 1353, 1460->1465, 1537->1542, 1578->1583, 1669, 1672, 1675, 1678, 1681-1682, 1686, 1688, 1697, 1699, 1701, 1703, 1705, 1709, 1715, 1717, 1719, 1721, 1727, 1735, 1742, 1746, 1755, 1757, 1759, 1765, 1767, 1771, 1773-1775, 1789, 1814, 1816, 1825->1827, 1831, 1837, 1839, 1841, 1843, 1846, 1870, 1906
+src\echo_certification_forge\p5_qualification.py          802    147    316    100    77%   96-97, 99, 106, 112, 136, 138, 154, 185, 187, 203, 225, 244, 294, 296, 298, 300, 310-313, 324-340, 364-366, 381-383, 417-423, 432-433, 440-441, 443, 520, 528, 531, 534, 538, 540, 556, 560, 576, 579-580, 582, 586, 597, 601, 610, 613, 629, 674, 687, 694, 698, 701, 703, 709-710, 741, 744, 805, 824-825, 828, 831-832, 836, 839, 841, 855, 861, 888-889, 891, 981, 984, 1089, 1244, 1293-1294, 1298, 1301-1302, 1306, 1317, 1319, 1321, 1341, 1343, 1345, 1347, 1351, 1354, 1357, 1359, 1374-1375, 1377, 1379, 1381, 1385, 1391, 1396, 1406, 1409, 1415, 1420, 1448, 1460, 1464, 1468, 1480, 1487, 1494, 1499, 1501, 1503, 1509, 1517, 1519, 1523, 1526, 1536, 1538, 1615, 1641, 1654, 1675, 1684, 1695
+src\echo_certification_forge\policy.py                     44      2     10      2    93%   38, 60
+src\echo_certification_forge\production_launch.py           8      1      2      1    80%   40
+src\echo_certification_forge\release_hooks.py             113     16     22      2    84%   59-66, 92, 95-96, 195-196, 203, 206-207, 213-214
+src\echo_certification_forge\run_worker.py                376     86    124     25    73%   71-73, 89, 143-144, 186-187, 189, 206-208, 214, 241-257, 264-281, 296-297, 352-357, 363-381, 385, 400-413, 437-438, 449, 461, 467->469, 469->474, 522->524, 524->529, 540->542, 543-548, 753-762, 783-791, 802-815, 820->836, 830-832, 837, 852-856, 864->870, 894
+src\echo_certification_forge\runner.py                    683     50    210     42    89%   175, 178, 180, 186, 190, 230, 294, 338, 372, 446, 583-589, 639, 663-664, 703, 736, 748, 750, 781, 792, 796, 800, 842, 854, 856, 858, 904, 911, 913, 919, 947-948, 1114, 1127, 1218->1217, 1243, 1246-1247, 1276-1277, 1293-1294, 1296, 1299, 1302, 1315->exit, 1343, 1368->exit, 1370, 1373-1374, 1375->1368
+src\echo_certification_forge\sandbox.py                    77     21      8      3    72%   75, 100-109, 112-119, 123-124
+src\echo_certification_forge\service.py                   646    116     80     20    81%   87->exit, 205->213, 216->233, 228-229, 252-253, 265, 276, 320, 323, 333-334, 344, 347, 418, 421-422, 461, 471-481, 490-493, 610, 612, 614, 617-618, 698-699, 723, 762, 774, 783->785, 855, 873->875, 881-884, 900-901, 919-921, 944-947, 966, 978, 986-989, 999, 1019-1020, 1060-1061, 1073-1074, 1094-1107, 1114-1120, 1128-1135, 1143-1155, 1162-1165, 1186-1190, 1209-1215, 1222-1228, 1240-1241, 1277-1278, 1352-1353, 1361-1362, 1370-1371, 1396-1397, 1481-1482, 1494-1495
+src\echo_certification_forge\signer_cli.py                 51      2      4      2    93%   44, 100
+src\echo_certification_forge\signing.py                    70      5     16      6    87%   29, 49, 57, 78->81, 86, 104
+src\echo_certification_forge\signing_service.py           481     50    134     42    84%   81, 125, 129, 156, 159, 231, 245, 251-252, 255, 259, 302, 304, 307, 370, 372, 375, 379, 484-486, 499, 507-509, 528, 530, 533, 538, 557, 560, 659, 671, 730, 736, 738, 755, 793, 795, 798, 806, 824, 828, 833-834, 836, 838, 840, 851, 859
+src\echo_certification_forge\state_machine.py               6      0      2      0   100%
+src\echo_certification_forge\subscriber.py               1538    272    556    164    77%   115, 117, 119, 154, 156, 158, 160, 171, 253, 264, 351, 632-635, 682->687, 687->692, 692->697, 794, 807, 826-844, 940, 957, 960, 1088, 1099, 1124, 1127, 1175, 1199, 1224, 1248-1249, 1254-1255, 1292->1304, 1308, 1312-1313, 1326, 1428, 1430, 1432, 1437, 1445, 1523, 1560-1561, 1612, 1635, 1654-1665, 1688, 1690, 1723, 1726, 1770-1771, 1802, 1838-1852, 1860-1903, 1938, 1940, 1979-1982, 1992-2015, 2032, 2037-2038, 2042->2044, 2047->2050, 2050->2052, 2110->2130, 2182, 2188, 2200, 2208, 2210, 2231, 2238, 2242-2243, 2271, 2277, 2290, 2366, 2489, 2517, 2522, 2525, 2531, 2537, 2544, 2548, 2551-2552, 2556, 2569, 2571, 2573, 2579, 2620, 2623, 2632, 2643, 2662-2663, 2693-2705, 2726, 2747, 2819, 2842-2843, 2845, 2868, 2928->2931, 2993->3013, 3040->3048, 3067->3069, 3081, 3188, 3203, 3218, 3220, 3226, 3230, 3243, 3259, 3271, 3288, 3291, 3396, 3404-3405, 3409, 3414, 3441-3442, 3444, 3446, 3494, 3538, 3552->3575, 3592, 3605, 3675, 3694, 3722, 3723->3743, 3742, 3772, 3795-3944, 4108->4110, 4110->4112, 4123->4126, 4126->4129, 4183, 4217, 4254-4308, 4324, 4346, 4352, 4356-4357, 4359, 4364, 4390, 4407, 4433, 4489, 4491, 4535, 4578, 4580, 4623, 4628, 4640, 4688, 4723, 4769, 4791, 4880, 4885, 4915, 4984, 5033, 5034->exit, 5043-5046, 5099, 5175, 5225, 5245->5247, 5249, 5254, 5264-5265, 5294, 5315, 5324, 5358, 5362-5380, 5393, 5396
+src\echo_certification_forge\supply_chain.py              306     30    122     26    87%   61, 63, 65, 69, 74, 92, 95, 125, 161, 163, 165, 195, 199, 202, 211, 234, 292, 312, 339-340, 345, 379, 409, 415, 418, 423, 441, 444, 447-448, 449->437
+src\echo_certification_forge\teacher_generator.py         496     88    186     49    79%   94-96, 110-112, 136, 139-140, 144, 152-162, 185, 187, 244-245, 250-251, 253, 313, 328, 356, 413, 417, 424, 431, 437-438, 466, 492, 494, 497, 500, 504, 506, 509-510, 518-519, 527, 543, 604, 607, 609, 621, 623, 632-633, 648, 678, 690, 693-694, 698, 703, 763, 765, 767, 769, 771, 773, 775, 777, 796, 858, 891-894, 921, 943-947, 964-975, 980, 986-988
+src\echo_certification_forge\verdict.py                    63     10     36      9    81%   29, 43, 45, 47, 49, 62, 68, 70, 81-82
+src\echo_certification_forge\verifier_cli.py               30      1      4      1    94%   50
+---------------------------------------------------------------------------------------------------
+TOTAL                                                   11067   1734   3624    984    80%
+Required test coverage of 80.0% reached. Total coverage: 80.33%
+516 passed, 1 skipped, 167 warnings in 177.39s (0:02:57)

@@ -1,17 +1,24 @@
 {
   "health": {
+    "anchor": "independent_provider_required",
     "control_plane_executes_customer_code": false,
+    "custody": "append_only_merkle_verified",
     "private_signing_key_loaded": false,
+    "signing": "isolated_out_of_process",
     "status": "ok",
-    "version": "0.3.0"
+    "subscriber_governance": "disabled",
+    "version": "0.8.0"
   },
   "passed": true,
-  "pid": 803484,
-  "port": 35413,
+  "pid": 13480,
+  "port": 60117,
   "readiness": "observable_http_predicate",
   "schema_version": "1.0.0",
   "status": {
-    "completed_phase_gate": "P3",
+    "adapter_qualification": "PENDING",
+    "completed_phase_gate": "P8C",
+    "customer_surface": "LIVE",
+    "deployment_enforcement": "P6_FAIL_CLOSED",
     "evidence_custody": "P3_APPEND_ONLY_VERIFIED",
     "external_evidence_anchor": "P3_INDEPENDENT_PROVIDER_VERIFIED",
     "public_key_lifecycle": "P3_ROTATION_REVOCATION_VERIFIED",
@@ -31,6 +38,7 @@
     ],
     "runner_isolation": "P2_FOUNDATION_VERIFIED",
     "service": "echo-certification-forge",
+    "subscriber_governance": "DISABLED",
     "trusted_signing_keys": [],
     "verdict_signing": "P3_ISOLATED_SIGNER_VERIFIED"
   }

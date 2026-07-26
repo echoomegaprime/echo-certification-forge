@@ -31,6 +31,10 @@ jobs:
         run: python -m pytest -q --cov=echo_certification_forge --cov-branch --cov-report=term-missing
       - name: Run deterministic P1 verification
         run: python scripts/verify_p1.py
+      - name: Run P6 deployment enforcement acceptance
+        run: python scripts/p6_acceptance.py
+      - name: Run P7 subscriber governance acceptance
+        run: python scripts/p7_acceptance.py
       - name: Upload verification evidence
         if: always()
         uses: actions/upload-artifact@v4
