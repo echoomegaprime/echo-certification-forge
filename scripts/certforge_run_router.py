@@ -6,6 +6,7 @@ never creates a second identity or bypasses subscriber governance.
 """
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -19,11 +20,16 @@ from routers._common import audit, rate_limit
 router = APIRouter(prefix="/sdk/certification-forge", tags=["certification-forge-run"])
 
 _SOVEREIGN_KEY_FILE = "/home/forge/.echo_sovereign_key"
-# Production is atomically promoted through this stable symlink. The legacy
-# checkout at /home/forge/echo-certification-forge holds mutable state only and
-# can contain an older schema, so the dispatcher must never resolve its DB
-# relative to that source checkout.
-_REPO = "/home/forge/echo-certification-forge-current"
+# Certification Forge code is atomically promoted through the separate
+# ``echo-certification-forge-current`` symlink, while mutable runtime state has
+# a stable location across releases. Keep the router bound to that state root
+# explicitly so neither a stale source checkout nor a new release directory can
+# silently select a different SQLite database.
+_STATE_ROOT = Path(
+    os.environ.get(
+        "ECHO_CERTFORGE_STATE_ROOT", "/home/forge/echo-certification-forge/var"
+    )
+)
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
@@ -63,7 +69,7 @@ async def certforge_run(
     if not _RUN_ID_RE.fullmatch(req.run_id) or not _RUN_ID_RE.fullmatch(req.tenant):
         raise HTTPException(status_code=400, detail="invalid run or tenant identifier")
 
-    db_path = Path(f"{_REPO}/var/certforge.sqlite3")
+    db_path = _STATE_ROOT / "certforge.sqlite3"
     try:
         with sqlite3.connect(db_path) as connection:
             row = connection.execute(
