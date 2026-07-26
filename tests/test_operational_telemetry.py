@@ -596,6 +596,7 @@ def test_service_ingests_signed_reports_and_projects_tenant_truth(store, manifes
             "Authorization": f"Bearer {account.bootstrap_api_key}",
         },
         json={
+            "command": "quarantine",
             "subject_type": "runner",
             "subject_id": "runner-anvil-1",
             "reason": "operator isolated the runner for verification",
@@ -614,7 +615,10 @@ def test_service_ingests_signed_reports_and_projects_tenant_truth(store, manifes
             "X-Tenant-ID": account.organization_id,
             "Authorization": f"Bearer {account.bootstrap_api_key}",
         },
-        json={"reason": "independent verification completed successfully"},
+        json={
+            "command": "release",
+            "reason": "independent verification completed successfully",
+        },
     )
     audit = client.get(
         "/v1/subscriber/audit?limit=10",

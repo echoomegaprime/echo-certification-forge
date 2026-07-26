@@ -93,6 +93,7 @@ class ServiceContext:
 
 class DeployGateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     run_id: str = Field(min_length=1, max_length=128)
     target_identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     environment_identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -101,6 +102,7 @@ class DeployGateRequest(BaseModel):
 
 class ProjectCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     slug: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     name: str = Field(min_length=1, max_length=160)
     target_reference: str = Field(min_length=1, max_length=2048)
@@ -108,11 +110,13 @@ class ProjectCreateRequest(BaseModel):
 
 class RerunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
 class ApiKeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     user_id: str | None = Field(
         default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
@@ -137,12 +141,14 @@ class GovernanceConfigRequest(BaseModel):
 
 class GovernanceUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     expected_version: int = Field(ge=1)
     config: GovernanceConfigRequest
 
 
 class PolicyPackCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=160)
     version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     manifest: dict[str, Any]
@@ -150,12 +156,14 @@ class PolicyPackCreateRequest(BaseModel):
 
 class PrivateWorkerCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=160)
     attestation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class MemberInviteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     email: str = Field(min_length=3, max_length=254)
     display_name: str = Field(min_length=1, max_length=160)
     role: MemberRole
@@ -163,11 +171,13 @@ class MemberInviteRequest(BaseModel):
 
 class MemberRoleUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     role: MemberRole
 
 
 class LegalHoldRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     hold_id: str = Field(min_length=1, max_length=128)
     run_id: str | None = Field(default=None, min_length=1, max_length=128)
     reason: str = Field(min_length=1, max_length=2048)
@@ -175,6 +185,7 @@ class LegalHoldRequest(BaseModel):
 
 class LifecycleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     event_type: VerdictLifecycleEvent
     reason: str = Field(min_length=1, max_length=2048)
     replacement_run_id: str | None = Field(default=None, min_length=1, max_length=128)
@@ -182,6 +193,7 @@ class LifecycleRequest(BaseModel):
 
 class OperationalQuarantineRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     subject_type: Literal["runner", "adapter"]
     subject_id: str = Field(min_length=1, max_length=128)
     reason: str = Field(min_length=8, max_length=2048)
@@ -189,11 +201,13 @@ class OperationalQuarantineRequest(BaseModel):
 
 class OperationalQuarantineReleaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     reason: str = Field(min_length=8, max_length=2048)
 
 
 class OperationalKeyRotationStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     old_key_id: str = Field(min_length=1, max_length=128)
     new_public_key_pem: str = Field(min_length=80, max_length=8192)
     overlap_seconds: int = Field(default=3600, ge=60, le=86_400)
@@ -202,11 +216,13 @@ class OperationalKeyRotationStartRequest(BaseModel):
 
 class RunnerEnrollmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     runner_id: str = Field(min_length=1, max_length=128)
 
 
 class OperationalReasonRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     reason: str = Field(min_length=8, max_length=2048)
 
 
