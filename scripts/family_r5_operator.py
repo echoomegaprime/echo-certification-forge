@@ -640,6 +640,11 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.add_argument("--" + option, required=True)
     parser.add_argument("--target-model", default="echo-gs343")
     parser.add_argument("--wrong-model", default="echo-r2d2")
+    parser.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8200",
+        help="Loopback Family endpoint; non-loopback hosts are rejected",
+    )
     parser.add_argument("--mode", choices=("full", "preflight"), default="full")
     parser.add_argument("--evidence-directory", required=True, type=Path)
     parser.add_argument("--evidence-run-id", required=True)
@@ -663,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     report = execute(expected, evidence_run_id=args.evidence_run_id,
                      evidence_run_nonce=args.evidence_run_nonce, mode=args.mode,
+                     transport=LoopbackTransport(args.base_url),
                      evidence_directory=args.evidence_directory)
     print(json.dumps(report, indent=2, sort_keys=True))
     if args.mode == "preflight":

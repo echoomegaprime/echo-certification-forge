@@ -752,15 +752,15 @@ def verify_full_r5_evidence(
         "base_model_revision": deployment_identity.get("base_model_revision"),
     }
     _fields(expected, required_identity, "R5 expected identity")
-    for field in (
+    for field_name in (
         "server_build_digest",
         "registry_snapshot_digest",
         "base_model_digest",
     ):
-        require_sha256(str(expected.get(field)), field)
-    for field in ("registry_revision", "base_model_revision"):
-        if not isinstance(expected.get(field), str) or not expected[field]:
-            raise R5Error(f"R5 expected identity lacks {field}")
+        require_sha256(str(expected.get(field_name)), field_name)
+    for field_name in ("registry_revision", "base_model_revision"):
+        if not isinstance(expected.get(field_name), str) or not expected[field_name]:
+            raise R5Error(f"R5 expected identity lacks {field_name}")
 
     bundle = report.get("forge_verification_bundle")
     if not isinstance(bundle, dict) or bundle.get("mode") != "full":
@@ -1111,6 +1111,11 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.add_argument("--" + option, required=True)
     parser.add_argument("--target-model", default="echo-gs343")
     parser.add_argument("--wrong-model", default="echo-r2d2")
+    parser.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8200",
+        help="Loopback Family endpoint; non-loopback hosts are rejected",
+    )
     parser.add_argument("--mode", choices=("full", "preflight"), default="full")
     parser.add_argument("--evidence-directory", required=True, type=Path)
     parser.add_argument("--evidence-run-id", required=True)
@@ -1134,6 +1139,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     report = execute(expected, evidence_run_id=args.evidence_run_id,
                      evidence_run_nonce=args.evidence_run_nonce, mode=args.mode,
+                     transport=LoopbackTransport(args.base_url),
                      evidence_directory=args.evidence_directory)
     print(json.dumps(report, indent=2, sort_keys=True))
     if args.mode == "preflight":

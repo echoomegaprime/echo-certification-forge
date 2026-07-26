@@ -75,6 +75,18 @@ def test_built_command_parses_with_real_operator_argparse(mode: str) -> None:
     assert args.evidence_directory == Path(f"{core.EVIDENCE_ROOT}/run-contract-1")
     assert args.evidence_run_id == "run-contract-1"
     assert args.evidence_run_nonce == "operator-contract-nonce-01"
+    assert args.base_url == "http://127.0.0.1:8200"
+
+
+def test_operator_accepts_an_isolated_loopback_evaluator_port() -> None:
+    args = op._args(_operator_argv("full") + ["--base-url", "http://127.0.0.1:8210"])
+    assert args.base_url == "http://127.0.0.1:8210"
+    assert op.LoopbackTransport(args.base_url).base_url == "http://127.0.0.1:8210"
+
+
+def test_operator_rejects_non_loopback_evaluator_host() -> None:
+    with pytest.raises(ValueError, match="loopback"):
+        op.LoopbackTransport("http://192.168.1.49:8210")
 
 
 def test_parsed_identity_round_trips_and_validates_operator_side() -> None:
