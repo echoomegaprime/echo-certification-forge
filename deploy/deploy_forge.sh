@@ -10,6 +10,7 @@ PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"
 DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-main}"
+EXPECTED_COMMIT_SHA="${CERTFORGE_EXPECTED_COMMIT_SHA:-}"
 RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-releases}"
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
@@ -41,6 +42,10 @@ cd "$SOURCE_REPO"
 echo "== [1/8] fetch immutable source ($BRANCH) =="
 git "${GITC[@]}" fetch --quiet origin "$BRANCH"
 NEW_SHA="$(git rev-parse "origin/$BRANCH^{commit}")"
+if [ -n "$EXPECTED_COMMIT_SHA" ] && [ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
+  echo "!! fetched commit does not match the hosted-CI-approved commit"
+  exit 1
+fi
 RELEASE_ID="$NEW_SHA-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 RELEASE_DIR="$RELEASE_ROOT/$RELEASE_ID"
 RELEASE_TMP="$RELEASE_DIR.tmp.$$"

@@ -13,6 +13,16 @@ def test_deploy_gate_locks_before_fetching_or_building() -> None:
     assert 'exec 9>"$LOCK_FILE"' in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_can_pin_the_hosted_ci_approved_commit() -> None:
+    fetch = DEPLOY_SCRIPT.index('git "${GITC[@]}" fetch')
+    resolve = DEPLOY_SCRIPT.index('NEW_SHA="$(git rev-parse')
+    reject = DEPLOY_SCRIPT.index('fetched commit does not match the hosted-CI-approved commit')
+    release = DEPLOY_SCRIPT.index('RELEASE_ID="$NEW_SHA-')
+    assert fetch < resolve < reject < release
+    assert 'EXPECTED_COMMIT_SHA="${CERTFORGE_EXPECTED_COMMIT_SHA:-}"' in DEPLOY_SCRIPT
+    assert '[ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]' in DEPLOY_SCRIPT
+
+
 def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
     rollback_trap = DEPLOY_SCRIPT.index("trap rollback_production EXIT")
     quiesce = DEPLOY_SCRIPT.index(
