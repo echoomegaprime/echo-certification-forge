@@ -1,7 +1,7 @@
 {
   "contract_id": "certforge.subscriber-governance.v1",
   "contract_sha256": "30b3167000f55da99fd513f157f5efae4da650d1bd38a402903e0f7738d1ff76",
-  "generated_at_utc": "2026-07-25T15:07:54.871470Z",
+  "generated_at_utc": "2026-07-26T02:12:06.568847Z",
   "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
   "manifest_id": "certforge.release-strict.v1",
   "passed": true,
@@ -19,7 +19,7 @@
       "worker_result": {
         "detail": "worker_target_identity_mismatch",
         "error": "subscriber_execution_denied",
-        "run_id": "cert_70c39ec8b6b6b1e6d3d3aa0ed485a36a6cc7e6ac",
+        "run_id": "cert_cfe9fd77fab6b755e466269d6d2ad00e7b5b30c8",
         "signed": false,
         "state": "INFRASTRUCTURE_FAILURE"
       }
@@ -80,8 +80,8 @@
         "meters": {
           "certification_runs": 25
         },
-        "organization_id": "org_92d71cff6cde12d3e4665da5",
-        "period_ended_at": "2026-09-03T15:07:49.624586Z",
+        "organization_id": "org_c9372cc84a0b4bdaa266f7de",
+        "period_ended_at": "2026-09-04T02:12:02.947662Z",
         "period_started_at": "2026-06-29T00:00:00Z"
       }
     },
@@ -122,27 +122,28 @@
       },
       "passed": true,
       "target_identity": {
-        "artifact_sha256": "6793e3e537e8241310454934d11f11149228c1dd9cc96fa00aa50390ac74a0c1",
-        "canonical_ref": "C:/ECHO_OMEGA_PRIME/echo-certification-forge-release-integration/var/p7-acceptance-runtime/identity-source",
+        "artifact_sha256": "dfe43abbd5f11217be0d16b578f4966ba403f9b8be253c366955454956584b65",
+        "canonical_ref": "C:/ECHO_OMEGA_PRIME/.codex/worktrees/echo-certforge-completion/var/p7-acceptance-runtime/identity-source",
         "configuration_sha256": null,
         "dependency_sha256": null,
         "source_commit": null,
         "target_type": "local",
-        "tenant_id": "org_fa0e5901aa54647149b71422"
+        "tenant_id": "org_d9d7254703b5e9d8424cb142"
       },
       "worker_result": {
         "adapter_bundle_response_sha256": null,
+        "adapter_execution_profile_sha256": null,
         "adapter_set_sha256": "78e0289d44b4c8c9d8f7b33f6a3e51a3b1b66baa1a69666785afd181b200f160",
         "blocking_findings": [],
         "environment_identity_digest": "fde66924d4ba2e7bf74276562edbc2df9974a26ce793637486a9de9009c14d3c",
         "journey_isolation": "none",
         "release_verdict": "PRODUCTION_READY",
-        "run_id": "cert_0fcbe3041eb19862b42b68675aa9707537747f99",
+        "run_id": "cert_c25b7372a8ecc71c95ced64b8e705b34f26d2537",
         "run_outcome": "COMPLETE",
         "signed": true,
-        "signer_public_key_id": "ed25519:35d1f119eed35bad5a8caf995264bc96",
+        "signer_public_key_id": "ed25519:4ae465497b1dd7c57b039c9ed47110de",
         "state": "COMPLETED",
-        "target_identity_digest": "44975ac63baae935899a747d58814475e8a329358fd2c450930c3e2109c8ac2c"
+        "target_identity_digest": "e39d5fbb7ba711259da24fdbf07bc4d81e1b5a3a652f2e042628ef30f2e85a73"
       }
     },
     "concurrent_quota": {
@@ -154,13 +155,13 @@
       "dispatch_attempts": 2,
       "dispatch_state": "COMPLETE",
       "passed": true,
-      "run_id": "cert_55d0d4871bca4c1e253e25546c194f9d6fe075ca",
+      "run_id": "cert_46f88b2f27c1badeba39ac1d729843124c322b75",
       "worker_state": "COMPLETED"
     },
     "durable_intake_crash_gap_recovery": {
       "dispatch_state": "COMPLETE",
       "passed": true,
-      "run_id": "cert_b88ef5c7bfd96ac1a36a56390a82e23009d1d2b9",
+      "run_id": "cert_5ea3e6fe8f3f6cdab71acd7a911552ed6f6c0964",
       "worker_state": "COMPLETED"
     },
     "expired_lease_cannot_commit_signed_completion": {
@@ -169,7 +170,7 @@
       "worker_result": {
         "detail": "worker_run_claim_inactive",
         "error": "subscriber_execution_fenced",
-        "run_id": "cert_54ef16b4f516379fdc50ee40544582fc6fd915aa",
+        "run_id": "cert_fc4b3a9075f4905474ff25ab9bd04cb2259fe32e",
         "signed": false,
         "state": "CALCULATING_VERDICT"
       }
@@ -187,9 +188,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_6dc93ef5c43c5364fd0472a5",
-        "period_ended_at": "2026-08-24T15:07:51.462500Z",
-        "period_started_at": "2026-07-25T15:07:51.462500Z"
+        "organization_id": "org_19dce130059ee894f20e681b",
+        "period_ended_at": "2026-08-25T02:12:04.175854Z",
+        "period_started_at": "2026-07-26T02:12:04.175854Z"
       }
     },
     "expired_subscription_read_only": {
@@ -249,7 +250,7 @@
       "passed": true,
       "release_verdict": "NOT_READY",
       "replay_status": 200,
-      "run_id": "cert_02ecbb54b06ec71477cb4e6bd765850f74063999"
+      "run_id": "cert_f9c95f2cb7cdc07637b4a1bfb38faed3561e599f"
     },
     "heartbeat_storage_loss_fences_customer_process": {
       "customer_code_completed": false,
@@ -257,13 +258,13 @@
       "worker_result": {
         "detail": "worker_run_heartbeat_storage_failed",
         "error": "subscriber_execution_fenced",
-        "run_id": "cert_bd49eab67b4b57ba2eb58803987a741ab89e95ee",
+        "run_id": "cert_4425bf844a29d7bd372903d3a792e15fa9715f1b",
         "signed": false,
         "state": "INFRASTRUCTURE_FAILURE"
       }
     },
     "immutable_audit_chain": {
-      "chain_tip": "a7f076338d4cc6ee9d8556fcfb7e5899cbd29306ece9c1a372f4053990441141",
+      "chain_tip": "2f20048a2a26cb109a4087811ce637d1cd5d8882bef6bd3b1a5128cd4d1e70f2",
       "delete_blocked": true,
       "denied_audits": 3,
       "event_count": 28,
@@ -272,7 +273,7 @@
     },
     "leased_worker_heartbeat_crash_recovery": {
       "dispatch_state": "FAILED",
-      "heartbeat_expiry": "2026-07-25T15:08:21.422534Z",
+      "heartbeat_expiry": "2026-07-26T02:12:34.148097Z",
       "passed": true,
       "recovered_claims": 1,
       "run_state": "INFRASTRUCTURE_FAILURE",
@@ -286,9 +287,9 @@
         "meters": {
           "certification_runs": 0
         },
-        "organization_id": "org_bfcdbedbdb341cb00fa730dc",
-        "period_ended_at": "2026-08-24T15:07:51.290642Z",
-        "period_started_at": "2026-07-25T15:07:51.290642Z"
+        "organization_id": "org_a055e709b22a63260e835cdd",
+        "period_ended_at": "2026-08-25T02:12:04.038002Z",
+        "period_started_at": "2026-07-26T02:12:04.038002Z"
       }
     },
     "member_lifecycle_revocation": {
@@ -309,9 +310,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_071758d9dddc707a2503bc46",
-        "period_ended_at": "2026-08-24T15:07:45.502064Z",
-        "period_started_at": "2026-07-25T15:07:45.502064Z"
+        "organization_id": "org_1524e60a2fbe7ac6e5910da9",
+        "period_ended_at": "2026-08-25T02:12:00.111166Z",
+        "period_started_at": "2026-07-26T02:12:00.111166Z"
       }
     },
     "persisted_execution_governance_controls": {
@@ -338,14 +339,14 @@
       "prior_state": [
         "developer",
         "ACTIVE",
-        "2026-07-25T15:07:49.387846Z",
-        "2026-08-24T15:07:49.387846Z"
+        "2026-07-26T02:12:02.798587Z",
+        "2026-08-25T02:12:02.798587Z"
       ],
       "resulting_state": [
         "developer",
         "ACTIVE",
-        "2026-07-25T15:07:49.387846Z",
-        "2026-08-24T15:07:49.387846Z"
+        "2026-07-26T02:12:02.798587Z",
+        "2026-08-25T02:12:02.798587Z"
       ]
     },
     "resource_lifecycle_revocation": {
@@ -381,9 +382,9 @@
         "meters": {
           "certification_runs": 1
         },
-        "organization_id": "org_0fcc30551bcab27c6b428dd4",
-        "period_ended_at": "2026-08-24T15:07:46.522121Z",
-        "period_started_at": "2026-07-25T15:07:46.522121Z"
+        "organization_id": "org_b87108125165b25a4a9e3c63",
+        "period_ended_at": "2026-08-25T02:12:00.698053Z",
+        "period_started_at": "2026-07-26T02:12:00.698053Z"
       }
     },
     "strict_worker_reservation_claim": {
@@ -403,7 +404,7 @@
       "worker_result": {
         "detail": "worker_run_claim_inactive",
         "error": "subscriber_execution_denied",
-        "run_id": "cert_a07712487bae780ae2fba78d03e3043cbc073b27",
+        "run_id": "cert_fcb355655a4f7721c1464cc2b5c350aa6cdeccbc",
         "signed": false,
         "state": "CANCELLED"
       }
