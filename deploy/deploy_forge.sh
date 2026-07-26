@@ -318,6 +318,7 @@ rollback_production() {
           rollback_status=1
         ;;
     esac
+    sudo systemctl reset-failed "$SERVICE.service" >/dev/null 2>&1 || true
     if [ "$PREV_ACTIVE" = "active" ]; then
       sudo systemctl start "$SERVICE.service" || rollback_status=1
       restored=0
@@ -369,6 +370,7 @@ rollback_production() {
           rollback_status=1
         ;;
     esac
+    sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
     if [ "$PREV_DISPATCH_ACTIVE" = "active" ]; then
       sudo systemctl start "$DISPATCH_SERVICE.service" || rollback_status=1
       systemctl is-active --quiet "$DISPATCH_SERVICE.service" ||
@@ -495,6 +497,8 @@ WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
 sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
+sudo systemctl reset-failed "$SERVICE.service" >/dev/null 2>&1 || true
+sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl enable "$SERVICE.service"
 sudo systemctl restart "$SERVICE.service"
 sudo systemctl enable "$DISPATCH_SERVICE.service"
@@ -521,6 +525,7 @@ service_owns_port "$PROD_PORT" || {
   echo "!! production listener is not owned by $SERVICE"
   exit 1
 }
+sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl restart "$DISPATCH_SERVICE.service"
 dispatcher_ready=0
 for _ in $(seq 1 20); do

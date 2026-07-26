@@ -36,6 +36,23 @@ def test_production_deploy_requires_v2_adapter_artifacts() -> None:
         assert name in text
 
 
+def test_deploy_clears_stale_systemd_start_limits_before_start_and_rollback() -> None:
+    text = (ROOT / "deploy" / "deploy_forge.sh").read_text(encoding="utf-8")
+    rollback = text.split("rollback_production() {", 1)[1].split(
+        'echo "== [7/9]', 1
+    )[0]
+    promotion = text.split('echo "== [7/9]', 1)[1]
+
+    for service in ("$SERVICE.service", "$DISPATCH_SERVICE.service"):
+        reset = f'systemctl reset-failed "{service}"'
+        assert reset in rollback
+        assert reset in promotion
+
+    dispatcher_reset = 'systemctl reset-failed "$DISPATCH_SERVICE.service"'
+    dispatcher_restart = 'systemctl restart "$DISPATCH_SERVICE.service"'
+    assert promotion.index(dispatcher_reset) < promotion.index(dispatcher_restart)
+
+
 def test_runtime_defaults_use_v2_manifest() -> None:
     for relative in (
         "src/echo_certification_forge/app.py",
