@@ -137,7 +137,7 @@ from echo_certification_forge.signing import TrustedPublicKeyRegistry
 
 status = verify_product_readiness(
     Path(sys.argv[1]),
-    TrustedPublicKeyRegistry(Path(sys.argv[2])),
+    TrustedPublicKeyRegistry.from_directory(Path(sys.argv[2])),
     expected_source_commit=sys.argv[3],
 )
 if not status.ready:

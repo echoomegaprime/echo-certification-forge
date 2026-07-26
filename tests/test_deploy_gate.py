@@ -23,6 +23,14 @@ def test_deploy_gate_can_pin_the_hosted_ci_approved_commit() -> None:
     assert '[ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]' in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_loads_readiness_trust_roots_from_directory() -> None:
+    assert (
+        "TrustedPublicKeyRegistry.from_directory(Path(sys.argv[2]))"
+        in DEPLOY_SCRIPT
+    )
+    assert "TrustedPublicKeyRegistry(Path(sys.argv[2]))" not in DEPLOY_SCRIPT
+
+
 def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
     rollback_trap = DEPLOY_SCRIPT.index("trap rollback_production EXIT")
     quiesce = DEPLOY_SCRIPT.index(
