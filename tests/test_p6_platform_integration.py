@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -15,6 +16,51 @@ from echo_certification_forge.signing import (
     Ed25519VerdictSigner,
     TrustedPublicKeyRegistry,
 )
+
+
+def test_platform_preserves_and_authenticates_legacy_subscriber_keys(tmp_path):
+    database = tmp_path / "legacy-platform.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """CREATE TABLE subscriber_api_keys (
+                   key_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL,
+                   user_id TEXT NOT NULL, name TEXT NOT NULL,
+                   token_digest TEXT NOT NULL, token_prefix TEXT NOT NULL,
+                   scopes_json TEXT NOT NULL, status TEXT NOT NULL,
+                   expires_at TEXT, created_at TEXT NOT NULL,
+                   revoked_at TEXT, last_used_at TEXT
+               )"""
+        )
+        connection.execute(
+            "CREATE INDEX idx_subscriber_keys_prefix ON subscriber_api_keys(token_prefix)"
+        )
+    platform = CertificationPlatform(database)
+    account = platform.bootstrap(
+        organization_id="org-legacy",
+        tenant_id="tenant-legacy",
+        organization_name="Legacy Organization",
+        project_id="project-legacy",
+        project_name="Legacy Project",
+        target_reference="sha256:" + "a" * 64,
+        required_policy="certforge.release-strict.v1",
+        owner_user_id="owner-legacy",
+        owner_email="legacy@example.test",
+        plan_id="professional",
+        billing_status="active",
+    )
+    principal = platform.authenticate(account["api_key"])
+    assert principal.organization_id == "org-legacy"
+    assert principal.project_id == "project-legacy"
+    assert principal.tenant_id == "tenant-legacy"
+    assert principal.role == "owner"
+    with sqlite3.connect(database) as connection:
+        assert [row[1] for row in connection.execute(
+            "PRAGMA table_info(subscriber_api_keys)"
+        )] == [
+            "key_id", "organization_id", "user_id", "name", "token_digest",
+            "token_prefix", "scopes_json", "status", "expires_at", "created_at",
+            "revoked_at", "last_used_at",
+        ]
 
 
 def _certify(store, manifest, target, environment, root: Path):

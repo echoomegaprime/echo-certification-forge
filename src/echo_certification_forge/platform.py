@@ -132,6 +132,18 @@ class CertificationPlatform:
         connection.execute("PRAGMA synchronous = FULL")
         return connection
 
+    @staticmethod
+    def _api_key_columns(connection: sqlite3.Connection) -> frozenset[str]:
+        return frozenset(
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(subscriber_api_keys)")
+        )
+
+    @classmethod
+    def _uses_legacy_api_key_schema(cls, connection: sqlite3.Connection) -> bool:
+        columns = cls._api_key_columns(connection)
+        return "token_prefix" in columns and "key_prefix" not in columns
+
     def _initialize(self) -> None:
         schema = """
         CREATE TABLE IF NOT EXISTS commercial_plans (
@@ -369,21 +381,42 @@ class CertificationPlatform:
                         to_utc_iso(now),
                     ),
                 )
-                connection.execute(
-                    """INSERT INTO subscriber_api_keys(
-                           key_id, organization_id, project_id, key_prefix,
-                           secret_sha256, role, created_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        key_id,
-                        organization_id,
-                        project_id,
-                        raw_key[:16],
-                        hashlib.sha256(raw_key.encode()).hexdigest(),
-                        "owner",
-                        to_utc_iso(now),
-                    ),
-                )
+                if self._uses_legacy_api_key_schema(connection):
+                    connection.execute(
+                        """INSERT INTO subscriber_api_keys(
+                               key_id, organization_id, user_id, name,
+                               token_digest, token_prefix, scopes_json, status,
+                               expires_at, created_at
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            key_id,
+                            organization_id,
+                            owner_user_id,
+                            "Bootstrap owner key",
+                            hashlib.sha256(raw_key.encode()).hexdigest(),
+                            raw_key[:16],
+                            canonical_json(["certforge.*"]),
+                            "active",
+                            None,
+                            to_utc_iso(now),
+                        ),
+                    )
+                else:
+                    connection.execute(
+                        """INSERT INTO subscriber_api_keys(
+                               key_id, organization_id, project_id, key_prefix,
+                               secret_sha256, role, created_at
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            key_id,
+                            organization_id,
+                            project_id,
+                            raw_key[:16],
+                            hashlib.sha256(raw_key.encode()).hexdigest(),
+                            "owner",
+                            to_utc_iso(now),
+                        ),
+                    )
         self.audit(
             organization_id,
             project_id,
@@ -406,13 +439,38 @@ class CertificationPlatform:
             raise PlatformError("invalid_api_key", 401)
         digest = hashlib.sha256(raw_key.encode()).hexdigest()
         with self._connect() as connection:
-            rows = connection.execute(
-                """SELECT k.*, o.tenant_id
-                     FROM subscriber_api_keys k
-                     JOIN organizations o ON o.organization_id=k.organization_id
-                    WHERE k.key_prefix=? AND k.revoked_at IS NULL""",
-                (raw_key[:16],),
-            ).fetchall()
+            if self._uses_legacy_api_key_schema(connection):
+                rows = connection.execute(
+                    """SELECT k.key_id, k.organization_id,
+                              p.project_id, o.tenant_id,
+                              COALESCE(m.role, 'viewer') AS role,
+                              k.token_digest AS secret_sha256
+                         FROM subscriber_api_keys k
+                         JOIN organizations o
+                           ON o.organization_id=k.organization_id
+                         JOIN projects p
+                           ON p.project_id=(
+                              SELECT p2.project_id FROM projects p2
+                               WHERE p2.organization_id=k.organization_id
+                               ORDER BY p2.created_at, p2.project_id LIMIT 1
+                           )
+                         LEFT JOIN memberships m
+                           ON m.organization_id=k.organization_id
+                          AND m.user_id=k.user_id
+                        WHERE k.token_prefix=?
+                          AND k.revoked_at IS NULL
+                          AND LOWER(COALESCE(k.status, 'active'))='active'
+                          AND (k.expires_at IS NULL OR k.expires_at>?)""",
+                    (raw_key[:16], to_utc_iso(utc_now())),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """SELECT k.*, o.tenant_id
+                         FROM subscriber_api_keys k
+                         JOIN organizations o ON o.organization_id=k.organization_id
+                        WHERE k.key_prefix=? AND k.revoked_at IS NULL""",
+                    (raw_key[:16],),
+                ).fetchall()
         row = next(
             (
                 candidate
