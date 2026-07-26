@@ -1,0 +1,11 @@
+[project]
+name = "master-imperfect-api"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = ["fastapi==0.116.1", "python-multipart==0.0.20"]
+
+[project.scripts]
+master-imperfect = "master_api.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["missing_tests"]

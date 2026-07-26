@@ -6,9 +6,11 @@
 | P2 runner and authenticated transport foundation | COMPLETE | `artifacts/p2_forge_acceptance.json`, `artifacts/p2_forge_acceptance.summary.json`, `artifacts/p2_verification_report.json` | NOT_READY |
 | P3 production evidence custody, anchoring, and signing | COMPLETE | `artifacts/p3_forge_acceptance.json`, `artifacts/p3_forge_acceptance.summary.json`, `artifacts/p3_offline_bundle/`, `artifacts/p3_verification_report.json` | NOT_READY |
 | P4 hostile runner, signer image, and supply-chain qualification | COMPLETE | FORGE gate `passed=True, run_outcome=COMPLETE` — `p4-runs/p4-8c6b30d-rerun7c/p4_hostile_result.json` (2026-07-20, commit 8c6b30d) | NOT_READY |
-| P5 adapter breadth and service modes | IN_PROGRESS / BLOCKED | Live ANVIL R5 routing controls PASS. The running 960-row evaluation was launched from `296d45a` and remains the authoritative scoring run; final lane `ec9fe147` changes production trust paths only and does not alter its scoring, corpus, or evaluation-runtime semantics. Integration provenance is recorded in `artifacts/p5_integration_provenance.json`; no alias/config change is authorized before the evaluation gate completes. | NOT_READY |
-| P6 deployment enforcement and platform integration | IMPLEMENTED / PENDING COMBINED GATES | Final lane `371ee51` adds fail-closed rollback when a successful production deploy cannot be durably ledgered, safely materializes and scans digest-pinned OCI rootfs content, and requires OCI journeys to execute inside the exact-image isolated runtime. Local P6 acceptance remains 12/12 PASS; combined release validation remains pending. | NOT_READY |
-| P7 subscriber productization and governance | IMPLEMENTED / PENDING INTEGRATION | Pinned lane `5738b42` adds tenant-isolated subscriber governance, governed intake/outbox dispatch, execution fencing, quotas, billing, and append-only audit; release integration validation remains pending | NOT_READY |
+| P5 adapter breadth and service modes | COMPLETE | `artifacts/p5-adapter-bundle-20260723/adapter-acceptance-report.json`: adapter gate GO; GS343 and R2D2 both STABLE; 240/240 cases each; zero critical failures. Production bundle re-verified on FORGE. | GATE COMPLETE |
+| P6 deployment enforcement and platform integration | COMPLETE | `artifacts/p6_acceptance.summary.json`: 12/12 executable checks pass, including staging-first promotion, rollback, ledger enforcement, and exact-image isolation. | GATE COMPLETE |
+| P7 subscriber productization and governance | COMPLETE | `artifacts/p7_acceptance_report.json`: all tenant, billing, lease, quota, audit, and dispatch scenarios pass fail-closed. | GATE COMPLETE |
+| SDK final contract | COMPLETE | `contracts/certforge-sdk-capabilities.v1.json`: exactly 60 unique closed-schema Certification Forge capabilities. | GATE COMPLETE |
+| Master whole-product acceptance | SIGNED EXACT-SOURCE GATE | `scripts/master_acceptance.py` + `acceptance/master-imperfect-app/`: real Docker journey, classified defects, ephemeral generated harness, signed target refusal, evidence-chain verification, exact-source CI binding, and signed product-readiness attestation. | Runtime attestation decides |
 
 ## Task 4 — Certification Forge service + `echo.certforge.*` caps (sub-track)
 
@@ -64,16 +66,21 @@ suite stays green on an independent re-run.
 
 ## Current authoritative state
 
-- `completed_phase_gate`: `P4`
-- `run_outcome`: `COMPLETE`
-- `release_verdict`: `NOT_READY`
+The repository ledger records gate evidence; it does not self-authorize production. The sole
+authoritative whole-product verdict is the signed, non-expired, exact-commit result returned by
+`GET https://cert-api.echosforge.com/v1/status`. Missing, stale, tampered, untrusted, or wrong-commit
+attestations fail closed to `NOT_READY`.
+
+- Source phase gates: **P1–P7 COMPLETE**
+- SDK contract: **60/60 COMPLETE**
+- Master acceptance implementation: **COMPLETE**
 - P3 real FORGE acceptance: passed
 - P3 re-certified 2026-07-18 against corrected `scripts/p3_forge_acceptance.py` (signer-identity fix source identity): passed
 - P4 deterministic closure verifier: passed after P3 re-cert
 - Central `echo.certforge.*`: **REGISTERED + live-verified** (12 caps green, 2026-07-21)
-- P5 ANVIL adapter routing: **PASS** for GS343 and R2D2 (exact target digests, wrong-active `409`, unloaded `503`, clean restoration); corrective candidates remain **BLOCKED / NOT_READY** pending the complete receipt-verified 960-response evaluation (240 held-out rows across four candidate/incumbent model-role aliases) with hard-gate success and composite score at least `1.05 * incumbent`
-- `echo.builds.log`: not registered
-- Hosted CI: **RESOLVED** — named push run `30045260673` and pull-request run `30045263342` both passed real job execution at commit `c27324e`; evidence artifact digests are bound in `artifacts/hosted_ci_resolution.json`
-- Echo Desktop P8C: not started
+- P5 adapter gate: **GO** — GS343 and R2D2 are both STABLE at 240/240 with zero critical failures.
+- P6 executable acceptance: **12/12 PASS**.
+- P7 executable acceptance: **all scenarios PASS**.
+- Hosted CI: must be successful for the exact deployed source commit and is checked by the final signer.
 
-A completed phase does not upgrade the whole-product verdict. P4 hostile-runner + image supply-chain qualification is now COMPLETE (FORGE gate green 2026-07-20, commit 8c6b30d — validates the 307667a signer image-identity fix and the 25420a8 public-verifier-probe fix; run repeatably via `scripts/run_p4_gate.sh`). P5 now has authoritative GS343/R2D2 identity and negative-control routing proof, but its signed gate remains BLOCK on semantic quality and STABLE-maturity requirements. Remaining fail-closed blockers to product readiness: P5 adapter retraining/promotion, P6 real deployment enforcement, and P7 subscriber governance. Central `echo.certforge.*` registration and hosted CI are DONE.
+A completed phase never upgrades the whole-product verdict by itself. Only the final signed gate can do so.

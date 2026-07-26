@@ -36,6 +36,7 @@ from .intake import (
 )
 from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
 from .policy import RuleManifest
+from .product_readiness import verify_product_readiness
 from .release_hooks import WebhookSecretRegistry
 from .operational_telemetry import (
     OperationalTelemetryError,
@@ -55,7 +56,7 @@ from .subscriber import (
 
 _MAX_ADMIN_ARTIFACT_BYTES = 5 * 1024 * 1024
 _LOGGER = logging.getLogger(__name__)
-_SERVICE_VERSION = "0.8.0"
+_SERVICE_VERSION = "1.0.0"
 _TELEMETRY_RUN_LIMIT = 25
 _TELEMETRY_EVENT_LIMIT = 64
 _TERMINAL_STATES = {
@@ -82,6 +83,8 @@ class ServiceContext:
     operational_registry: OperationalTelemetryRegistry | None = None
     adapter_mode: str = "pending"
     certification_environment: dict[str, str] | None = None
+    product_readiness_report_path: Path | None = None
+    source_commit: str | None = None
 
     def __post_init__(self) -> None:
         if self.transport_registry is None:
@@ -444,6 +447,11 @@ def create_app(context: ServiceContext) -> FastAPI:
 
     @app.get("/v1/status")
     def status() -> dict[str, object]:
+        product_readiness = verify_product_readiness(
+            context.product_readiness_report_path,
+            context.trusted_keys,
+            expected_source_commit=context.source_commit,
+        )
         result: dict[str, object] = {
             "service": "echo-certification-forge",
             "release_verdicts": ["NOT_READY", "CONDITIONALLY_READY", "PRODUCTION_READY"],
@@ -454,7 +462,8 @@ def create_app(context: ServiceContext) -> FastAPI:
             "completed_phase_gate": "P8C",
             "customer_surface": "LIVE",
             "adapter_qualification": context.adapter_mode.upper(),
-            "release_verdict": "NOT_READY",
+            "release_verdict": product_readiness.release_verdict,
+            "product_readiness_reason": product_readiness.reason,
             "evidence_custody": "P3_APPEND_ONLY_VERIFIED",
             "external_evidence_anchor": "P3_INDEPENDENT_PROVIDER_VERIFIED",
             "verdict_signing": "P3_ISOLATED_SIGNER_VERIFIED",
@@ -465,6 +474,14 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "P7_FAIL_CLOSED" if context.subscribers is not None else "DISABLED"
             ),
         }
+        if product_readiness.report_sha256 is not None:
+            result["product_readiness_report_sha256"] = product_readiness.report_sha256
+        if product_readiness.source_commit is not None:
+            result["source_commit"] = product_readiness.source_commit
+        if product_readiness.generated_at is not None:
+            result["product_readiness_generated_at"] = product_readiness.generated_at
+        if product_readiness.expires_at is not None:
+            result["product_readiness_expires_at"] = product_readiness.expires_at
         if context.certification_environment is not None:
             result.update(context.certification_environment)
         return result

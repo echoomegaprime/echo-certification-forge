@@ -2,27 +2,40 @@
 
 Echo Certification Forge is a deterministic, evidence-backed release authority for EchoForge. Every run begins at `NOT_READY`. Exact target, environment, policy, evidence, anchor, key, and lifecycle identities must verify before any signed verdict can be trusted.
 
-## Current phase
+## Release state
 
-P1, P2, P3, P4, and the independently gated P7 subscriber-governance lane are complete:
+P1 through P7, the 60-capability SDK contract, and the SPEC §48 master-acceptance
+implementation are present in this repository:
 
 - **P1:** immutable target/environment identity, append-only evidence, Merkle roots, deterministic verdicts, signed verdict envelopes, lifecycle checks, and exact-digest deploy-gate evaluation.
 - **P2:** short-lived run credentials, authenticated transport, replay prevention, leases, heartbeats, resumable chunks, safe archive handling, hardened non-root runner containers, and real FORGE resource/timeout/crash acceptance.
 - **P3:** authenticated append-only evidence custody, visibility and legal-hold controls, independent signed root anchoring, isolated verdict signing, public-key publication/rotation/revocation/compromise behavior, public-only offline verification material, and real FORGE failure/recovery acceptance.
 - **P4:** purpose-built role images, sealed twelve-image supply-chain identities, independent builds, vulnerability/malware scans, signatures, hostile runtime matrix, service lifecycle, public-only verifier containment, and purpose-built signer regression on FORGE.
 - **P7:** tenant-isolated organizations/projects/users, role-and-scope authorization, API-key and resource revocation, plan quotas and global abuse controls, billing/subscription enforcement, append-only hash-chained audit, governed intake, and versioned subscriber policy/contract.
+- **Master acceptance:** a committed deliberately imperfect multi-service target exercises discovery,
+  classified defects, an ephemeral repaired test harness, real Docker execution, evidence custody,
+  and an independently verified signed `NOT_READY` verdict for the target.
 
-Authoritative state:
+Whole-product readiness is never hard-coded. The public `/v1/status` surface returns
+`NOT_READY` unless `scripts/master_acceptance.py` has verified every phase, the exact 60-capability
+SDK contract, successful hosted CI for the exact source SHA, and the real Docker master journey,
+then signed a non-expired attestation for that same SHA. Production loads only the public trust
+root and rejects missing, stale, tampered, untrusted, or wrong-commit reports.
+
+The authoritative deployed state is always:
 
 ```text
-completed_phase_gate: P4
-run_outcome: COMPLETE
-release_verdict: NOT_READY
+GET https://cert-api.echosforge.com/v1/status
 ```
 
-The complete product is not production-ready. GS343/R2D2 applied-adapter quality and maturity plus hosted CI resolution remain blockers. P6/P7 implementation does not override those fail-closed blockers.
-
 The verified execution plane uses hardened non-root containers on a **rootful Docker Engine**. This is not a claim of rootless Docker or microVM isolation.
+
+## Final master acceptance
+
+`scripts/master_acceptance.py` consumes the exact phase, adapter, SDK, and hosted-CI evidence,
+runs `acceptance/master-imperfect-app` in Docker, and emits `product-readiness.json`. The deploy
+gate independently verifies that signed report against the fetched commit before staging starts;
+staging and production smoke both require the exact-source `PRODUCTION_READY` state.
 
 ## P3 evidence
 

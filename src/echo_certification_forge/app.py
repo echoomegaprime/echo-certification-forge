@@ -55,6 +55,11 @@ _transport_keys = Path(
         _REPO_ROOT / "var" / "trusted-transport-keys",
     )
 )
+_product_readiness_report_value = os.environ.get("ECHO_CERTFORGE_PRODUCT_READINESS_REPORT")
+_product_readiness_report = (
+    Path(_product_readiness_report_value) if _product_readiness_report_value else None
+)
+_source_commit = os.environ.get("ECHO_CERTFORGE_SOURCE_COMMIT")
 
 
 def _load_certification_environment() -> dict[str, str] | None:
@@ -103,5 +108,7 @@ app = create_app(
         transport_registry=_load_transport_registry(_transport_keys),
         adapter_mode=os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending"),
         certification_environment=_load_certification_environment(),
+        product_readiness_report_path=_product_readiness_report,
+        source_commit=_source_commit,
     )
 )

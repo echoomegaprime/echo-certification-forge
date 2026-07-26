@@ -46,6 +46,7 @@ if [ -n "$EXPECTED_COMMIT_SHA" ] && [ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]; th
   echo "!! fetched commit does not match the hosted-CI-approved commit"
   exit 1
 fi
+PRODUCT_READINESS_REPORT="${CERTFORGE_PRODUCT_READINESS_REPORT:-$STATE_ROOT/product-readiness/$NEW_SHA/product-readiness.json}"
 RELEASE_ID="$NEW_SHA-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 RELEASE_DIR="$RELEASE_ROOT/$RELEASE_ID"
 RELEASE_TMP="$RELEASE_DIR.tmp.$$"
@@ -122,6 +123,27 @@ signer = _load_signer(private_path)
 public_path.write_text(signer.public_key_pem, encoding="ascii")
 public_path.chmod(0o644)
 PY
+test -f "$PRODUCT_READINESS_REPORT" || {
+  echo "!! signed exact-source product readiness report missing: $PRODUCT_READINESS_REPORT"
+  exit 1
+}
+"$RELEASE_DIR/.venv/bin/python" - "$PRODUCT_READINESS_REPORT" \
+  "$STATE_ROOT/trusted-public-keys" "$NEW_SHA" <<'PY'
+from pathlib import Path
+import sys
+
+from echo_certification_forge.product_readiness import verify_product_readiness
+from echo_certification_forge.signing import TrustedPublicKeyRegistry
+
+status = verify_product_readiness(
+    Path(sys.argv[1]),
+    TrustedPublicKeyRegistry(Path(sys.argv[2])),
+    expected_source_commit=sys.argv[3],
+)
+if not status.ready:
+    raise SystemExit(f"product readiness verification failed: {status.reason}")
+print(f"   product readiness verified: {status.report_sha256}")
+PY
 test -f "$RELEASE_DIR/policies/subscriber-governance.v1.json" || {
   echo "!! subscriber governance policy missing"
   exit 1
@@ -177,6 +199,8 @@ ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_POLICY" \
 ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_REGISTRY" \
 ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_SIGNING_KEY" \
 ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256="$TRUSTED_MANIFEST_SHA256" \
+ECHO_CERTFORGE_PRODUCT_READINESS_REPORT="$PRODUCT_READINESS_REPORT" \
+ECHO_CERTFORGE_SOURCE_COMMIT="$NEW_SHA" \
 ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
 ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1 \
 ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
@@ -213,6 +237,7 @@ echo "== [5/9] staging live-smoke =="
 ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
 ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
 ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
+ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
 "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
   "http://127.0.0.1:$STAGING_PORT" || {
   echo "!! STAGING SMOKE RED - production untouched"
@@ -453,6 +478,8 @@ Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_POLICY
 Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
 Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
 Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
+Environment=ECHO_CERTFORGE_PRODUCT_READINESS_REPORT=$PRODUCT_READINESS_REPORT
+Environment=ECHO_CERTFORGE_SOURCE_COMMIT=$NEW_SHA
 Environment=ECHO_CERTFORGE_TRANSPORT_KEYS=$STATE_ROOT/trusted-transport-keys
 EnvironmentFile=$ENV_FILE
 ExecStart=$CURRENT_LINK/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
@@ -516,6 +543,7 @@ done
 if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
     ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
+    ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
     "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
       "http://127.0.0.1:$PROD_PORT"; then
   echo "!! PROD RED"

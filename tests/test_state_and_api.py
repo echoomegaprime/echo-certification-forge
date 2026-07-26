@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 import pytest
 
+from echo_certification_forge.canonical import sha256_bytes, to_utc_iso
 from echo_certification_forge.models import RunState
+from echo_certification_forge.product_readiness import create_product_readiness_envelope
 from echo_certification_forge.service import ServiceContext, create_app
-from echo_certification_forge.signing import TrustedPublicKeyRegistry
+from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 
 
 def test_state_machine_rejects_skipped_transition(store, manifest, target, environment):
@@ -78,3 +84,54 @@ def test_required_adapter_status_publishes_customer_environment(store, manifest)
 
     assert body["adapter_qualification"] == "REQUIRED"
     assert {key: body[key] for key in environment} == environment
+
+
+def test_status_promotes_only_from_signed_exact_source_product_report(
+    store, manifest, tmp_path
+):
+    signer = Ed25519VerdictSigner.generate()
+    trusted = TrustedPublicKeyRegistry.empty()
+    trusted.add_pem(signer.public_key_pem)
+    now = datetime.now(UTC)
+    gates = {
+        name: {"state": "COMPLETE", "evidence_sha256": sha256_bytes(name.encode())}
+        for name in (
+            "P1", "P2", "P3", "P4", "P5", "P6", "P7", "SDK", "CI", "MASTER"
+        )
+    }
+    master_run = {
+        "run_id": "master-status",
+        "run_outcome": "COMPLETE",
+        "target_release_verdict": "NOT_READY",
+        "signed_verdict_verified": True,
+        "evidence_chain_verified": True,
+        "sandbox_isolation": "docker",
+        "requirements_passed": True,
+        "rerun_command": "python scripts/master_acceptance.py --verify",
+    }
+    envelope = create_product_readiness_envelope(
+        signer=signer,
+        source_commit="a" * 40,
+        source_tree_sha256="b" * 64,
+        generated_at=to_utc_iso(now),
+        expires_at=to_utc_iso(now + timedelta(days=30)),
+        gates=gates,
+        master_run=master_run,
+    )
+    report = tmp_path / "product-readiness.json"
+    report.write_text(json.dumps(asdict(envelope)), encoding="utf-8")
+    app = create_app(
+        ServiceContext(
+            store,
+            manifest,
+            trusted,
+            product_readiness_report_path=report,
+            source_commit="a" * 40,
+        )
+    )
+
+    body = TestClient(app).get("/v1/status").json()
+
+    assert body["release_verdict"] == "PRODUCTION_READY"
+    assert body["product_readiness_reason"] == "signed_exact_source_acceptance_verified"
+    assert body["source_commit"] == "a" * 40

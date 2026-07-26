@@ -105,6 +105,14 @@ def main() -> int:
     _, svc = _req(base, "GET", "/v1/status")
     policy = svc.get("rule_manifest_id")
     check("active policy id resolved", bool(policy), json.dumps(svc)[:200])
+    if os.environ.get("ECHO_CERTFORGE_EXPECT_PRODUCT_READY") == "1":
+        check(
+            "signed exact-source product readiness verified",
+            svc.get("release_verdict") == "PRODUCTION_READY"
+            and svc.get("product_readiness_reason")
+            == "signed_exact_source_acceptance_verified",
+            json.dumps(svc)[:500],
+        )
     if not policy:
         print("!! cannot resolve policy; aborting"); return 1
 

@@ -1,0 +1,16 @@
+services:
+  web:
+    build: ./web
+    ports: ["3000:3000"]
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql://cert:${POSTGRES_PASSWORD:?required}@postgres/certforge
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [postgres, redis]
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+  redis:
+    image: redis:7-alpine

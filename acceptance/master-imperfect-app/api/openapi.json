@@ -1,0 +1,10 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Master Imperfect API", "version": "1.0.0"},
+  "paths": {
+    "/auth/login": {"post": {"responses": {"200": {"description": "OK"}}}},
+    "/admin/users": {"get": {"responses": {"200": {"description": "OK"}}}},
+    "/upload": {"post": {"responses": {"200": {"description": "OK"}}}},
+    "/mcp": {"post": {"responses": {"200": {"description": "OK"}}}}
+  }
+}
