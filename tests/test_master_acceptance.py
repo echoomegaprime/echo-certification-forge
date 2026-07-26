@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+import json
 import stat
 import sys
 from pathlib import Path
@@ -16,6 +18,15 @@ ROOT = Path(__file__).parents[1]
 FIXTURE = ROOT / "acceptance" / "master-imperfect-app"
 VULNERABILITIES = ROOT / "policies" / "master-vulnerable-dependencies.v1.json"
 MANIFEST = ROOT / "policies" / "mandatory-rules.v1.json"
+
+
+def _master_script_module():
+    script = ROOT / "scripts" / "master_acceptance.py"
+    spec = importlib.util.spec_from_file_location("certforge_master_acceptance_cli", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_master_fixture_discovery_and_defects_are_complete() -> None:
@@ -46,6 +57,16 @@ def test_master_fixture_discovery_and_defects_are_complete() -> None:
     assert by_code["environment_trap"].classification == "CERTIFICATION_DEFECT"
     assert by_code["authorization_defect"].blocks_release is True
     assert by_code["vulnerable_dependency"].blocks_release is True
+
+
+def test_final_sdk_gate_accepts_checked_exact_60_capability_map() -> None:
+    contract = json.loads(
+        (ROOT / "contracts" / "certforge-sdk-capabilities.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    _master_script_module()._sdk(contract)
 
 
 def test_master_acceptance_full_chain_with_docker_protocol_stub(tmp_path: Path) -> None:

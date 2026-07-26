@@ -73,10 +73,20 @@ def _p7(value: dict[str, Any]) -> None:
 def _sdk(value: dict[str, Any]) -> None:
     capabilities = value.get("capabilities")
     _require(value.get("capability_count") == 60, "SDK contract must contain exactly 60 capabilities")
-    _require(isinstance(capabilities, list) and len(capabilities) == 60, "SDK capability rows are incomplete")
-    names = [item.get("id") for item in capabilities]
+    _require(isinstance(capabilities, dict) and len(capabilities) == 60, "SDK capability rows are incomplete")
+    names = list(capabilities)
     _require(len(set(names)) == 60, "SDK capability IDs are not unique")
     _require(all(isinstance(name, str) and name.startswith("echo.cert") for name in names), "SDK capability namespace drift")
+    _require(
+        all(
+            isinstance(row, dict)
+            and isinstance(row.get("operation"), str)
+            and isinstance(row.get("input_schema"), dict)
+            and isinstance(row.get("output_schema"), dict)
+            for row in capabilities.values()
+        ),
+        "SDK capability contract rows are malformed",
+    )
 
 
 def _ci(value: dict[str, Any], source_commit: str) -> None:
