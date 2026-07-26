@@ -146,7 +146,43 @@ VALUES
    'Certification Forge administration: release one active runner or adapter quarantine after verification while retaining immutable audit history. Tier-2 HMAC and Desktop reauthentication are required.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/operational-quarantines/{subject_type}/{subject_id}/release', 'POST', 'path', 'forge',
    '{"type":"object","required":["subject_type","subject_id","reason"],"properties":{"subject_type":{"type":"string","enum":["runner","adapter"]},"subject_id":{"type":"string","minLength":1,"maxLength":128},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
-   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'green')
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'green'),
+
+  ('echo.certforge.admin.key_rotation_status',
+   'Certification Forge administration: list bounded public-key rotation metadata and proof state. Private key material is never accepted or returned.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/operational-key-rotations', 'GET', 'query', 'forge',
+   '{"type":"object","properties":{},"additionalProperties":false}'::jsonb,
+   'certforge.admin.read', 1, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.key_rotation_begin',
+   'Certification Forge administration: begin a bounded tenant-scoped Ed25519 public-key overlap. The old key remains trusted only during the bounded proof window; no private material is accepted.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/operational-key-rotations', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["old_key_id","new_public_key_pem","reason"],"properties":{"old_key_id":{"type":"string","minLength":1,"maxLength":128},"new_public_key_pem":{"type":"string","minLength":80,"maxLength":8192},"overlap_seconds":{"type":"integer","minimum":60,"maximum":86400,"default":3600},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.key_rotation_finalize',
+   'Certification Forge administration: retire the old operational key only after a report authenticated by the new key proves possession. Tier-2 HMAC and Desktop reauthentication are required.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/operational-key-rotations/{rotation_id}/finalize', 'POST', 'path', 'forge',
+   '{"type":"object","required":["rotation_id"],"properties":{"rotation_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.runner_enroll',
+   'Certification Forge administration: durably enroll a previously authenticated runner by pinning its runner key and worker image SHA-256, then enforce enrollment for the tenant.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/runner-enrollments', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["runner_id"],"properties":{"runner_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.runner_enrollment_revoke',
+   'Certification Forge administration: revoke one active durable runner enrollment and remove its capacity eligibility while retaining telemetry and audit history.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/runner-enrollments/{runner_id}/revoke', 'POST', 'path', 'forge',
+   '{"type":"object","required":["runner_id","reason"],"properties":{"runner_id":{"type":"string","minLength":1,"maxLength":128},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
+  ('echo.certforge.admin.adapter_maturity_remediate',
+   'Certification Forge administration: atomically quarantine every authenticated non-STABLE adapter so only stable identities remain execution eligible.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/adapter-maturity/remediate', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["reason"],"properties":{"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown')
 
 ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description,

@@ -13,7 +13,7 @@ import sqlite3
 import stat
 import tarfile
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
@@ -361,19 +361,34 @@ class ControlPlaneTransportAuthority:
 @dataclass(slots=True)
 class TrustedTransportRegistry:
     keys: dict[str, Ed25519PublicKey]
+    key_tenants: dict[str, str | None] = field(default_factory=dict)
 
     @classmethod
     def empty(cls) -> "TrustedTransportRegistry":
         return cls(keys={})
 
-    def add_pem(self, public_key_pem: str) -> str:
+    def add_pem(self, public_key_pem: str, *, tenant_id: str | None = None) -> str:
         key = serialization.load_pem_public_key(public_key_pem.encode("ascii"))
         if not isinstance(key, Ed25519PublicKey):
             raise TypeError("transport public key must be Ed25519")
         raw = key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         key_id = f"ed25519:{sha256_bytes(raw)[:32]}"
         self.keys[key_id] = key
+        self.key_tenants[key_id] = tenant_id
         return key_id
+
+    def remove(self, key_id: str) -> None:
+        self.keys.pop(key_id, None)
+        self.key_tenants.pop(key_id, None)
+
+    def public_key_pem(self, key_id: str) -> str:
+        key = self.keys.get(key_id)
+        if key is None:
+            raise AuthenticationFailure("untrusted_control_plane_key")
+        return key.public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("ascii")
 
     def verify(self, credential: SignedRunCredential) -> RunCredentialClaims:
         key = self.keys.get(credential.key_id)
@@ -387,6 +402,9 @@ class TrustedTransportRegistry:
             raise AuthenticationFailure("invalid_credential_signature") from exc
         if credential.claims.control_plane_key_id != credential.key_id:
             raise AuthenticationFailure("credential_key_id_mismatch")
+        tenant_id = self.key_tenants.get(credential.key_id)
+        if tenant_id is not None and credential.claims.tenant_id != tenant_id:
+            raise AuthenticationFailure("credential_tenant_mismatch")
         return credential.claims
 
 
