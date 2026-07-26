@@ -849,3 +849,13 @@ def test_qualifier_report_builds_end_to_end_adapter_bundle(tmp_path: Path) -> No
         _artifact_digest(R2_CANDIDATE),
     }
     assert all(record["quality"]["total_cases"] == 240 for record in acceptance["records"])
+    registry = json.loads(
+        (output / "trusted-adapter-registry.json").read_text(encoding="utf-8")
+    )
+    bundle_response = json.loads(
+        (output / "adapter-bundle-response.json").read_text(encoding="utf-8")
+    )
+    assert registry["registry_id"] == "p5-e2e-registry"
+    assert registry["policy"]["policy_id"] == "p5-e2e-policy"
+    assert registry["runner"]["key_id"] == bundle_response["runner_key_id"]
+    assert registry["reusable_bundle"]["run_id"] == "p5-qualifier-e2e"

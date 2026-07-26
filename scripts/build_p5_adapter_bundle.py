@@ -10,7 +10,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from echo_certification_forge.adapter_execution import (
+from echo_certification_forge.adapter_execution import (  # noqa: E402
     AdapterBundleTrustBinding,
     AdapterEvidenceSource,
     build_acceptance_report,
@@ -24,15 +24,18 @@ from echo_certification_forge.adapter_execution import (
     sign_adapter_bundle,
     write_adapter_execution_artifacts,
 )
-from echo_certification_forge.canonical import sha256_json
-from echo_certification_forge.p5_qualification import (
+from echo_certification_forge.adapter_registry import (  # noqa: E402
+    parse_trusted_adapter_registry,
+)
+from echo_certification_forge.canonical import sha256_json  # noqa: E402
+from echo_certification_forge.family_r5 import RECEIPT_SCHEMA  # noqa: E402
+from echo_certification_forge.p5_qualification import (  # noqa: E402
     QualificationArtifactDigests,
     QualificationEvidenceTrustPins,
     QualificationModels,
     RoutingDeploymentIdentity,
     TrustedRoutingKey,
 )
-from echo_certification_forge.family_r5 import RECEIPT_SCHEMA
 
 
 def main() -> int:
@@ -191,6 +194,35 @@ def main() -> int:
         signed_bundle=signed,
         acceptance_report=report,
         policy=policy,
+    )
+    registry = {
+        "schema_version": "1.0.0",
+        "registry_id": trust_binding.registry_id,
+        "runner": {
+            "runner_id": "anvil-adapter-runner",
+            "key_id": trust_binding.runner_key_id,
+            "public_key_pem": signed.runner_public_key_pem,
+        },
+        "policy": {
+            "policy_id": trust_binding.policy_id,
+            "sha256": trust_binding.policy_sha256,
+        },
+        "qualification_trust_pins_sha256": (
+            trust_binding.qualification_trust_pins_sha256
+        ),
+        "r5_trust_pins_sha256": trust_binding.r5_trust_pins_sha256,
+        "external_trust_pins_sha256": trust_binding.external_trust_pins_sha256,
+        "reusable_bundle": {
+            "run_id": signed.response.run_id,
+            "tenant_id": signed.response.tenant_id,
+            "sha256": sha256_json(signed.response.model_dump(mode="json")),
+        },
+    }
+    parse_trusted_adapter_registry(registry)
+    (args.output_directory / "trusted-adapter-registry.json").write_text(
+        json.dumps(registry, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["adapter_gate_eligible"] else 2
