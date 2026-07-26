@@ -140,13 +140,13 @@ VALUES
    'Certification Forge administration: quarantine one authenticated runner or adapter, removing it from eligible capacity/execution without deleting telemetry. Tier-2 HMAC and Desktop reauthentication are required.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/operational-quarantines', 'POST', 'json_body', 'forge',
    '{"type":"object","required":["subject_type","subject_id","reason"],"properties":{"subject_type":{"type":"string","enum":["runner","adapter"]},"subject_id":{"type":"string","minLength":1,"maxLength":128},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
-   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'green'),
 
   ('echo.certforge.admin.quarantine_release',
    'Certification Forge administration: release one active runner or adapter quarantine after verification while retaining immutable audit history. Tier-2 HMAC and Desktop reauthentication are required.',
    'http', 'http://127.0.0.1:8309/v1/subscriber/operational-quarantines/{subject_type}/{subject_id}/release', 'POST', 'path', 'forge',
    '{"type":"object","required":["subject_type","subject_id","reason"],"properties":{"subject_type":{"type":"string","enum":["runner","adapter"]},"subject_id":{"type":"string","minLength":1,"maxLength":128},"reason":{"type":"string","minLength":8,"maxLength":2048}},"additionalProperties":false}'::jsonb,
-   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown')
+   'certforge.admin.mutate', 2, '{"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'green')
 
 ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description,
