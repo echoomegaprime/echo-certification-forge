@@ -88,6 +88,7 @@ class ServiceContext:
             self.transport_registry = TrustedTransportRegistry.empty()
         if self.operational_registry is None:
             self.operational_registry = OperationalTelemetryRegistry(self.store.db_path)
+        self.operational_registry.hydrate_transport_registry(self.transport_registry)
 
 
 class DeployGateRequest(BaseModel):
@@ -187,6 +188,24 @@ class OperationalQuarantineRequest(BaseModel):
 
 
 class OperationalQuarantineReleaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=2048)
+
+
+class OperationalKeyRotationStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    old_key_id: str = Field(min_length=1, max_length=128)
+    new_public_key_pem: str = Field(min_length=80, max_length=8192)
+    overlap_seconds: int = Field(default=3600, ge=60, le=86_400)
+    reason: str = Field(min_length=8, max_length=2048)
+
+
+class RunnerEnrollmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    runner_id: str = Field(min_length=1, max_length=128)
+
+
+class OperationalReasonRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str = Field(min_length=8, max_length=2048)
 
@@ -1552,6 +1571,207 @@ def create_app(context: ServiceContext) -> FastAPI:
                 resource_type=subject_type,
                 resource_id=subject_id,
                 details={"reason": request.reason},
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.get("/v1/subscriber/operational-key-rotations")
+    def operational_key_rotations(
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> list[dict[str, Any]]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_READ,
+            "operations.key_rotation.read",
+        )
+        try:
+            context.operational_registry.reconcile_key_rotations(
+                context.transport_registry, now=utc_now()
+            )
+            return context.operational_registry.key_rotation_status(
+                actor.organization_id
+            )
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+    @app.post("/v1/subscriber/operational-key-rotations")
+    def begin_operational_key_rotation(
+        request: OperationalKeyRotationStartRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "operations.key_rotation.begin",
+        )
+        try:
+            result = context.operational_registry.begin_key_rotation(
+                actor.organization_id,
+                old_key_id=request.old_key_id,
+                new_public_key_pem=request.new_public_key_pem,
+                overlap_seconds=request.overlap_seconds,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+                trusted=context.transport_registry,
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.key_rotation.begin",
+                resource_type="operational_key_rotation",
+                resource_id=str(result["rotation_id"]),
+                details={
+                    "old_key_id": result["old_key_id"],
+                    "new_key_id": result["new_key_id"],
+                    "overlap_expires_at": result["overlap_expires_at"],
+                    "reason": request.reason,
+                },
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/operational-key-rotations/{rotation_id}/finalize")
+    def finalize_operational_key_rotation(
+        rotation_id: str,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "operations.key_rotation.finalize",
+        )
+        try:
+            result = context.operational_registry.finalize_key_rotation(
+                actor.organization_id,
+                rotation_id=rotation_id,
+                actor=f"api_key:{actor.key_id}",
+                trusted=context.transport_registry,
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.key_rotation.finalize",
+                resource_type="operational_key_rotation",
+                resource_id=rotation_id,
+                details={
+                    "old_key_id": result["old_key_id"],
+                    "new_key_id": result["new_key_id"],
+                    "proof_received": result["proof_received"],
+                },
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/runner-enrollments")
+    def enroll_operational_runner(
+        request: RunnerEnrollmentRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.PRIVATE_WORKER_MANAGE,
+            "operations.runner_enrollment.activate",
+        )
+        try:
+            result = context.operational_registry.enroll_runner(
+                actor.organization_id,
+                runner_id=request.runner_id,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.runner_enrollment.activate",
+                resource_type="runner",
+                resource_id=request.runner_id,
+                details={
+                    "runner_key_id": result["runner_key_id"],
+                    "worker_image_sha256": result["worker_image_sha256"],
+                    "enrollment_enforced": True,
+                },
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/runner-enrollments/{runner_id}/revoke")
+    def revoke_operational_runner_enrollment(
+        runner_id: str,
+        request: OperationalReasonRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.PRIVATE_WORKER_MANAGE,
+            "operations.runner_enrollment.revoke",
+        )
+        try:
+            result = context.operational_registry.revoke_runner_enrollment(
+                actor.organization_id,
+                runner_id=runner_id,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.runner_enrollment.revoke",
+                resource_type="runner",
+                resource_id=runner_id,
+                details={"reason": request.reason},
+            )
+            return result
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/adapter-maturity/remediate")
+    def remediate_operational_adapter_maturity(
+        request: OperationalReasonRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "operations.adapter_maturity.remediate",
+        )
+        try:
+            result = context.operational_registry.remediate_adapter_maturity(
+                actor.organization_id,
+                reason=request.reason,
+                actor=f"api_key:{actor.key_id}",
+            )
+            context.subscribers.audit_resource_event(
+                actor,
+                action="operations.adapter_maturity.remediate",
+                resource_type="adapter_inventory",
+                resource_id=actor.organization_id,
+                details={
+                    "remediated": result["remediated"],
+                    "quarantined_adapter_ids": result["quarantined_adapter_ids"],
+                    "maturity_status": result["maturity_status"],
+                    "reason": request.reason,
+                },
             )
             return result
         except OperationalTelemetryError as exc:

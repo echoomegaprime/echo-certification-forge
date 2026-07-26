@@ -92,6 +92,7 @@ class OperationalTelemetryRegistry:
                     active_run_count INTEGER NOT NULL,
                     worker_image_sha256 TEXT NOT NULL,
                     credential_id TEXT NOT NULL,
+                    control_plane_key_id TEXT NOT NULL,
                     runner_key_id TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
                     received_at TEXT NOT NULL,
@@ -112,6 +113,7 @@ class OperationalTelemetryRegistry:
                     response_id TEXT NOT NULL,
                     runner_id TEXT NOT NULL,
                     credential_id TEXT NOT NULL,
+                    control_plane_key_id TEXT NOT NULL,
                     runner_key_id TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
                     received_at TEXT NOT NULL,
@@ -133,8 +135,533 @@ class OperationalTelemetryRegistry:
                 );
                 CREATE INDEX IF NOT EXISTS idx_operational_quarantine_active
                     ON operational_quarantines(tenant_id, subject_type, released_at);
+                CREATE TABLE IF NOT EXISTS operational_trust_keys (
+                    tenant_id TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    public_key_pem TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(state IN ('ACTIVE', 'OVERLAP', 'RETIRED', 'BLOCKED')),
+                    replaces_key_id TEXT,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    retired_at TEXT,
+                    PRIMARY KEY(tenant_id, key_id)
+                );
+                CREATE TABLE IF NOT EXISTS operational_key_rotations (
+                    tenant_id TEXT NOT NULL,
+                    rotation_id TEXT NOT NULL,
+                    old_key_id TEXT NOT NULL,
+                    new_key_id TEXT NOT NULL,
+                    state TEXT NOT NULL CHECK(state IN ('OVERLAP', 'FINALIZED', 'BLOCKED')),
+                    reason TEXT NOT NULL,
+                    started_by TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    overlap_expires_at TEXT NOT NULL,
+                    finalized_by TEXT,
+                    finalized_at TEXT,
+                    PRIMARY KEY(tenant_id, rotation_id)
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_operational_rotation_active
+                    ON operational_key_rotations(tenant_id) WHERE state = 'OVERLAP';
+                CREATE TABLE IF NOT EXISTS operational_runner_enrollments (
+                    tenant_id TEXT NOT NULL,
+                    runner_id TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'REVOKED')),
+                    runner_key_id TEXT NOT NULL,
+                    worker_image_sha256 TEXT NOT NULL,
+                    enrolled_by TEXT NOT NULL,
+                    enrolled_at TEXT NOT NULL,
+                    revoked_by TEXT,
+                    revoked_at TEXT,
+                    revoke_reason TEXT,
+                    PRIMARY KEY(tenant_id, runner_id)
+                );
+                CREATE TABLE IF NOT EXISTS operational_enrollment_policy (
+                    tenant_id TEXT PRIMARY KEY,
+                    enforced INTEGER NOT NULL CHECK(enforced IN (0, 1)),
+                    enabled_by TEXT NOT NULL,
+                    enabled_at TEXT NOT NULL
+                );
                 """
             )
+            self._ensure_column(
+                connection,
+                "authenticated_worker_heartbeats",
+                "control_plane_key_id",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            self._ensure_column(
+                connection,
+                "authenticated_adapter_inventory",
+                "control_plane_key_id",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+
+    @staticmethod
+    def _ensure_column(
+        connection: sqlite3.Connection,
+        table: str,
+        column: str,
+        definition: str,
+    ) -> None:
+        existing = {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    def hydrate_transport_registry(self, trusted: TrustedTransportRegistry) -> None:
+        """Apply durable tenant trust state after static bootstrap keys are loaded."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT tenant_id, key_id, public_key_pem, state
+                FROM operational_trust_keys ORDER BY created_at, key_id
+                """
+            ).fetchall()
+        for row in rows:
+            key_id = str(row["key_id"])
+            if row["state"] in {"ACTIVE", "OVERLAP"}:
+                loaded_id = trusted.add_pem(
+                    str(row["public_key_pem"]), tenant_id=str(row["tenant_id"])
+                )
+                if loaded_id != key_id:
+                    trusted.remove(loaded_id)
+                    raise OperationalTelemetryError("operational_trust_key_id_mismatch", 500)
+            else:
+                trusted.remove(key_id)
+
+    def begin_key_rotation(
+        self,
+        tenant_id: str,
+        *,
+        old_key_id: str,
+        new_public_key_pem: str,
+        reason: str,
+        actor: str,
+        trusted: TrustedTransportRegistry,
+        overlap_seconds: int = 3600,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Start a bounded old/new overlap without accepting private key material."""
+        current = now or utc_now()
+        if old_key_id not in trusted.keys:
+            raise OperationalTelemetryError("old_operational_key_not_trusted", 404)
+        bound_tenant = trusted.key_tenants.get(old_key_id)
+        if bound_tenant is not None and bound_tenant != tenant_id:
+            raise OperationalTelemetryError("old_operational_key_tenant_mismatch", 403)
+        candidate = TrustedTransportRegistry.empty()
+        try:
+            new_key_id = candidate.add_pem(new_public_key_pem, tenant_id=tenant_id)
+        except (TypeError, ValueError, UnicodeError) as exc:
+            raise OperationalTelemetryError("new_operational_key_invalid", 422) from exc
+        if new_key_id == old_key_id:
+            raise OperationalTelemetryError("operational_rotation_key_unchanged", 409)
+        started_at = to_utc_iso(current)
+        expires_at = to_utc_iso(current + timedelta(seconds=overlap_seconds))
+        rotation_id = "oprot-" + sha256_json(
+            {
+                "tenant_id": tenant_id,
+                "old_key_id": old_key_id,
+                "new_key_id": new_key_id,
+                "started_at": started_at,
+            }
+        )[:24]
+        old_public_key_pem = trusted.public_key_pem(old_key_id)
+        with self._connect() as connection:
+            active = connection.execute(
+                "SELECT 1 FROM operational_key_rotations WHERE tenant_id = ? AND state = 'OVERLAP'",
+                (tenant_id,),
+            ).fetchone()
+            if active is not None:
+                raise OperationalTelemetryError("operational_rotation_already_active", 409)
+            connection.execute(
+                """
+                INSERT INTO operational_trust_keys(
+                    tenant_id, key_id, public_key_pem, state, replaces_key_id,
+                    created_by, created_at, retired_at
+                ) VALUES (?, ?, ?, 'ACTIVE', NULL, ?, ?, NULL)
+                ON CONFLICT(tenant_id, key_id) DO NOTHING
+                """,
+                (tenant_id, old_key_id, old_public_key_pem, actor, started_at),
+            )
+            connection.execute(
+                """
+                INSERT INTO operational_trust_keys(
+                    tenant_id, key_id, public_key_pem, state, replaces_key_id,
+                    created_by, created_at, retired_at
+                ) VALUES (?, ?, ?, 'OVERLAP', ?, ?, ?, NULL)
+                ON CONFLICT(tenant_id, key_id) DO UPDATE SET
+                    public_key_pem=excluded.public_key_pem,
+                    state='OVERLAP', replaces_key_id=excluded.replaces_key_id,
+                    created_by=excluded.created_by, created_at=excluded.created_at,
+                    retired_at=NULL
+                """,
+                (
+                    tenant_id,
+                    new_key_id,
+                    new_public_key_pem,
+                    old_key_id,
+                    actor,
+                    started_at,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO operational_key_rotations(
+                    tenant_id, rotation_id, old_key_id, new_key_id, state,
+                    reason, started_by, started_at, overlap_expires_at,
+                    finalized_by, finalized_at
+                ) VALUES (?, ?, ?, ?, 'OVERLAP', ?, ?, ?, ?, NULL, NULL)
+                """,
+                (
+                    tenant_id,
+                    rotation_id,
+                    old_key_id,
+                    new_key_id,
+                    reason,
+                    actor,
+                    started_at,
+                    expires_at,
+                ),
+            )
+        trusted.add_pem(new_public_key_pem, tenant_id=tenant_id)
+        return {
+            "rotation_id": rotation_id,
+            "state": "OVERLAP",
+            "old_key_id": old_key_id,
+            "new_key_id": new_key_id,
+            "started_at": started_at,
+            "overlap_expires_at": expires_at,
+            "proof_received": False,
+        }
+
+    def key_rotation_status(self, tenant_id: str) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT rotation_id, old_key_id, new_key_id, state, reason,
+                       started_at, overlap_expires_at, finalized_at
+                FROM operational_key_rotations
+                WHERE tenant_id=? ORDER BY started_at DESC LIMIT 25
+                """,
+                (tenant_id,),
+            ).fetchall()
+            result = []
+            for row in rows:
+                result.append(
+                    {
+                        "rotation_id": str(row["rotation_id"]),
+                        "old_key_id": str(row["old_key_id"]),
+                        "new_key_id": str(row["new_key_id"]),
+                        "state": str(row["state"]),
+                        "reason": str(row["reason"]),
+                        "started_at": str(row["started_at"]),
+                        "overlap_expires_at": str(row["overlap_expires_at"]),
+                        "finalized_at": (
+                            str(row["finalized_at"]) if row["finalized_at"] is not None else None
+                        ),
+                        "proof_received": self._rotation_proof_exists(
+                            connection,
+                            tenant_id,
+                            str(row["new_key_id"]),
+                            str(row["started_at"]),
+                        ),
+                    }
+                )
+        return result
+
+    @staticmethod
+    def _rotation_proof_exists(
+        connection: sqlite3.Connection,
+        tenant_id: str,
+        new_key_id: str,
+        started_at: str,
+    ) -> bool:
+        row = connection.execute(
+            """
+            SELECT 1 FROM (
+                SELECT control_plane_key_id, received_at
+                FROM authenticated_worker_heartbeats WHERE tenant_id = ?
+                UNION ALL
+                SELECT control_plane_key_id, received_at
+                FROM authenticated_adapter_inventory WHERE tenant_id = ?
+            ) WHERE control_plane_key_id = ? AND received_at >= ? LIMIT 1
+            """,
+            (tenant_id, tenant_id, new_key_id, started_at),
+        ).fetchone()
+        return row is not None
+
+    def finalize_key_rotation(
+        self,
+        tenant_id: str,
+        *,
+        rotation_id: str,
+        actor: str,
+        trusted: TrustedTransportRegistry,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Retire the old key only after a new-key-authenticated operational report."""
+        current = to_utc_iso(now or utc_now())
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT old_key_id, new_key_id, state, started_at, overlap_expires_at
+                FROM operational_key_rotations
+                WHERE tenant_id = ? AND rotation_id = ?
+                """,
+                (tenant_id, rotation_id),
+            ).fetchone()
+            if row is None:
+                raise OperationalTelemetryError("operational_rotation_not_found", 404)
+            if row["state"] == "FINALIZED":
+                return {
+                    "rotation_id": rotation_id,
+                    "state": "FINALIZED",
+                    "old_key_id": str(row["old_key_id"]),
+                    "new_key_id": str(row["new_key_id"]),
+                    "proof_received": True,
+                    "idempotent": True,
+                }
+            if row["state"] != "OVERLAP":
+                raise OperationalTelemetryError("operational_rotation_blocked", 409)
+            if not self._rotation_proof_exists(
+                connection,
+                tenant_id,
+                str(row["new_key_id"]),
+                str(row["started_at"]),
+            ):
+                raise OperationalTelemetryError("new_operational_key_unproven", 409)
+            connection.execute(
+                """
+                UPDATE operational_key_rotations
+                SET state='FINALIZED', finalized_by=?, finalized_at=?
+                WHERE tenant_id=? AND rotation_id=? AND state='OVERLAP'
+                """,
+                (actor, current, tenant_id, rotation_id),
+            )
+            connection.execute(
+                """
+                UPDATE operational_trust_keys SET state='RETIRED', retired_at=?
+                WHERE tenant_id=? AND key_id=?
+                """,
+                (current, tenant_id, str(row["old_key_id"])),
+            )
+            connection.execute(
+                """
+                UPDATE operational_trust_keys SET state='ACTIVE'
+                WHERE tenant_id=? AND key_id=?
+                """,
+                (tenant_id, str(row["new_key_id"])),
+            )
+        trusted.remove(str(row["old_key_id"]))
+        return {
+            "rotation_id": rotation_id,
+            "state": "FINALIZED",
+            "old_key_id": str(row["old_key_id"]),
+            "new_key_id": str(row["new_key_id"]),
+            "proof_received": True,
+            "idempotent": False,
+            "finalized_at": current,
+        }
+
+    def reconcile_key_rotations(
+        self,
+        trusted: TrustedTransportRegistry,
+        *,
+        now: datetime,
+    ) -> None:
+        """Fail closed when an overlap expires before the new key proves possession."""
+        current = to_utc_iso(now)
+        blocked: list[tuple[str, str]] = []
+        finalized: list[str] = []
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT tenant_id, rotation_id, old_key_id, new_key_id, started_at
+                FROM operational_key_rotations
+                WHERE state='OVERLAP' AND overlap_expires_at <= ?
+                """,
+                (current,),
+            ).fetchall()
+            for row in rows:
+                tenant_id = str(row["tenant_id"])
+                old_key_id = str(row["old_key_id"])
+                new_key_id = str(row["new_key_id"])
+                if self._rotation_proof_exists(
+                    connection, tenant_id, new_key_id, str(row["started_at"])
+                ):
+                    state = "FINALIZED"
+                    connection.execute(
+                        """
+                        UPDATE operational_trust_keys SET state='RETIRED', retired_at=?
+                        WHERE tenant_id=? AND key_id=?
+                        """,
+                        (current, tenant_id, old_key_id),
+                    )
+                    connection.execute(
+                        "UPDATE operational_trust_keys SET state='ACTIVE' WHERE tenant_id=? AND key_id=?",
+                        (tenant_id, new_key_id),
+                    )
+                    finalized.append(old_key_id)
+                else:
+                    state = "BLOCKED"
+                    connection.execute(
+                        """
+                        UPDATE operational_trust_keys SET state='BLOCKED', retired_at=?
+                        WHERE tenant_id=? AND key_id IN (?, ?)
+                        """,
+                        (current, tenant_id, old_key_id, new_key_id),
+                    )
+                    blocked.append((old_key_id, new_key_id))
+                connection.execute(
+                    """
+                    UPDATE operational_key_rotations
+                    SET state=?, finalized_by='system:overlap-expiry', finalized_at=?
+                    WHERE tenant_id=? AND rotation_id=?
+                    """,
+                    (state, current, tenant_id, str(row["rotation_id"])),
+                )
+        for key_id in finalized:
+            trusted.remove(key_id)
+        for old_key_id, new_key_id in blocked:
+            trusted.remove(old_key_id)
+            trusted.remove(new_key_id)
+
+    def enroll_runner(
+        self,
+        tenant_id: str,
+        *,
+        runner_id: str,
+        actor: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Pin a known authenticated runner to its signing identity and image digest."""
+        current = to_utc_iso(now or utc_now())
+        with self._connect() as connection:
+            source = connection.execute(
+                """
+                SELECT runner_key_id, worker_image_sha256
+                FROM authenticated_worker_heartbeats
+                WHERE tenant_id=? AND runner_id=?
+                """,
+                (tenant_id, runner_id),
+            ).fetchone()
+            if source is None:
+                raise OperationalTelemetryError("authenticated_runner_not_found", 404)
+            connection.execute(
+                """
+                INSERT INTO operational_runner_enrollments(
+                    tenant_id, runner_id, status, runner_key_id, worker_image_sha256,
+                    enrolled_by, enrolled_at, revoked_by, revoked_at, revoke_reason
+                ) VALUES (?, ?, 'ACTIVE', ?, ?, ?, ?, NULL, NULL, NULL)
+                ON CONFLICT(tenant_id, runner_id) DO UPDATE SET
+                    status='ACTIVE', runner_key_id=excluded.runner_key_id,
+                    worker_image_sha256=excluded.worker_image_sha256,
+                    enrolled_by=excluded.enrolled_by, enrolled_at=excluded.enrolled_at,
+                    revoked_by=NULL, revoked_at=NULL, revoke_reason=NULL
+                """,
+                (
+                    tenant_id,
+                    runner_id,
+                    str(source["runner_key_id"]),
+                    str(source["worker_image_sha256"]),
+                    actor,
+                    current,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO operational_enrollment_policy(tenant_id, enforced, enabled_by, enabled_at)
+                VALUES (?, 1, ?, ?)
+                ON CONFLICT(tenant_id) DO UPDATE SET
+                    enforced=1, enabled_by=excluded.enabled_by, enabled_at=excluded.enabled_at
+                """,
+                (tenant_id, actor, current),
+            )
+        return {
+            "runner_id": runner_id,
+            "status": "ACTIVE",
+            "runner_key_id": str(source["runner_key_id"]),
+            "worker_image_sha256": str(source["worker_image_sha256"]),
+            "enrollment_enforced": True,
+            "enrolled_at": current,
+        }
+
+    def revoke_runner_enrollment(
+        self,
+        tenant_id: str,
+        *,
+        runner_id: str,
+        reason: str,
+        actor: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        current = to_utc_iso(now or utc_now())
+        with self._connect() as connection:
+            changed = connection.execute(
+                """
+                UPDATE operational_runner_enrollments
+                SET status='REVOKED', revoked_by=?, revoked_at=?, revoke_reason=?
+                WHERE tenant_id=? AND runner_id=? AND status='ACTIVE'
+                """,
+                (actor, current, reason, tenant_id, runner_id),
+            ).rowcount
+            if changed != 1:
+                raise OperationalTelemetryError("active_runner_enrollment_not_found", 404)
+        return {
+            "runner_id": runner_id,
+            "status": "REVOKED",
+            "reason": reason,
+            "revoked_at": current,
+        }
+
+    def remediate_adapter_maturity(
+        self,
+        tenant_id: str,
+        *,
+        reason: str,
+        actor: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Atomically quarantine every authenticated adapter that is not STABLE."""
+        current = to_utc_iso(now or utc_now())
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT adapter_id, maturity FROM authenticated_adapter_inventory
+                WHERE tenant_id=? AND maturity <> 'STABLE' ORDER BY adapter_id
+                """,
+                (tenant_id,),
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO operational_quarantines(
+                        tenant_id, subject_type, subject_id, reason, quarantined_by,
+                        quarantined_at, released_by, release_reason, released_at
+                    ) VALUES (?, 'adapter', ?, ?, ?, ?, NULL, NULL, NULL)
+                    ON CONFLICT(tenant_id, subject_type, subject_id) DO UPDATE SET
+                        reason=excluded.reason, quarantined_by=excluded.quarantined_by,
+                        quarantined_at=excluded.quarantined_at, released_by=NULL,
+                        release_reason=NULL, released_at=NULL
+                    """,
+                    (tenant_id, str(row["adapter_id"]), reason, actor, current),
+                )
+            stable = connection.execute(
+                """
+                SELECT COUNT(*) AS count FROM authenticated_adapter_inventory
+                WHERE tenant_id=? AND maturity='STABLE'
+                """,
+                (tenant_id,),
+            ).fetchone()
+        return {
+            "remediated": len(rows),
+            "quarantined_adapter_ids": [str(row["adapter_id"]) for row in rows],
+            "remaining_stable": int(stable["count"]),
+            "maturity_status": "STABLE" if int(stable["count"]) > 0 else "UNAVAILABLE",
+            "remediated_at": current,
+        }
 
     def quarantine(
         self,
@@ -246,14 +773,15 @@ class OperationalTelemetryRegistry:
             "released_at": current,
         }
 
-    @staticmethod
     def _authenticate(
+        self,
         report: SignedOperationalReport,
         trusted: TrustedTransportRegistry,
         *,
         required_scope: RunnerCommand,
         now: datetime,
     ) -> Any:
+        self.reconcile_key_rotations(trusted, now=now)
         try:
             claims = trusted.verify(report.credential)
         except Exception as exc:  # authentication failures stay detail-bounded
@@ -342,6 +870,26 @@ class OperationalTelemetryRegistry:
         received_at = to_utc_iso(current)
         observed_at = to_utc_iso(response.issued_at)
         with self._connect() as connection:
+            policy = connection.execute(
+                "SELECT enforced FROM operational_enrollment_policy WHERE tenant_id=?",
+                (response.tenant_id,),
+            ).fetchone()
+            if policy is not None and int(policy["enforced"]) == 1:
+                enrollment = connection.execute(
+                    """
+                    SELECT status, runner_key_id, worker_image_sha256
+                    FROM operational_runner_enrollments
+                    WHERE tenant_id=? AND runner_id=?
+                    """,
+                    (response.tenant_id, response.runner_id),
+                ).fetchone()
+                if enrollment is None or enrollment["status"] != "ACTIVE":
+                    raise OperationalTelemetryError("runner_not_enrolled", 403)
+                if (
+                    enrollment["runner_key_id"] != claims.runner_key_id
+                    or enrollment["worker_image_sha256"] != body.worker_image_sha256
+                ):
+                    raise OperationalTelemetryError("runner_enrollment_identity_mismatch", 409)
             if not self._reserve_report(
                 connection, report, report_kind="worker_heartbeat", received_at=received_at
             ):
@@ -363,9 +911,9 @@ class OperationalTelemetryRegistry:
                 INSERT INTO authenticated_worker_heartbeats(
                     tenant_id, runner_id, run_id, response_id, sequence, health,
                     capacity_total, capacity_available, active_run_count,
-                    worker_image_sha256, credential_id, runner_key_id,
+                    worker_image_sha256, credential_id, control_plane_key_id, runner_key_id,
                     observed_at, received_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(tenant_id, runner_id) DO UPDATE SET
                     run_id=excluded.run_id, response_id=excluded.response_id,
                     sequence=excluded.sequence, health=excluded.health,
@@ -374,6 +922,7 @@ class OperationalTelemetryRegistry:
                     active_run_count=excluded.active_run_count,
                     worker_image_sha256=excluded.worker_image_sha256,
                     credential_id=excluded.credential_id,
+                    control_plane_key_id=excluded.control_plane_key_id,
                     runner_key_id=excluded.runner_key_id,
                     observed_at=excluded.observed_at, received_at=excluded.received_at
                 """,
@@ -389,6 +938,7 @@ class OperationalTelemetryRegistry:
                     body.active_run_count,
                     body.worker_image_sha256,
                     claims.credential_id,
+                    report.credential.key_id,
                     claims.runner_key_id,
                     observed_at,
                     received_at,
@@ -426,6 +976,22 @@ class OperationalTelemetryRegistry:
         received_at = to_utc_iso(current)
         observed_at = to_utc_iso(response.issued_at)
         with self._connect() as connection:
+            policy = connection.execute(
+                "SELECT enforced FROM operational_enrollment_policy WHERE tenant_id=?",
+                (claims.tenant_id,),
+            ).fetchone()
+            if policy is not None and int(policy["enforced"]) == 1:
+                enrollment = connection.execute(
+                    """
+                    SELECT status, runner_key_id FROM operational_runner_enrollments
+                    WHERE tenant_id=? AND runner_id=?
+                    """,
+                    (claims.tenant_id, claims.runner_id),
+                ).fetchone()
+                if enrollment is None or enrollment["status"] != "ACTIVE":
+                    raise OperationalTelemetryError("runner_not_enrolled", 403)
+                if enrollment["runner_key_id"] != claims.runner_key_id:
+                    raise OperationalTelemetryError("runner_enrollment_identity_mismatch", 409)
             if not self._reserve_report(
                 connection, report, report_kind="adapter_inventory", received_at=received_at
             ):
@@ -448,8 +1014,9 @@ class OperationalTelemetryRegistry:
                         tenant_id, adapter_id, version, identity_digest, maturity,
                         quality_score, quality_cases, execution_node, result_sha256,
                         response_id, runner_id, credential_id, runner_key_id,
+                        control_plane_key_id,
                         observed_at, received_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(tenant_id, adapter_id) DO UPDATE SET
                         version=excluded.version,
                         identity_digest=excluded.identity_digest,
@@ -461,6 +1028,7 @@ class OperationalTelemetryRegistry:
                         response_id=excluded.response_id,
                         runner_id=excluded.runner_id,
                         credential_id=excluded.credential_id,
+                        control_plane_key_id=excluded.control_plane_key_id,
                         runner_key_id=excluded.runner_key_id,
                         observed_at=excluded.observed_at,
                         received_at=excluded.received_at
@@ -479,6 +1047,7 @@ class OperationalTelemetryRegistry:
                         claims.runner_id,
                         claims.credential_id,
                         claims.runner_key_id,
+                        report.credential.key_id,
                         observed_at,
                         received_at,
                     ),
@@ -521,6 +1090,17 @@ class OperationalTelemetryRegistry:
                 """,
                 (tenant_id,),
             ).fetchall()
+            enrollment_policy = connection.execute(
+                "SELECT enforced FROM operational_enrollment_policy WHERE tenant_id=?",
+                (tenant_id,),
+            ).fetchone()
+            enrollments = connection.execute(
+                """
+                SELECT runner_id, status, runner_key_id, worker_image_sha256, enrolled_at
+                FROM operational_runner_enrollments WHERE tenant_id=?
+                """,
+                (tenant_id,),
+            ).fetchall()
 
         runner_quarantines = {
             str(row["subject_id"]): row for row in quarantines if row["subject_type"] == "runner"
@@ -528,11 +1108,21 @@ class OperationalTelemetryRegistry:
         adapter_quarantines = {
             str(row["subject_id"]): row for row in quarantines if row["subject_type"] == "adapter"
         }
+        enrollment_enforced = (
+            enrollment_policy is not None and int(enrollment_policy["enforced"]) == 1
+        )
+        active_enrollments = {
+            str(row["runner_id"]): row for row in enrollments if row["status"] == "ACTIVE"
+        }
 
         fresh = [
             row
             for row in heartbeats
             if row["runner_id"] not in runner_quarantines
+            and (
+                not enrollment_enforced
+                or str(row["runner_id"]) in active_enrollments
+            )
             and current - parse_utc_iso(str(row["observed_at"])) <= heartbeat_freshness
         ]
         if not heartbeats:
@@ -541,9 +1131,16 @@ class OperationalTelemetryRegistry:
         elif len(runner_quarantines) == len(heartbeats):
             runner_health = "QUARANTINED"
             runner_reason = "Every authenticated runner is quarantined and excluded from capacity."
+        elif enrollment_enforced and not active_enrollments:
+            runner_health = "UNENROLLED"
+            runner_reason = "Enrollment enforcement is active and no runner is durably enrolled."
         elif not fresh:
             runner_health = "STALE"
-            runner_reason = "All authenticated worker heartbeats are older than the freshness window."
+            runner_reason = (
+                "No enrolled authenticated runner has a fresh heartbeat."
+                if enrollment_enforced
+                else "All authenticated worker heartbeats are older than the freshness window."
+            )
         elif runner_quarantines:
             runner_health = "DEGRADED"
             runner_reason = "At least one authenticated runner is quarantined and excluded from capacity."
@@ -571,7 +1168,7 @@ class OperationalTelemetryRegistry:
             inventory_status = "AVAILABLE"
             maturity_status = (
                 "STABLE"
-                if stable_count == len(eligible_adapters) and not adapter_quarantines
+                if stable_count == len(eligible_adapters)
                 else "MIXED"
             )
             adapter_reason = (
@@ -588,6 +1185,8 @@ class OperationalTelemetryRegistry:
                 "registered": len(heartbeats),
                 "fresh": len(fresh),
                 "quarantined": len(runner_quarantines),
+                "enrollment_enforced": enrollment_enforced,
+                "enrolled": len(active_enrollments),
                 "capacity_total": sum(int(row["capacity_total"]) for row in fresh),
                 "capacity_available": sum(int(row["capacity_available"]) for row in fresh),
                 "active_run_count": sum(int(row["active_run_count"]) for row in fresh),
@@ -598,6 +1197,10 @@ class OperationalTelemetryRegistry:
                         "health": str(row["health"]),
                         "worker_image_sha256": str(row["worker_image_sha256"]),
                         "observed_at": str(row["observed_at"]),
+                        "enrolled": (
+                            not enrollment_enforced
+                            or str(row["runner_id"]) in active_enrollments
+                        ),
                         "quarantined": str(row["runner_id"]) in runner_quarantines,
                         "quarantine_reason": (
                             str(runner_quarantines[str(row["runner_id"])]["reason"])
@@ -654,6 +1257,8 @@ class OperationalTelemetryRegistry:
                         }
                         for row in quarantines
                     ],
+                    "enrollment_enforced": enrollment_enforced,
+                    "active_enrollments": sorted(active_enrollments),
                 }
             ),
         }

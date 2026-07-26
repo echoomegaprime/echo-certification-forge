@@ -38,15 +38,24 @@ from echo_certification_forge.subscriber import (
 )
 
 
-def _heartbeat_report(*, now=None, sequence: int = 1, response_id: str = "heartbeat-response-1"):
+def _heartbeat_report(
+    *,
+    now=None,
+    sequence: int = 1,
+    response_id: str = "heartbeat-response-1",
+    authority=None,
+    runner=None,
+    tenant_id: str = "tenant-alpha",
+    runner_id: str = "runner-anvil-1",
+):
     issued_at = now or utc_now()
-    authority = ControlPlaneTransportAuthority.generate()
-    runner = RunnerEphemeralIdentity.generate()
+    authority = authority or ControlPlaneTransportAuthority.generate()
+    runner = runner or RunnerEphemeralIdentity.generate()
     credential = authority.issue(
         credential_id="heartbeat-credential-1",
         run_id="cert-heartbeat-1",
-        tenant_id="tenant-alpha",
-        runner_id="runner-anvil-1",
+        tenant_id=tenant_id,
+        runner_id=runner_id,
         runner_public_key_pem=runner.public_key_pem,
         scopes=(RunnerCommand.HEARTBEAT.value,),
         issued_at=issued_at,
@@ -80,18 +89,21 @@ def _heartbeat_report(*, now=None, sequence: int = 1, response_id: str = "heartb
     return SignedOperationalReport(credential=credential, response=response), trusted
 
 
-def _adapter_record() -> AdapterExecutionRecord:
+def _adapter_record(
+    adapter_id: str = "gs343",
+    maturity: AdapterMaturity = AdapterMaturity.STABLE,
+) -> AdapterExecutionRecord:
     identity = AdapterIdentity(
-        adapter_id="gs343",
+        adapter_id=adapter_id,
         version="v2",
         artifact_sha256=sha256_bytes(b"adapter"),
         configuration_sha256=sha256_bytes(b"configuration"),
         runtime_sha256=sha256_bytes(b"runtime"),
-        maturity=AdapterMaturity.STABLE,
+        maturity=maturity,
         provenance="signed-anvil-r5",
     )
     quality = AdapterQualityReport(
-        adapter_id="gs343",
+        adapter_id=adapter_id,
         passed_cases=25,
         total_cases=25,
         critical_failures=(),
@@ -120,7 +132,12 @@ def _adapter_record() -> AdapterExecutionRecord:
     )
 
 
-def _signed_adapter_bundle(*, run_id: str, tenant_id: str):
+def _signed_adapter_bundle(
+    *,
+    run_id: str,
+    tenant_id: str,
+    records: tuple[AdapterExecutionRecord, ...] | None = None,
+):
     runner = RunnerEphemeralIdentity.generate()
     binding = AdapterBundleTrustBinding(
         registry_id="test-operational-registry",
@@ -132,7 +149,7 @@ def _signed_adapter_bundle(*, run_id: str, tenant_id: str):
         external_trust_pins_sha256=sha256_bytes(b"external-pins"),
     )
     return sign_adapter_bundle(
-        (_adapter_record(),),
+        records or (_adapter_record(),),
         run_id=run_id,
         tenant_id=tenant_id,
         trust_binding=binding,
@@ -297,6 +314,207 @@ def test_quarantine_rejects_unknown_or_inactive_subject(tmp_path: Path) -> None:
             reason="unknown runners cannot create phantom quarantine state",
             actor="api_key:owner",
         )
+
+
+def test_operational_key_rotation_requires_new_key_proof_and_survives_restart(
+    tmp_path: Path,
+) -> None:
+    current = utc_now()
+    registry = OperationalTelemetryRegistry(tmp_path / "telemetry.sqlite3")
+    old_authority = ControlPlaneTransportAuthority.generate()
+    new_authority = ControlPlaneTransportAuthority.generate()
+    runner = RunnerEphemeralIdentity.generate()
+    first, trusted = _heartbeat_report(
+        now=current,
+        authority=old_authority,
+        runner=runner,
+    )
+    registry.ingest_worker_heartbeat(first, trusted, now=current)
+
+    rotation = registry.begin_key_rotation(
+        "tenant-alpha",
+        old_key_id=old_authority.key_id,
+        new_public_key_pem=new_authority.public_key_pem,
+        overlap_seconds=600,
+        reason="scheduled operational control-plane key rotation",
+        actor="api_key:owner",
+        trusted=trusted,
+        now=current + timedelta(seconds=1),
+    )
+    assert rotation["state"] == "OVERLAP"
+    assert rotation["new_key_id"] == new_authority.key_id
+    with pytest.raises(OperationalTelemetryError, match="new_operational_key_unproven"):
+        registry.finalize_key_rotation(
+            "tenant-alpha",
+            rotation_id=rotation["rotation_id"],
+            actor="api_key:owner",
+            trusted=trusted,
+            now=current + timedelta(seconds=2),
+        )
+
+    proof, _unused = _heartbeat_report(
+        now=current + timedelta(seconds=3),
+        sequence=2,
+        response_id="heartbeat-response-new-key",
+        authority=new_authority,
+        runner=runner,
+    )
+    registry.ingest_worker_heartbeat(proof, trusted, now=current + timedelta(seconds=3))
+    finalized = registry.finalize_key_rotation(
+        "tenant-alpha",
+        rotation_id=rotation["rotation_id"],
+        actor="api_key:owner",
+        trusted=trusted,
+        now=current + timedelta(seconds=4),
+    )
+    assert finalized["state"] == "FINALIZED"
+    assert old_authority.key_id not in trusted.keys
+    assert new_authority.key_id in trusted.keys
+
+    restored = TrustedTransportRegistry.empty()
+    restored.add_pem(old_authority.public_key_pem)
+    registry.hydrate_transport_registry(restored)
+    assert old_authority.key_id not in restored.keys
+    assert restored.key_tenants[new_authority.key_id] == "tenant-alpha"
+
+    old_replay, _unused = _heartbeat_report(
+        now=current + timedelta(seconds=5),
+        sequence=3,
+        response_id="heartbeat-response-retired-key",
+        authority=old_authority,
+        runner=runner,
+    )
+    with pytest.raises(OperationalTelemetryError, match="untrusted_operational_credential"):
+        registry.ingest_worker_heartbeat(
+            old_replay, restored, now=current + timedelta(seconds=5)
+        )
+
+
+def test_operational_key_rotation_expiry_blocks_both_keys_without_proof(
+    tmp_path: Path,
+) -> None:
+    current = utc_now()
+    registry = OperationalTelemetryRegistry(tmp_path / "telemetry.sqlite3")
+    old_authority = ControlPlaneTransportAuthority.generate()
+    new_authority = ControlPlaneTransportAuthority.generate()
+    trusted = TrustedTransportRegistry.empty()
+    trusted.add_pem(old_authority.public_key_pem)
+    rotation = registry.begin_key_rotation(
+        "tenant-alpha",
+        old_key_id=old_authority.key_id,
+        new_public_key_pem=new_authority.public_key_pem,
+        overlap_seconds=60,
+        reason="prove fail-closed overlap expiry behavior",
+        actor="api_key:owner",
+        trusted=trusted,
+        now=current,
+    )
+
+    registry.reconcile_key_rotations(trusted, now=current + timedelta(seconds=61))
+    assert old_authority.key_id not in trusted.keys
+    assert new_authority.key_id not in trusted.keys
+    status = registry.key_rotation_status("tenant-alpha")
+    assert status[0]["rotation_id"] == rotation["rotation_id"]
+    assert status[0]["state"] == "BLOCKED"
+    assert status[0]["proof_received"] is False
+
+
+def test_durable_runner_enrollment_pins_runner_key_and_image(tmp_path: Path) -> None:
+    current = utc_now()
+    registry = OperationalTelemetryRegistry(tmp_path / "telemetry.sqlite3")
+    authority = ControlPlaneTransportAuthority.generate()
+    runner = RunnerEphemeralIdentity.generate()
+    first, trusted = _heartbeat_report(
+        now=current,
+        authority=authority,
+        runner=runner,
+    )
+    registry.ingest_worker_heartbeat(first, trusted, now=current)
+    enrollment = registry.enroll_runner(
+        "tenant-alpha",
+        runner_id="runner-anvil-1",
+        actor="api_key:owner",
+        now=current + timedelta(seconds=1),
+    )
+    snapshot = registry.snapshot("tenant-alpha", now=current + timedelta(seconds=2))
+    assert enrollment["status"] == "ACTIVE"
+    assert snapshot["runner"]["enrollment_enforced"] is True
+    assert snapshot["runner"]["enrolled"] == 1
+    assert snapshot["runner"]["entries"][0]["enrolled"] is True
+
+    unknown, _unused = _heartbeat_report(
+        now=current + timedelta(seconds=3),
+        sequence=1,
+        response_id="heartbeat-response-unenrolled",
+        authority=authority,
+        runner_id="runner-anvil-unknown",
+    )
+    with pytest.raises(OperationalTelemetryError, match="runner_not_enrolled"):
+        registry.ingest_worker_heartbeat(
+            unknown, trusted, now=current + timedelta(seconds=3)
+        )
+
+    changed_identity, _unused = _heartbeat_report(
+        now=current + timedelta(seconds=4),
+        sequence=2,
+        response_id="heartbeat-response-changed-identity",
+        authority=authority,
+        runner=RunnerEphemeralIdentity.generate(),
+    )
+    with pytest.raises(
+        OperationalTelemetryError, match="runner_enrollment_identity_mismatch"
+    ):
+        registry.ingest_worker_heartbeat(
+            changed_identity, trusted, now=current + timedelta(seconds=4)
+        )
+
+    registry.revoke_runner_enrollment(
+        "tenant-alpha",
+        runner_id="runner-anvil-1",
+        reason="runner is intentionally retired from the worker pool",
+        actor="api_key:owner",
+        now=current + timedelta(seconds=5),
+    )
+    revoked = registry.snapshot("tenant-alpha", now=current + timedelta(seconds=6))
+    assert revoked["runner"]["health"] == "UNENROLLED"
+    assert revoked["runner"]["capacity_total"] == 0
+
+
+def test_maturity_remediation_quarantines_nonstable_and_restores_stable_view(
+    tmp_path: Path,
+) -> None:
+    registry = OperationalTelemetryRegistry(tmp_path / "telemetry.sqlite3")
+    signed = _signed_adapter_bundle(
+        records=(
+            _adapter_record("gs343", AdapterMaturity.STABLE),
+            _adapter_record("r2d2", AdapterMaturity.DEGRADED),
+        ),
+        run_id="cert-adapter-mixed",
+        tenant_id="tenant-alpha",
+    )
+    trusted = TrustedTransportRegistry.empty()
+    trusted.add_pem(signed.control_plane_public_key_pem)
+    registry.ingest_adapter_inventory(
+        SignedOperationalReport(credential=signed.credential, response=signed.response),
+        trusted,
+        now=signed.response.issued_at,
+    )
+    assert registry.snapshot("tenant-alpha")["adapters"]["maturity_status"] == "MIXED"
+
+    result = registry.remediate_adapter_maturity(
+        "tenant-alpha",
+        reason="non-stable adapters cannot remain execution eligible",
+        actor="api_key:owner",
+    )
+    remediated = registry.snapshot("tenant-alpha")
+    assert result["quarantined_adapter_ids"] == ["r2d2"]
+    assert result["maturity_status"] == "STABLE"
+    assert remediated["adapters"]["maturity_status"] == "STABLE"
+    assert remediated["adapters"]["available"] == 1
+    assert remediated["adapters"]["quarantined"] == 1
+    assert next(
+        item for item in remediated["adapters"]["entries"] if item["adapter_id"] == "r2d2"
+    )["quarantined"] is True
     with pytest.raises(OperationalTelemetryError, match="active_quarantine_not_found"):
         registry.release_quarantine(
             "tenant-alpha",
