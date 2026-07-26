@@ -84,13 +84,18 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
 
 def test_desktop_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("('echo.certforge.admin.") == 9
-    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 10
+    assert sql.count("('echo.certforge.admin.") == 15
+    assert sql.count('"X-CertForge-API-Key":"vault:certforge.desktop_admin_api_key"') == 16
     assert "echo.certforge.telemetry" in sql
     assert "echo.certforge.admin.evidence_artifact" in sql
     assert "echo.certforge.admin.rerun" in sql
     assert "echo.certforge.admin.quarantine" in sql
     assert "echo.certforge.admin.quarantine_release" in sql
+    assert "echo.certforge.admin.key_rotation_begin" in sql
+    assert "echo.certforge.admin.key_rotation_finalize" in sql
+    assert "echo.certforge.admin.runner_enroll" in sql
+    assert "echo.certforge.admin.runner_enrollment_revoke" in sql
+    assert "echo.certforge.admin.adapter_maturity_remediate" in sql
     assert "removing it from eligible capacity/execution without deleting telemetry" in sql
     assert "immutable lineage" in sql
     assert "5 MiB raw" in sql

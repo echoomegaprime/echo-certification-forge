@@ -1,4 +1,4 @@
--- Register the 12 safe-core and 9 hardened-administration Echo Desktop
+-- Register the 12 safe-core and 15 hardened-administration Echo Desktop
 -- operator-facing echo.certforge.* SDK capabilities as
 -- handler_kind='http' proxies to the live
 -- echo-certforge.service on FORGE :8309. Idempotent (ON CONFLICT DO UPDATE).
