@@ -41,13 +41,13 @@ def test_api_requires_tenant_and_hides_cross_tenant_run(store, manifest, target,
     assert response.json()["run_id"] == "cert-api"
 
 
-def test_health_truthfully_reports_completed_p3_and_remaining_product_gate(store, manifest):
+def test_health_truthfully_reports_completed_p8c_and_remaining_product_gate(store, manifest):
     app = create_app(ServiceContext(store, manifest, TrustedPublicKeyRegistry.empty()))
     client = TestClient(app)
     response = client.get("/v1/status")
     assert response.status_code == 200
     body = response.json()
-    assert body["completed_phase_gate"] == "P3"
+    assert body["completed_phase_gate"] == "P8C"
     assert body["release_verdict"] == "NOT_READY"
     assert body["evidence_custody"] == "P3_APPEND_ONLY_VERIFIED"
     assert body["external_evidence_anchor"] == "P3_INDEPENDENT_PROVIDER_VERIFIED"
