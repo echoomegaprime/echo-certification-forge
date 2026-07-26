@@ -4,7 +4,7 @@
 # promotes through an atomic symlink, and restores the prior unit/link on red.
 set -euo pipefail
 
-SOURCE_REPO="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE_REPO="${CERTFORGE_SOURCE_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"

@@ -151,9 +151,17 @@ def provision(args: argparse.Namespace) -> dict[str, Any]:
                 **existing,
                 "vault_service": args.vault_service,
             }
-        raise RuntimeError(
-            "partial provisioning state detected; refusing to create or overwrite credentials"
-        )
+        if vault_exists and not organization_exists and getattr(
+            args, "rotate_orphaned_vault", False
+        ):
+            # The old value cannot authenticate to any row in this authoritative
+            # database. Provision below and atomically write a new Vault version;
+            # the orphan is not returned, logged, or copied through this process.
+            pass
+        else:
+            raise RuntimeError(
+                "partial provisioning state detected; refusing to create or overwrite credentials"
+            )
 
     provisioned = governance.provision_organization(
         slug=args.tenant_id,
@@ -231,6 +239,14 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--required-policy", default="mandatory-rules-v1")
     result.add_argument("--owner-user-id", default="user-echo-desktop-admin")
     result.add_argument("--owner-email", default="certforge-admin@echo-op.com")
+    result.add_argument(
+        "--rotate-orphaned-vault",
+        action="store_true",
+        help=(
+            "replace a Vault credential only when the authoritative database has no "
+            "matching organization; never repairs the inverse partial state"
+        ),
+    )
     result.add_argument(
         "--plan",
         choices=("developer", "professional", "enterprise", "sovereign"),

@@ -81,6 +81,24 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
         subject.provision(args)
 
 
+def test_provision_can_rotate_only_an_orphaned_vault_credential(tmp_path, monkeypatch):
+    args = arguments(tmp_path)
+    args.rotate_orphaned_vault = True
+    monkeypatch.setattr(subject, "_sovereign_key", lambda _path: "sovereign-test-key")
+    monkeypatch.setattr(subject, "_vault_has_service", lambda *_args: True)
+    stored = {}
+
+    def store(**kwargs):
+        stored.update(kwargs)
+        return {"stored": True, "service": kwargs["service"], "version": 2}
+
+    monkeypatch.setattr(subject, "_store_in_vault", store)
+    result = subject.provision(args)
+    assert result["created"] is True
+    assert result["vault"]["version"] == 2
+    assert stored["account"]["api_key"].startswith("ecf_live_key_")
+
+
 def test_desktop_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
     assert sql.count("('echo.certforge.admin.") == 8
