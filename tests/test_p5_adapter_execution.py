@@ -32,7 +32,6 @@ from echo_certification_forge.adapter_transport import (
 from echo_certification_forge.adapters import AdapterMaturity, adapter_set_digest
 from echo_certification_forge.canonical import sha256_bytes, sha256_json
 from echo_certification_forge.p5_qualification import (
-    QualificationArtifactDigests,
     QualificationEvidenceTrustPins,
     TrustedRoutingKey,
     run_qualification,
@@ -40,7 +39,11 @@ from echo_certification_forge.p5_qualification import (
 from echo_certification_forge.family_r5 import execute as execute_r5
 from echo_certification_forge.evidence import merkle_root
 from echo_certification_forge.runner import RunnerEphemeralIdentity
-from echo_certification_forge.run_worker import _load_adapter_inputs, main as run_worker_main
+from echo_certification_forge.run_worker import (
+    _load_adapter_inputs,
+    load_adapter_execution_profile,
+    main as run_worker_main,
+)
 from echo_certification_forge.run_worker import _worker_environment
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.production_launch import production_worker_args
@@ -505,6 +508,17 @@ def test_worker_uses_independent_registry_and_rejects_self_keyed_bundle(
     assert loaded_policy == policy
     assert rebound.run_id == "cert-p5-production-new"
     assert rebound.request_id == "cert-p5-production-new-adapter-request"
+    public_records, public_policy, public_response, profile_sha256 = (
+        load_adapter_execution_profile(
+            response_path=output / "adapter-bundle-response.json",
+            policy_path=output / "adapter-policy.json",
+            registry_path=registry,
+        )
+    )
+    assert public_records == loaded_records
+    assert public_policy == loaded_policy
+    assert public_response.run_id == "cert-p5-worker-registry"
+    assert profile_sha256 == sha256_json(rebound.body)
     _, _, repeated = _load_adapter_inputs(
         response_path=output / "adapter-bundle-response.json",
         policy_path=output / "adapter-policy.json",
@@ -687,7 +701,7 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     assert result["signed"] is True
     expected_environment = _worker_environment(
         adapter_set_digest(records),
-        result["adapter_bundle_response_sha256"],
+        result["adapter_execution_profile_sha256"],
     )
     assert result["environment_identity_digest"] == expected_environment.identity_digest
     store = EvidenceStore(db_path, evidence_root)
@@ -721,6 +735,12 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     )
     assert second_artifact["sha256"] == second_result["adapter_bundle_response_sha256"]
     assert second_artifact["artifact_id"] != adapter_artifact["artifact_id"]
+    assert (
+        second_result["adapter_execution_profile_sha256"]
+        == result["adapter_execution_profile_sha256"]
+    )
+    assert second_result["environment_identity_digest"] == result["environment_identity_digest"]
+    assert second_result["adapter_bundle_response_sha256"] != result["adapter_bundle_response_sha256"]
     assert store.verify_evidence(second_run_id, "echo-sovereign").valid is True
 
 

@@ -79,6 +79,7 @@ class ServiceContext:
     transport_registry: TrustedTransportRegistry | None = None
     operational_registry: OperationalTelemetryRegistry | None = None
     adapter_mode: str = "pending"
+    certification_environment: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.transport_registry is None:
@@ -365,7 +366,7 @@ def create_app(context: ServiceContext) -> FastAPI:
 
     @app.get("/v1/status")
     def status() -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "service": "echo-certification-forge",
             "release_verdicts": ["NOT_READY", "CONDITIONALLY_READY", "PRODUCTION_READY"],
             "run_outcomes": ["COMPLETE", "INCONCLUSIVE", "CANCELLED", "INFRA_FAILED"],
@@ -386,6 +387,9 @@ def create_app(context: ServiceContext) -> FastAPI:
                 "P7_FAIL_CLOSED" if context.subscribers is not None else "DISABLED"
             ),
         }
+        if context.certification_environment is not None:
+            result.update(context.certification_environment)
+        return result
 
     @app.post("/v1/certifications", status_code=201)
     def submit_certification(

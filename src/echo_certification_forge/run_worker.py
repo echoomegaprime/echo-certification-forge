@@ -98,7 +98,7 @@ def _env_digest(component: str) -> str:
 
 def _worker_environment(
     adapter_set_sha256: str | None = None,
-    adapter_bundle_response_sha256: str | None = None,
+    adapter_execution_profile_sha256: str | None = None,
 ) -> EnvironmentIdentity:
     """Declared certification environment.
 
@@ -116,10 +116,10 @@ def _worker_environment(
             sha256_json(
                 {
                     "base_model_route_sha256": _env_digest("model-route"),
-                    "adapter_bundle_response_sha256": adapter_bundle_response_sha256,
+                    "adapter_execution_profile_sha256": adapter_execution_profile_sha256,
                 }
             )
-            if adapter_bundle_response_sha256
+            if adapter_execution_profile_sha256
             else _env_digest("model-route")
         ),
         os_runtime_sha256=_env_digest("os-runtime"),
@@ -341,7 +341,12 @@ def run(
         if adapter_response_content is not None
         else None
     )
-    environment = _worker_environment(adapter_digest, computed_adapter_response_sha256)
+    adapter_execution_profile_sha256 = (
+        sha256_json(adapter_bundle_response.body)
+        if adapter_bundle_response is not None
+        else None
+    )
+    environment = _worker_environment(adapter_digest, adapter_execution_profile_sha256)
     if subscribers is not None:
         if existing is None or existing["state"] != RunState.QUEUED.value:
             if claim is not None:
@@ -487,9 +492,11 @@ def run(
             ttl_seconds=retention_days * 24 * 3600,
         )
         execution_guard = heartbeat.assert_active
-        completion_callback = lambda envelope: subscribers.complete_worker_execution(
-            claim, envelope
-        )
+
+        def complete_subscriber_execution(envelope):
+            return subscribers.complete_worker_execution(claim, envelope)
+
+        completion_callback = complete_subscriber_execution
     if sandbox_effective is not None:
         journey_runner = sandboxed_journey_runner(sandbox_effective, execution_guard)
     try:
@@ -555,25 +562,25 @@ def run(
         "target_identity_digest": target.identity_digest,
         "environment_identity_digest": environment.identity_digest,
         "adapter_set_sha256": environment.adapter_set_sha256,
+        "adapter_execution_profile_sha256": adapter_execution_profile_sha256,
         "adapter_bundle_response_sha256": computed_adapter_response_sha256,
         "signer_public_key_id": signer.key_id,
         "journey_isolation": "docker" if sandbox_effective is not None else "none",
     }
 
 
-def _load_adapter_inputs(
+def load_adapter_execution_profile(
     *,
     response_path: Path,
     policy_path: Path,
     registry_path: Path,
-    runner_signing_key_path: Path,
-    run_id: str,
-    tenant: str,
 ) -> tuple[
     tuple[AdapterExecutionRecord, ...],
     AdapterAcceptancePolicy,
     RunnerResponse,
+    str,
 ]:
+    """Verify the public, reusable adapter profile without loading a private key."""
     try:
         registry = load_trusted_adapter_registry(registry_path)
         response = RunnerResponse.model_validate_json(response_path.read_text(encoding="utf-8"))
@@ -591,6 +598,31 @@ def _load_adapter_inputs(
         policy = load_adapter_acceptance_policy(policy_path)
         if sha256_json(policy_to_json(policy)) != registry.policy_sha256:
             raise ValueError("adapter policy differs from independent registry")
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError(f"adapter_input_rejected:{type(exc).__name__}:{exc}") from exc
+    return records, policy, response, sha256_json(response.body)
+
+
+def _load_adapter_inputs(
+    *,
+    response_path: Path,
+    policy_path: Path,
+    registry_path: Path,
+    runner_signing_key_path: Path,
+    run_id: str,
+    tenant: str,
+) -> tuple[
+    tuple[AdapterExecutionRecord, ...],
+    AdapterAcceptancePolicy,
+    RunnerResponse,
+]:
+    try:
+        records, policy, response, _profile_sha256 = load_adapter_execution_profile(
+            response_path=response_path,
+            policy_path=policy_path,
+            registry_path=registry_path,
+        )
+        registry = load_trusted_adapter_registry(registry_path)
         runner_identity = load_adapter_runner_identity(runner_signing_key_path)
         if runner_identity.key_id != registry.runner_key_id:
             raise ValueError("adapter runner signing key differs from independent registry")

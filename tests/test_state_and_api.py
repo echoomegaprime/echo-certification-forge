@@ -55,3 +55,26 @@ def test_health_truthfully_reports_completed_p8c_and_remaining_product_gate(stor
     assert body["public_key_lifecycle"] == "P3_ROTATION_REVOCATION_VERIFIED"
     assert body["runner_isolation"] == "P2_FOUNDATION_VERIFIED"
     assert "PRODUCTION_READY" in body["release_verdicts"]
+
+
+def test_required_adapter_status_publishes_customer_environment(store, manifest):
+    environment = {
+        "certification_environment_identity_digest": "a" * 64,
+        "runner_image_digest": "sha256:" + "b" * 64,
+        "adapter_set_sha256": "c" * 64,
+        "adapter_execution_profile_sha256": "d" * 64,
+    }
+    app = create_app(
+        ServiceContext(
+            store,
+            manifest,
+            TrustedPublicKeyRegistry.empty(),
+            adapter_mode="required",
+            certification_environment=environment,
+        )
+    )
+
+    body = TestClient(app).get("/v1/status").json()
+
+    assert body["adapter_qualification"] == "REQUIRED"
+    assert {key: body[key] for key in environment} == environment

@@ -8,6 +8,8 @@ from .evidence import EvidenceStore
 from .policy import RuleManifest
 from .release_hooks import WebhookSecretRegistry
 from .runner import TrustedTransportRegistry
+from .adapters import adapter_set_digest
+from .run_worker import _worker_environment, load_adapter_execution_profile
 from .service import ServiceContext, create_app
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import SubscriberGovernance, SubscriberPolicy
@@ -55,6 +57,33 @@ _transport_keys = Path(
 )
 
 
+def _load_certification_environment() -> dict[str, str] | None:
+    adapter_mode = os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending")
+    if adapter_mode != "required":
+        return None
+    required = {
+        "response_path": os.environ.get("ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE"),
+        "policy_path": os.environ.get("ECHO_CERTFORGE_PROD_ADAPTER_POLICY"),
+        "registry_path": os.environ.get("ECHO_CERTFORGE_ADAPTER_REGISTRY"),
+    }
+    missing = sorted(name for name, value in required.items() if not value)
+    if missing:
+        raise RuntimeError(
+            "required adapter mode lacks public profile inputs: " + ", ".join(missing)
+        )
+    records, _policy, _response, profile_sha256 = load_adapter_execution_profile(
+        **{name: Path(value) for name, value in required.items() if value is not None}
+    )
+    adapter_sha256 = adapter_set_digest(records)
+    environment = _worker_environment(adapter_sha256, profile_sha256)
+    return {
+        "certification_environment_identity_digest": environment.identity_digest,
+        "runner_image_digest": "sha256:" + environment.runner_image_sha256,
+        "adapter_set_sha256": adapter_sha256,
+        "adapter_execution_profile_sha256": profile_sha256,
+    }
+
+
 def _load_transport_registry(directory: Path) -> TrustedTransportRegistry:
     registry = TrustedTransportRegistry.empty()
     if directory.is_dir():
@@ -73,5 +102,6 @@ app = create_app(
         deployment_credentials=WebhookSecretRegistry.from_file(_deployment_keys),
         transport_registry=_load_transport_registry(_transport_keys),
         adapter_mode=os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending"),
+        certification_environment=_load_certification_environment(),
     )
 )

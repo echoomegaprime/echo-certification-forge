@@ -103,6 +103,20 @@ if [ "$ADAPTER_MODE" = required ]; then
 else
   echo "   adapter qualification pending: dispatcher remains fail-closed"
 fi
+RUN_SIGNING_KEY="$STATE_ROOT/run-signing-key.pem"
+RUN_SIGNING_PUBLIC_KEY="$STATE_ROOT/trusted-public-keys/run-signing-key.pem"
+"$RELEASE_DIR/.venv/bin/python" - "$RUN_SIGNING_KEY" "$RUN_SIGNING_PUBLIC_KEY" <<'PY'
+from pathlib import Path
+import sys
+
+from echo_certification_forge.run_worker import _load_signer
+
+private_path = Path(sys.argv[1])
+public_path = Path(sys.argv[2])
+signer = _load_signer(private_path)
+public_path.write_text(signer.public_key_pem, encoding="ascii")
+public_path.chmod(0o644)
+PY
 test -f "$RELEASE_DIR/policies/subscriber-governance.v1.json" || {
   echo "!! subscriber governance policy missing"
   exit 1
@@ -514,6 +528,16 @@ done
 if [ "$dispatcher_ready" != 1 ]; then
   echo "!! dispatcher failed to start after green production smoke"
   exit 1
+fi
+if [ "$ADAPTER_MODE" = required ]; then
+  ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+  ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
+  ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
+  "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_dispatch.py" \
+    "http://127.0.0.1:$PROD_PORT" || {
+    echo "!! PRODUCTION DISPATCH SMOKE RED"
+    exit 1
+  }
 fi
 
 PROMOTION_ARMED=0
