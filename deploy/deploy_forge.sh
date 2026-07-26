@@ -475,10 +475,10 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
+sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl enable "$SERVICE.service"
 sudo systemctl restart "$SERVICE.service"
 sudo systemctl enable "$DISPATCH_SERVICE.service"
-sudo systemctl restart "$DISPATCH_SERVICE.service"
 
 echo "== [8/8] production health + live-smoke =="
 ready=0
@@ -490,8 +490,7 @@ for _ in $(seq 1 40); do
   }
   sleep 0.5
 done
-if [ "$ready" != 1 ] || ! systemctl is-active --quiet "$DISPATCH_SERVICE.service" ||
-  ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
     ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
     "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
@@ -503,6 +502,19 @@ service_owns_port "$PROD_PORT" || {
   echo "!! production listener is not owned by $SERVICE"
   exit 1
 }
+sudo systemctl restart "$DISPATCH_SERVICE.service"
+dispatcher_ready=0
+for _ in $(seq 1 20); do
+  systemctl is-active --quiet "$DISPATCH_SERVICE.service" && {
+    dispatcher_ready=1
+    break
+  }
+  sleep 0.5
+done
+if [ "$dispatcher_ready" != 1 ]; then
+  echo "!! dispatcher failed to start after green production smoke"
+  exit 1
+fi
 
 PROMOTION_ARMED=0
 trap - EXIT
