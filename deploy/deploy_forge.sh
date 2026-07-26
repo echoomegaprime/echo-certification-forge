@@ -14,6 +14,7 @@ RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-rel
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
+ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
 TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
 DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
@@ -77,22 +78,31 @@ test -x "$RELEASE_DIR/.venv/bin/python" || {
   echo "!! release venv missing"
   exit 1
 }
-test -f "$ADAPTER_DIR/adapter-bundle-response.json" || {
-  echo "!! adapter bundle missing"
-  exit 1
-}
-test -f "$ADAPTER_DIR/adapter-policy.json" || {
-  echo "!! adapter policy missing"
-  exit 1
-}
-test -f "$ADAPTER_DIR/trusted-adapter-registry.json" || {
-  echo "!! trusted adapter registry missing"
-  exit 1
-}
-test -f "$ADAPTER_DIR/adapter-runner-signing-key.pem" || {
-  echo "!! adapter runner signing key missing"
-  exit 1
-}
+case "$ADAPTER_MODE" in
+  required|pending) ;;
+  *) echo "!! CERTFORGE_ADAPTER_MODE must be required or pending"; exit 1 ;;
+esac
+ADAPTER_RESPONSE=""
+ADAPTER_POLICY=""
+ADAPTER_REGISTRY=""
+ADAPTER_SIGNING_KEY=""
+DISPATCH_COMPAT_FLAG="--non-production-compat"
+if [ "$ADAPTER_MODE" = required ]; then
+  ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
+  ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
+  ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
+  ADAPTER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
+  for required_adapter_input in \
+    "$ADAPTER_RESPONSE" "$ADAPTER_POLICY" "$ADAPTER_REGISTRY" "$ADAPTER_SIGNING_KEY"; do
+    test -f "$required_adapter_input" || {
+      echo "!! required adapter input missing: $(basename "$required_adapter_input")"
+      exit 1
+    }
+  done
+  DISPATCH_COMPAT_FLAG=""
+else
+  echo "   adapter qualification pending: dispatcher remains fail-closed"
+fi
 test -f "$RELEASE_DIR/policies/subscriber-governance.v1.json" || {
   echo "!! subscriber governance policy missing"
   exit 1
@@ -143,10 +153,10 @@ ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence" \
 ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json" \
 ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys" \
 ECHO_CERTFORGE_TRANSPORT_KEYS="$STATE_ROOT/trusted-transport-keys" \
-ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json" \
-ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json" \
-ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json" \
-ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem" \
+ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_RESPONSE" \
+ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_POLICY" \
+ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_REGISTRY" \
+ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_SIGNING_KEY" \
 ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256="$TRUSTED_MANIFEST_SHA256" \
 ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
 ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1 \
@@ -416,10 +426,10 @@ Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
 Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
-Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
-Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_RESPONSE
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_POLICY
+Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
+Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
 Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
 Environment=ECHO_CERTFORGE_TRANSPORT_KEYS=$STATE_ROOT/trusted-transport-keys
 EnvironmentFile=$ENV_FILE
@@ -449,13 +459,13 @@ Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-g
 Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
 Environment=ECHO_CERTFORGE_RUN_SIGNING_KEY=$STATE_ROOT/run-signing-key.pem
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_DIR/adapter-bundle-response.json
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_DIR/adapter-policy.json
-Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_DIR/trusted-adapter-registry.json
-Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_DIR/adapter-runner-signing-key.pem
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_RESPONSE
+Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_POLICY
+Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
+Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
 Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
 EnvironmentFile=$ENV_FILE
-ExecStart=$CURRENT_LINK/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox
+ExecStart=$CURRENT_LINK/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox $DISPATCH_COMPAT_FLAG
 Restart=always
 RestartSec=5
 
