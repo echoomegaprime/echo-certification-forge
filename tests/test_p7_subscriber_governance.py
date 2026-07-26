@@ -3442,3 +3442,71 @@ def test_subscriber_rerun_creates_immutable_lineage_without_mutating_source(
     assert event["resource_id"] == rerun_id
     assert event["details"]["source_run_id"] == source_run_id
     assert owner.bootstrap_api_key not in json.dumps(audit)
+
+
+def test_legal_hold_lifecycle_and_public_verification_use_hardened_subscriber_auth(
+    tmp_path, manifest
+):
+    db = tmp_path / "certforge.sqlite3"
+    store = EvidenceStore(db, tmp_path / "evidence")
+    governance = SubscriberGovernance(db, _policy(), PEPPER)
+    trusted = TrustedPublicKeyRegistry.empty()
+    client = TestClient(create_app(ServiceContext(store, manifest, trusted, governance)))
+    owner = _provision(governance, "admin-surface", plan_code="professional")
+    source = tmp_path / "admin-surface-source"
+    source.mkdir()
+    (source / "journey.py").write_text("print('verified')\n", encoding="utf-8")
+    run_id, _target = _submit_local_run(
+        client,
+        manifest,
+        owner.organization_id,
+        owner.bootstrap_api_key,
+        source,
+        key="admin-surface-run-0001",
+        journey=[sys.executable, "journey.py"],
+    )
+    signer = Ed25519VerdictSigner.generate()
+    trusted.add_pem(signer.public_key_pem)
+    result = run(
+        run_id,
+        owner.organization_id,
+        {"type": "local", "path": str(source)},
+        store=store,
+        manifest=manifest,
+        signer=signer,
+        entitled=frozenset({owner.organization_id}),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+    assert result["state"] == RunState.COMPLETED.value
+    headers = _headers(owner.organization_id, owner.bootstrap_api_key)
+
+    hold = client.post(
+        "/v1/subscriber/legal-holds",
+        headers=headers,
+        json={"hold_id": "hold-admin-1", "run_id": run_id, "reason": "audit"},
+    )
+    assert hold.status_code == 201 and hold.json()["active"] is True
+    release = client.delete(
+        "/v1/subscriber/legal-holds/hold-admin-1", headers=headers
+    )
+    assert release.status_code == 200 and release.json()["active"] is False
+
+    published = client.post(
+        f"/v1/subscriber/certifications/{run_id}/publish", headers=headers
+    )
+    assert published.status_code == 200
+    public = client.get(published.json()["verification_url"])
+    assert public.status_code == 200 and public.json()["valid"] is True
+    assert public.json()["payload"]["run_id"] == run_id
+
+    lifecycle = client.post(
+        f"/v1/subscriber/certifications/{run_id}/lifecycle",
+        headers=headers,
+        json={"event_type": "REVOKED", "reason": "withdrawn by owner"},
+    )
+    assert lifecycle.status_code == 200
+    assert lifecycle.json()["event_type"] == "REVOKED"
+    revoked = client.get(published.json()["verification_url"])
+    assert revoked.status_code == 200 and revoked.json()["valid"] is False
+    assert "verdict_revoked" in revoked.json()["reasons"]

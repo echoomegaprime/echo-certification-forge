@@ -83,8 +83,8 @@ def test_provision_rejects_partial_state_without_overwriting_credentials(tmp_pat
 
 def test_desktop_cap_registration_uses_vault_references_not_literal_credentials():
     sql = Path("scripts/register_certforge_caps.sql").read_text(encoding="utf-8")
-    assert sql.count("('echo.certforge.admin.") == 7
-    assert sql.count('"Authorization":"vault:certforge.desktop_admin_api_key"') == 18
+    assert sql.count("('echo.certforge.admin.") == 8
+    assert sql.count('"Authorization":"vault:certforge.desktop_admin_api_key"') == 46
     assert '"X-Tenant-ID":"org-echo-sovereign"' in sql
     assert "echo.certforge.telemetry" in sql
     assert "echo.certforge.admin.evidence_artifact" in sql

@@ -33,7 +33,7 @@ from .intake import (
     project_run,
     submit,
 )
-from .models import RunState, SignedVerdictEnvelope
+from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
 from .policy import RuleManifest
 from .release_hooks import WebhookSecretRegistry
 from .operational_telemetry import (
@@ -160,8 +160,37 @@ class MemberRoleUpdateRequest(BaseModel):
     role: MemberRole
 
 
+class LegalHoldRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    hold_id: str = Field(min_length=1, max_length=128)
+    run_id: str | None = Field(default=None, min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=2048)
+
+
+class LifecycleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_type: VerdictLifecycleEvent
+    reason: str = Field(min_length=1, max_length=2048)
+    replacement_run_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version="0.8.0")
+
+    @app.middleware("http")
+    async def production_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.middleware("http")
     async def audit_final_request_outcome(request: Request, call_next):
@@ -819,6 +848,170 @@ def create_app(context: ServiceContext) -> FastAPI:
                     reservation, reason="rerun_rejected", compensate_meter=True
                 )
             raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/legal-holds", status_code=201)
+    def create_legal_hold(
+        request: LegalHoldRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "legal_holds.create",
+        )
+        try:
+            if request.run_id is not None:
+                context.store.get_run(request.run_id, principal.organization_id)
+            return context.subscribers.create_legal_hold(
+                principal,
+                hold_id=request.hold_id,
+                run_id=request.run_id,
+                reason=request.reason,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.delete("/v1/subscriber/legal-holds/{hold_id}")
+    def release_legal_hold(
+        hold_id: str,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "legal_holds.release",
+        )
+        try:
+            return context.subscribers.release_legal_hold(principal, hold_id)
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/certifications/{run_id}/lifecycle")
+    def append_lifecycle(
+        run_id: str,
+        request: LifecycleRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.GOVERNANCE_MANAGE,
+            "certifications.lifecycle",
+        )
+        try:
+            context.store.get_run(run_id, principal.organization_id)
+            if request.event_type is VerdictLifecycleEvent.SUPERSEDED:
+                if request.replacement_run_id is None:
+                    raise SubscriberError(422, "replacement_run_id_required")
+                context.store.get_run(
+                    request.replacement_run_id, principal.organization_id
+                )
+            context.store.append_lifecycle_event(
+                run_id,
+                principal.organization_id,
+                request.event_type,
+                actor=f"api_key:{principal.key_id}",
+                reason=request.reason,
+                replacement_run_id=request.replacement_run_id,
+            )
+            context.subscribers.audit_resource_event(
+                principal,
+                action="verdict.lifecycle",
+                resource_type="certification",
+                resource_id=run_id,
+                details=request.model_dump(mode="json"),
+            )
+            return {
+                "run_id": run_id,
+                "event_type": request.event_type.value,
+                "replacement_run_id": request.replacement_run_id,
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.post("/v1/subscriber/certifications/{run_id}/publish")
+    def publish_verification(
+        run_id: str,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, str]:
+        principal = subscriber_principal(
+            x_tenant_id,
+            authorization,
+            Permission.RUN_READ,
+            "certifications.publish",
+        )
+        try:
+            row = context.store.latest_signed_verdict(
+                run_id, principal.organization_id
+            )
+            if row is None:
+                raise SubscriberError(409, "signed_verdict_missing")
+            payload = json.loads(row["payload_json"])
+            gate = DeployGate(context.store, context.trusted_keys).evaluate(
+                tenant_id=principal.organization_id,
+                run_id=run_id,
+                target_identity_digest=payload["target_identity_digest"],
+                environment_identity_digest=payload["environment_identity_digest"],
+                rule_manifest_digest=payload["rule_manifest_digest"],
+                evidence_merkle_root=payload["evidence_merkle_root"],
+                signing_key_id=payload["signing_key_id"],
+            )
+            if not gate.allowed:
+                raise SubscriberError(409, "certification_not_current")
+            verification_id = context.subscribers.publish_verification(
+                principal, run_id
+            )
+            return {
+                "verification_id": verification_id,
+                "verification_url": f"/v1/public/verifications/{verification_id}",
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+
+    @app.get("/v1/public/verifications/{verification_id}")
+    def public_verification(verification_id: str) -> dict[str, Any]:
+        try:
+            published = context.subscribers.public_verification(verification_id)
+            row = context.store.latest_signed_verdict(
+                published["run_id"], published["organization_id"]
+            )
+            if row is None:
+                raise SubscriberError(404, "verification_not_found")
+            payload = json.loads(row["payload_json"])
+            gate = DeployGate(context.store, context.trusted_keys).evaluate(
+                tenant_id=published["organization_id"],
+                run_id=published["run_id"],
+                target_identity_digest=payload["target_identity_digest"],
+                environment_identity_digest=payload["environment_identity_digest"],
+                rule_manifest_digest=payload["rule_manifest_digest"],
+                evidence_merkle_root=payload["evidence_merkle_root"],
+                signing_key_id=payload["signing_key_id"],
+            )
+            return {
+                "verification_id": verification_id,
+                "valid": gate.allowed,
+                "reasons": list(gate.reasons),
+                "payload": payload,
+                "signature_b64": row["signature_b64"],
+                "key_id": row["key_id"],
+                "public_key_pem": row["public_key_pem"],
+            }
+        except (KeyError, ValueError, SubscriberError) as exc:
+            raise HTTPException(
+                status_code=404, detail="verification_not_found"
+            ) from exc
 
     @app.get("/v1/subscriber/me")
     def subscriber_me(

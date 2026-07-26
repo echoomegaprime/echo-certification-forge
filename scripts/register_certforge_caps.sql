@@ -1,5 +1,5 @@
--- Register the 12 safe-core/telemetry and 7 hardened-administration Echo Desktop
--- operator-facing echo.certforge.* SDK capabilities as
+-- Register the complete customer/operator Echo Desktop echo.certforge.* SDK
+-- capability surface as
 -- handler_kind='http' proxies to the live
 -- echo-certforge.service on FORGE :8309. Idempotent (ON CONFLICT DO UPDATE).
 --
@@ -169,3 +169,85 @@ WHERE id = 'echo.certforge.admin.evidence_artifact';
 UPDATE arcanum_sdk.sdk_capabilities
 SET health_status = 'green', updated_at = now()
 WHERE id = 'echo.certforge.telemetry';
+
+-- Complete customer/operator capability surface. Signed deployment mutations,
+-- signed worker reports, and signed webhooks are deliberately not proxied by
+-- generic HTTP caps: their per-request signatures are part of the security boundary.
+INSERT INTO arcanum_sdk.sdk_capabilities
+  (id, description, handler_kind, target_url, target_method, args_mode, target_node,
+   input_schema_json, required_scope, danger_tier, static_headers, default_timeout_seconds,
+   lifecycle_status, health_status)
+VALUES
+  ('echo.certforge.service_status', 'Certification Forge readiness and active manifest status.', 'http', 'http://127.0.0.1:8309/v1/status', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 10, 'active', 'unknown'),
+  ('echo.certforge.verify_evidence_manifest', 'Verify the immutable evidence manifest and custody chain for one run.', 'http', 'http://127.0.0.1:8309/v1/certifications/{run_id}/evidence/verify', 'GET', 'path', 'forge',
+   '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.deployment.rollback_target', 'Read the last known-good production rollback target.', 'http', 'http://127.0.0.1:8309/v1/deployments/rollback-target', 'GET', 'query', 'forge',
+   '{"type":"object","properties":{"environment":{"type":"string","enum":["production"]}},"additionalProperties":false}'::jsonb, 'certforge.deploy.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.deployment.release_status', 'Read certification and deployment status for an artifact identity.', 'http', 'http://127.0.0.1:8309/v1/releases/{artifact_sha256}/status', 'GET', 'query', 'forge',
+   '{"type":"object","required":["artifact_sha256"],"properties":{"artifact_sha256":{"type":"string"},"environment_identity_digest":{"type":"string"},"rule_manifest_digest":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.deploy.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.deployment.audit', 'Read the tenant deployment admission hash chain and records.', 'http', 'http://127.0.0.1:8309/v1/deployments/audit', 'GET', 'query', 'forge',
+   '{"type":"object","properties":{"artifact_sha256":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.deploy.read', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.subscriber.me', 'Read the authenticated subscriber principal, plan, role, and scopes.', 'http', 'http://127.0.0.1:8309/v1/subscriber/me', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.subscriber.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.projects.create', 'Create a tenant certification project.', 'http', 'http://127.0.0.1:8309/v1/subscriber/projects', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["slug","name","target_reference"],"properties":{"slug":{"type":"string"},"name":{"type":"string"},"target_reference":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.project.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.projects.list', 'List tenant certification projects.', 'http', 'http://127.0.0.1:8309/v1/subscriber/projects', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.project.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.projects.archive', 'Archive one tenant certification project.', 'http', 'http://127.0.0.1:8309/v1/subscriber/projects/{project_id}', 'DELETE', 'path', 'forge',
+   '{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.project.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.api_keys.create', 'Create a scoped tenant API key; secret is returned once.', 'http', 'http://127.0.0.1:8309/v1/subscriber/api-keys', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["name","scopes","expires_at"],"properties":{"name":{"type":"string"},"user_id":{"type":["string","null"]},"scopes":{"type":"array","items":{"type":"string"}},"expires_at":{"type":"string","format":"date-time"}},"additionalProperties":false}'::jsonb, 'certforge.api_key.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.api_keys.list', 'List tenant API-key metadata without secret material.', 'http', 'http://127.0.0.1:8309/v1/subscriber/api-keys', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.api_key.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.api_keys.revoke', 'Revoke one tenant API key.', 'http', 'http://127.0.0.1:8309/v1/subscriber/api-keys/{key_id}', 'DELETE', 'path', 'forge',
+   '{"type":"object","required":["key_id"],"properties":{"key_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.api_key.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.members.invite', 'Invite a tenant member with an explicit role.', 'http', 'http://127.0.0.1:8309/v1/subscriber/members', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["email","display_name","role"],"properties":{"email":{"type":"string"},"display_name":{"type":"string"},"role":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.member.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.members.list', 'List tenant members and roles.', 'http', 'http://127.0.0.1:8309/v1/subscriber/members', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.member.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.members.activate', 'Activate one invited tenant member.', 'http', 'http://127.0.0.1:8309/v1/subscriber/members/{user_id}/activate', 'POST', 'path', 'forge',
+   '{"type":"object","required":["user_id"],"properties":{"user_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.member.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.members.update_role', 'Update one tenant member role.', 'http', 'http://127.0.0.1:8309/v1/subscriber/members/{user_id}/role', 'PATCH', 'path', 'forge',
+   '{"type":"object","required":["user_id","role"],"properties":{"user_id":{"type":"string"},"role":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.member.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.members.deactivate', 'Deactivate one tenant member.', 'http', 'http://127.0.0.1:8309/v1/subscriber/members/{user_id}', 'DELETE', 'path', 'forge',
+   '{"type":"object","required":["user_id"],"properties":{"user_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.member.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.subscription.get', 'Read tenant subscription and entitlements.', 'http', 'http://127.0.0.1:8309/v1/subscriber/subscription', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.governance.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.subscription.cancel', 'Request tenant subscription cancellation.', 'http', 'http://127.0.0.1:8309/v1/subscriber/subscription/cancel', 'POST', 'json_body', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.billing.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.governance.get', 'Read versioned tenant governance configuration.', 'http', 'http://127.0.0.1:8309/v1/subscriber/governance', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.governance.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.governance.update', 'Update tenant governance with optimistic version control.', 'http', 'http://127.0.0.1:8309/v1/subscriber/governance', 'PUT', 'json_body', 'forge',
+   '{"type":"object","required":["expected_version","config"],"properties":{"expected_version":{"type":"integer"},"config":{"type":"object"}},"additionalProperties":false}'::jsonb, 'certforge.governance.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.policy_packs.create', 'Create a versioned tenant policy pack.', 'http', 'http://127.0.0.1:8309/v1/subscriber/policy-packs', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["name","version","manifest"],"properties":{"name":{"type":"string"},"version":{"type":"string"},"manifest":{"type":"object"}},"additionalProperties":false}'::jsonb, 'certforge.policy_pack.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.policy_packs.list', 'List tenant policy packs.', 'http', 'http://127.0.0.1:8309/v1/subscriber/policy-packs', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.governance.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.private_workers.create', 'Register an attested tenant private worker.', 'http', 'http://127.0.0.1:8309/v1/subscriber/private-workers', 'POST', 'json_body', 'forge',
+   '{"type":"object","required":["display_name","attestation_sha256"],"properties":{"display_name":{"type":"string"},"attestation_sha256":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.private_worker.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.private_workers.list', 'List tenant private workers.', 'http', 'http://127.0.0.1:8309/v1/subscriber/private-workers', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.private_worker.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.private_workers.revoke', 'Revoke one tenant private worker.', 'http', 'http://127.0.0.1:8309/v1/subscriber/private-workers/{worker_id}', 'DELETE', 'path', 'forge',
+   '{"type":"object","required":["worker_id"],"properties":{"worker_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.private_worker.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.usage', 'Read tenant usage meters, quotas, and period boundaries.', 'http', 'http://127.0.0.1:8309/v1/subscriber/usage', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.usage.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+  ('echo.certforge.admin.audit_verify', 'Verify the tenant subscriber audit hash chain.', 'http', 'http://127.0.0.1:8309/v1/subscriber/audit/verify', 'GET', 'query', 'forge',
+   '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.admin.read', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
+  ('echo.certforge.public_verification', 'Read a published public verification by opaque verification id.', 'http', 'http://127.0.0.1:8309/v1/public/verifications/{verification_id}', 'GET', 'path', 'forge',
+   '{"type":"object","required":["verification_id"],"properties":{"verification_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.public.read', 0, '{}'::jsonb, 15, 'active', 'unknown')
+ON CONFLICT (id) DO UPDATE SET
+  description = EXCLUDED.description,
+  handler_kind = EXCLUDED.handler_kind,
+  target_url = EXCLUDED.target_url,
+  target_method = EXCLUDED.target_method,
+  args_mode = EXCLUDED.args_mode,
+  target_node = EXCLUDED.target_node,
+  input_schema_json = EXCLUDED.input_schema_json,
+  required_scope = EXCLUDED.required_scope,
+  danger_tier = EXCLUDED.danger_tier,
+  static_headers = EXCLUDED.static_headers,
+  default_timeout_seconds = EXCLUDED.default_timeout_seconds,
+  lifecycle_status = 'active',
+  health_status = 'unknown',
+  updated_at = now();

@@ -552,6 +552,25 @@ class SubscriberGovernance:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS subscriber_legal_holds (
+            hold_id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL REFERENCES subscriber_organizations(organization_id),
+            run_id TEXT,
+            reason TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+            created_at TEXT NOT NULL,
+            released_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscriber_legal_holds_org
+            ON subscriber_legal_holds(organization_id, active, created_at);
+        CREATE TABLE IF NOT EXISTS subscriber_public_verifications (
+            verification_id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL REFERENCES subscriber_organizations(organization_id),
+            run_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            UNIQUE (organization_id, run_id)
+        );
         CREATE TABLE IF NOT EXISTS subscriber_audit_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
             organization_id TEXT NOT NULL,
@@ -5212,6 +5231,132 @@ class SubscriberGovernance:
             "invalid_event_ids": invalid_event_ids,
             "chain_tip": previous,
         }
+
+    def create_legal_hold(
+        self,
+        principal: SubscriberPrincipal,
+        *,
+        hold_id: str,
+        run_id: str | None,
+        reason: str,
+    ) -> dict[str, Any]:
+        self.require(principal, Permission.GOVERNANCE_MANAGE)
+        require_identifier(hold_id, "hold_id")
+        if run_id is not None:
+            require_identifier(run_id, "run_id")
+        reason = reason.strip()
+        if not reason:
+            raise SubscriberError(422, "legal_hold_reason_required")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            plan, _ = self._plan_for_org(connection, principal.organization_id)
+            if not plan.audit_exports:
+                raise SubscriberError(403, "legal_hold_not_entitled")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO subscriber_legal_holds(
+                        hold_id, organization_id, run_id, reason, active, created_at
+                    ) VALUES (?, ?, ?, ?, 1, ?)
+                    """,
+                    (hold_id, principal.organization_id, run_id, reason, now),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise SubscriberError(409, "legal_hold_conflict") from exc
+            self._append_audit(
+                connection,
+                organization_id=principal.organization_id,
+                actor_ref=principal.user_id,
+                action="legal_hold.create",
+                resource_type="legal_hold",
+                resource_id=hold_id,
+                outcome="allowed",
+                details={"run_id": run_id, "reason": reason},
+            )
+        return {"hold_id": hold_id, "active": True, "run_id": run_id}
+
+    def release_legal_hold(
+        self, principal: SubscriberPrincipal, hold_id: str
+    ) -> dict[str, Any]:
+        self.require(principal, Permission.GOVERNANCE_MANAGE)
+        require_identifier(hold_id, "hold_id")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_legal_holds
+                SET active = 0, released_at = ?
+                WHERE hold_id = ? AND organization_id = ? AND active = 1
+                """,
+                (now, hold_id, principal.organization_id),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(404, "legal_hold_not_found")
+            self._append_audit(
+                connection,
+                organization_id=principal.organization_id,
+                actor_ref=principal.user_id,
+                action="legal_hold.release",
+                resource_type="legal_hold",
+                resource_id=hold_id,
+                outcome="allowed",
+            )
+        return {"hold_id": hold_id, "active": False}
+
+    def publish_verification(
+        self, principal: SubscriberPrincipal, run_id: str
+    ) -> str:
+        self.require(principal, Permission.RUN_READ)
+        require_identifier(run_id, "run_id")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            plan, _ = self._plan_for_org(connection, principal.organization_id)
+            if not plan.release_gates:
+                raise SubscriberError(403, "public_verification_not_entitled")
+            existing = connection.execute(
+                """
+                SELECT verification_id FROM subscriber_public_verifications
+                WHERE organization_id = ? AND run_id = ? AND revoked_at IS NULL
+                """,
+                (principal.organization_id, run_id),
+            ).fetchone()
+            if existing is not None:
+                return str(existing["verification_id"])
+            verification_id = "verify_" + secrets.token_urlsafe(24)
+            connection.execute(
+                """
+                INSERT INTO subscriber_public_verifications(
+                    verification_id, organization_id, run_id, created_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (verification_id, principal.organization_id, run_id, now),
+            )
+            self._append_audit(
+                connection,
+                organization_id=principal.organization_id,
+                actor_ref=principal.user_id,
+                action="verification.publish",
+                resource_type="certification",
+                resource_id=run_id,
+                outcome="allowed",
+                details={"verification_id": verification_id},
+            )
+        return verification_id
+
+    def public_verification(self, verification_id: str) -> dict[str, Any]:
+        require_identifier(verification_id, "verification_id")
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT verification_id, organization_id, run_id, created_at
+                FROM subscriber_public_verifications
+                WHERE verification_id = ? AND revoked_at IS NULL
+                """,
+                (verification_id,),
+            ).fetchone()
+        if row is None:
+            raise SubscriberError(404, "verification_not_found")
+        return dict(row)
 
     def entitlement(self, tenant_id: str) -> tuple[bool, str]:
         require_identifier(tenant_id, "tenant_id")
