@@ -40,7 +40,9 @@ R2D2_MODEL = "echo-r2d2-candidate"
 # Backward-compatible names for the default GS343-target orientation.
 TARGET_MODEL = GS343_MODEL
 WRONG_MODEL = R2D2_MODEL
-LOOPBACK_URL = "http://127.0.0.1:8200"  # informational; the operator enforces it
+# R5 is deliberately bound to the isolated, pinned evaluator reserved by P5.
+# The production family endpoint on :8200 is not an admissible substitute.
+LOOPBACK_URL = "http://127.0.0.1:8210"
 
 RECEIPT_SCHEMA = "echo.family-routing-receipt/v1"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -201,6 +203,7 @@ def build_operator_command(
         "--evidence-directory", evidence_dir,
         "--evidence-run-id", run_id,
         "--evidence-run-nonce", evidence_run_nonce,
+        "--base-url", LOOPBACK_URL,
     ]
     for _req, cli_field, _kind in _IDENTITY_FIELDS:
         argv.extend([f"--{cli_field.replace('_', '-')}", identity[cli_field]])

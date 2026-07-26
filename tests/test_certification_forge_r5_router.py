@@ -188,6 +188,7 @@ def test_build_command_is_fixed_and_quoted():
     assert "--signature-key-id" in cmd
     assert "--signing-key-id" not in cmd
     assert core.EVIDENCE_ROOT + "/run-1" in cmd
+    assert f"--base-url {core.LOOPBACK_URL}" in cmd
     # no caller-controlled shell metacharacter can appear unquoted
     assert ";" not in cmd and "$(" not in cmd and "&&" not in cmd
 

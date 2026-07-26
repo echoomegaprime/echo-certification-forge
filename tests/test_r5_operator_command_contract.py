@@ -78,7 +78,7 @@ def test_built_command_parses_with_real_operator_argparse(mode: str) -> None:
     assert args.evidence_directory == Path(f"{core.EVIDENCE_ROOT}/run-contract-1")
     assert args.evidence_run_id == "run-contract-1"
     assert args.evidence_run_nonce == "operator-contract-nonce-01"
-    assert args.base_url == "http://127.0.0.1:8200"
+    assert args.base_url == core.LOOPBACK_URL
 
 
 def test_operator_accepts_an_isolated_loopback_evaluator_port() -> None:
@@ -130,7 +130,9 @@ def test_every_emitted_identity_flag_is_required_by_the_operator() -> None:
     not a silently ignored stray."""
     argv = _operator_argv("preflight")
     identity_flags = [token for token in argv if token.startswith("--")
-                      and token not in {"--mode", "--target-model", "--wrong-model"}]
+                      and token not in {
+                          "--mode", "--target-model", "--wrong-model", "--base-url"
+                      }]
     assert len(identity_flags) == 11  # 8 identity + directory + run id + nonce
     for flag in identity_flags:
         index = argv.index(flag)
