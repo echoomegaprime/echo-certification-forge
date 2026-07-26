@@ -75,3 +75,23 @@ $env:ECHO_CERTFORGE_EVIDENCE_ROOT = "$PWD\var\evidence"
 ```
 
 The API intentionally exposes no signing-key material and no generic command-execution surface.
+
+## SDK capability contract
+
+The checked contract at `contracts/certforge-sdk-capabilities.v1.json` covers all 60
+Certification Forge SDK actions. Each action has a closed, command-bearing input schema
+and a production-route output schema. Regenerate and verify it after any API or router
+change:
+
+```powershell
+python scripts/generate_certforge_sdk_contract.py --write
+python scripts/generate_certforge_sdk_contract.py
+python -m pytest tests/test_sdk_capability_contract.py -q
+```
+
+`deploy/deploy_forge.sh` applies the four idempotent capability registrations and the
+generated schema synchronization in one PostgreSQL transaction. This happens only after
+the candidate passes staging smoke, production smoke, and—when adapters are required—the
+real subscriber-to-dispatcher customer journey. Capability-surface drift, a missing cap,
+a missing `command`, or an empty output schema aborts deployment and preserves the prior
+production release.

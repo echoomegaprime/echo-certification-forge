@@ -39,7 +39,7 @@ service_owns_port() {
 }
 
 cd "$SOURCE_REPO"
-echo "== [1/8] fetch immutable source ($BRANCH) =="
+echo "== [1/9] fetch immutable source ($BRANCH) =="
 git "${GITC[@]}" fetch --quiet origin "$BRANCH"
 NEW_SHA="$(git rev-parse "origin/$BRANCH^{commit}")"
 if [ -n "$EXPECTED_COMMIT_SHA" ] && [ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
@@ -65,7 +65,7 @@ git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
 mv "$RELEASE_TMP" "$RELEASE_DIR"
 trap 'test -f "$RELEASE_DIR/.certforge-release-sha" || rm -rf "$RELEASE_DIR"' EXIT
 
-echo "== [2/8] isolated venv + install =="
+echo "== [2/9] isolated venv + install =="
 python3 -m venv "$RELEASE_DIR/.venv"
 "$RELEASE_DIR/.venv/bin/pip" install --quiet --upgrade pip
 "$RELEASE_DIR/.venv/bin/pip" install --quiet "$RELEASE_DIR"
@@ -74,7 +74,7 @@ python3 -m venv "$RELEASE_DIR/.venv"
 printf '%s\n' "$NEW_SHA" >"$RELEASE_DIR/.certforge-release-sha"
 trap - EXIT
 
-echo "== [3/8] verify release inputs =="
+echo "== [3/9] verify release inputs =="
 test -f "$RELEASE_DIR/policies/mandatory-rules.v2.json" || {
   echo "!! v2 policy manifest missing"
   exit 1
@@ -150,7 +150,7 @@ test "${#STAGING_PEPPER}" -ge 32 || {
   exit 1
 }
 
-echo "== [4/8] staging boot on 127.0.0.1:$STAGING_PORT =="
+echo "== [4/9] staging boot on 127.0.0.1:$STAGING_PORT =="
 STAGING_ROOT="$STATE_ROOT/deploy-scratch/staging.$RELEASE_ID"
 rm -rf "$STAGING_ROOT"
 mkdir -p "$STAGING_ROOT"
@@ -209,7 +209,7 @@ if [ "$ready" != 1 ]; then
   exit 1
 fi
 
-echo "== [5/8] staging live-smoke =="
+echo "== [5/9] staging live-smoke =="
 ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
 ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
 ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
@@ -222,7 +222,7 @@ cleanup_staging
 trap - EXIT
 STAGING_PID=""
 
-echo "== [6/8] capture rollback state =="
+echo "== [6/9] capture rollback state =="
 PREV_LINK=""
 if [ -L "$CURRENT_LINK" ]; then
   PREV_LINK="$(readlink -f "$CURRENT_LINK")"
@@ -424,7 +424,7 @@ PY
 fi
 DB_SNAPSHOT_READY=1
 
-echo "== [7/8] atomic promote -> systemd on 0.0.0.0:$PROD_PORT =="
+echo "== [7/9] atomic promote -> systemd on 0.0.0.0:$PROD_PORT =="
 NEXT_LINK="$CURRENT_LINK.next.$$"
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
 mv -Tf "$NEXT_LINK" "$CURRENT_LINK"
@@ -499,7 +499,7 @@ sudo systemctl enable "$SERVICE.service"
 sudo systemctl restart "$SERVICE.service"
 sudo systemctl enable "$DISPATCH_SERVICE.service"
 
-echo "== [8/8] production health + live-smoke =="
+echo "== [8/9] production health + live-smoke =="
 ready=0
 for _ in $(seq 1 40); do
   service_owns_port "$PROD_PORT" &&
@@ -544,6 +544,14 @@ if [ "$ADAPTER_MODE" = required ]; then
     exit 1
   }
 fi
+
+echo "== [9/9] persist and verify complete SDK schemas =="
+sudo -n -u postgres psql -1 -v ON_ERROR_STOP=1 -d echo \
+  -f "$RELEASE_DIR/scripts/register_certforge_caps.sql" \
+  -f "$RELEASE_DIR/scripts/register_certforge_run_cap.sql" \
+  -f "$RELEASE_DIR/scripts/register_certforge_r5_async_caps.sql" \
+  -f "$RELEASE_DIR/scripts/register_certification_forge_r5_cap.sql" \
+  -f "$RELEASE_DIR/scripts/register_certforge_sdk_schemas.sql"
 
 PROMOTION_ARMED=0
 trap - EXIT

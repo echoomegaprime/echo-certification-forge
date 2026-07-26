@@ -230,6 +230,30 @@ def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version=_SERVICE_VERSION)
 
     @app.middleware("http")
+    async def remove_sdk_control_metadata(request: Request, call_next):
+        """Keep the SDK ``command`` selector outside domain payloads and hashes."""
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+        if content_type == "application/json":
+            body = await request.body()
+            if body:
+                try:
+                    payload = json.loads(body)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    payload = None
+                if isinstance(payload, dict) and "command" in payload:
+                    command = payload.pop("command")
+                    if not isinstance(command, str) or not 1 <= len(command) <= 64:
+                        return JSONResponse(
+                            status_code=422,
+                            content={"detail": "invalid_sdk_command"},
+                        )
+                    request._body = json.dumps(  # noqa: SLF001
+                        payload, separators=(",", ":")
+                    ).encode("utf-8")
+
+        return await call_next(request)
+
+    @app.middleware("http")
     async def production_security_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"

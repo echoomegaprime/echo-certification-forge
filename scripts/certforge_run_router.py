@@ -42,6 +42,7 @@ def _require_sovereign(x_echo_api_key: str | None) -> None:
 
 class RunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     run_id: str = Field(min_length=1, max_length=128)
     tenant: str = Field(min_length=1, max_length=128)
 

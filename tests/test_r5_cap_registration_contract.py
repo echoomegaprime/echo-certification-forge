@@ -11,6 +11,7 @@ _SQL = _ROOT / "scripts" / "register_certification_forge_r5_cap.sql"
 _CAP_ID = "echo.certification_forge.r5.run_negative_controls"
 _ROUTE = "/sdk/certification-forge/r5/run-negative-controls"
 _REQUIRED = {
+    "command",
     "expected_server_build_digest",
     "expected_registry_snapshot_digest",
     "expected_registry_revision",
@@ -47,7 +48,7 @@ def test_registration_is_exact_router_cap_and_not_predeclared_green() -> None:
     assert re.search(r"'tier:1',\s*2,\s*1,\s*1,", text)
     assert "'active'" in text
     assert "'unknown'" in text
-    assert "health_status = 'unknown'" in text
+    assert "health_status = 'unknown'" not in text
     assert "health_status = 'green'" not in text
 
 
@@ -57,10 +58,14 @@ def test_registration_schema_is_closed_and_identity_only() -> None:
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == _REQUIRED
     assert set(schema["properties"]) == _REQUIRED | {"dry_run"}
+    assert schema["properties"]["command"] == {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+    }
     assert schema["properties"]["dry_run"] == {"type": "boolean", "default": True}
 
     forbidden = {
-        "command",
         "shell",
         "script",
         "path",

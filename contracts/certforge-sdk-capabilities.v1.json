@@ -1,0 +1,2285 @@
+{
+  "capabilities": {
+    "echo.certforge.admin.adapter_maturity_remediate": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/adapter-maturity/remediate",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.audit": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/audit",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.admin.audit_verify": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/audit/verify",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.evidence_artifact": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/certifications/{run_id}/evidence/{artifact_id}",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.key_rotation_begin": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "new_public_key_pem": {
+            "maxLength": 8192,
+            "minLength": 80,
+            "type": "string"
+          },
+          "old_key_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "overlap_seconds": {
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "new_public_key_pem",
+          "old_key_id",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/operational-key-rotations",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.key_rotation_finalize": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rotation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "rotation_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/operational-key-rotations/{rotation_id}/finalize",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.key_rotation_status": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/operational-key-rotations",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.admin.legal_hold_create": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "hold_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "command",
+          "hold_id",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/legal-holds",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.legal_hold_release": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "hold_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "hold_id"
+        ],
+        "type": "object"
+      },
+      "operation": "DELETE /v1/subscriber/legal-holds/{hold_id}",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.lifecycle": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "event_type": {
+            "enum": [
+              "REVOKED",
+              "INVALIDATED",
+              "SUPERSEDED"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "replacement_run_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "event_type",
+          "reason",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/certifications/{run_id}/lifecycle",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.publish": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/certifications/{run_id}/publish",
+      "output_schema": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.quarantine": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          },
+          "subject_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "runner",
+              "adapter"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason",
+          "subject_id",
+          "subject_type"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/operational-quarantines",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.quarantine_release": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "runner",
+              "adapter"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason",
+          "subject_id",
+          "subject_type"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/operational-quarantines/{subject_type}/{subject_id}/release",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.rerun": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "idempotency_key",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/certifications/{run_id}/rerun",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.runner_enroll": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "runner_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "runner_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/runner-enrollments",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.admin.runner_enrollment_revoke": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          },
+          "runner_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason",
+          "runner_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/runner-enrollments/{runner_id}/revoke",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.api_keys.create": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "enum": [
+                "runs:read",
+                "runs:create",
+                "runs:cancel",
+                "release-gates:evaluate",
+                "projects:read",
+                "projects:manage",
+                "members:manage",
+                "api-keys:manage",
+                "governance:read",
+                "governance:manage",
+                "policy-packs:manage",
+                "private-workers:manage",
+                "usage:read",
+                "audit:read",
+                "billing:manage"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "command",
+          "expires_at",
+          "name",
+          "scopes"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/api-keys",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.api_keys.list": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/api-keys",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.api_keys.revoke": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "key_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "key_id"
+        ],
+        "type": "object"
+      },
+      "operation": "DELETE /v1/subscriber/api-keys/{key_id}",
+      "output_schema": {
+        "type": "null"
+      }
+    },
+    "echo.certforge.cancel": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/certifications/{run_id}/cancel",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.deploy_gate": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "environment_identity_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "rule_manifest_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_identity_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "environment_identity_digest",
+          "rule_manifest_digest",
+          "run_id",
+          "target_identity_digest"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/release-gates/evaluate",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.deployment.audit": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/deployments/audit",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.deployment.release_status": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_sha256": {
+            "type": "string"
+          },
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "environment_identity_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rule_manifest_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "artifact_sha256",
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/releases/{artifact_sha256}/status",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.deployment.rollback_target": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/deployments/rollback-target",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.evidence": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}/evidence",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.findings": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}/findings",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.governance.get": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/governance",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.governance.update": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_policy_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "customer_managed_signing": {
+                "type": "boolean"
+              },
+              "customer_signing_key_id": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "local_only_execution": {
+                "type": "boolean"
+              },
+              "private_worker_only": {
+                "type": "boolean"
+              },
+              "report_brand_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "report_logo_url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "retention_days": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "allowed_policy_ids",
+              "retention_days",
+              "private_worker_only",
+              "report_brand_name",
+              "report_logo_url",
+              "customer_managed_signing",
+              "local_only_execution"
+            ],
+            "type": "object"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command",
+          "config",
+          "expected_version"
+        ],
+        "type": "object"
+      },
+      "operation": "PUT /v1/subscriber/governance",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.health": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /healthz",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.list_runs": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.members.activate": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/members/{user_id}/activate",
+      "output_schema": {
+        "type": "null"
+      }
+    },
+    "echo.certforge.members.deactivate": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "operation": "DELETE /v1/subscriber/members/{user_id}",
+      "output_schema": {
+        "type": "null"
+      }
+    },
+    "echo.certforge.members.invite": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 254,
+            "minLength": 3,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "DEVELOPER",
+              "VIEWER",
+              "BILLING"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "display_name",
+          "email",
+          "role"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/members",
+      "output_schema": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      }
+    },
+    "echo.certforge.members.list": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/members",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.members.update_role": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "DEVELOPER",
+              "VIEWER",
+              "BILLING"
+            ],
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "role",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "operation": "PATCH /v1/subscriber/members/{user_id}/role",
+      "output_schema": {
+        "type": "null"
+      }
+    },
+    "echo.certforge.policy_packs.create": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "manifest",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/policy-packs",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.policy_packs.list": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/policy-packs",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.private_workers.create": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attestation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "attestation_sha256",
+          "command",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/private-workers",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.private_workers.list": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/private-workers",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.private_workers.revoke": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "worker_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "worker_id"
+        ],
+        "type": "object"
+      },
+      "operation": "DELETE /v1/subscriber/private-workers/{worker_id}",
+      "output_schema": {
+        "type": "null"
+      }
+    },
+    "echo.certforge.projects.archive": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "operation": "DELETE /v1/subscriber/projects/{project_id}",
+      "output_schema": {
+        "type": "null"
+      }
+    },
+    "echo.certforge.projects.create": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "slug": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          },
+          "target_reference": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "name",
+          "slug",
+          "target_reference"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/projects",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.projects.list": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/projects",
+      "output_schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "echo.certforge.public_verification": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "verification_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "verification_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/public/verifications/{verification_id}",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.r5.status": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "pattern": "^[A-Za-z0-9._-]{1,64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /sdk/certification-forge/r5/status/{run_id}",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "completion_marker": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "deployment_authorized": {
+                    "type": "boolean"
+                  },
+                  "evidence_run_id": {
+                    "type": "string"
+                  },
+                  "forge_verification": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "mode": {
+                    "enum": [
+                      "preflight",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
+                  "operator_exit_code": {
+                    "type": "integer"
+                  },
+                  "operator_report": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "r5_gate": {
+                    "enum": [
+                      "PASS",
+                      "BLOCK"
+                    ],
+                    "type": "string"
+                  },
+                  "release_verdict": {
+                    "enum": [
+                      "NOT_READY"
+                    ],
+                    "type": "string"
+                  },
+                  "run_outcome": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "stderr_tail": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schema",
+                  "mode",
+                  "evidence_run_id",
+                  "run_outcome",
+                  "release_verdict",
+                  "r5_gate",
+                  "deployment_authorized",
+                  "completion_marker",
+                  "operator_report",
+                  "forge_verification",
+                  "operator_exit_code"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "COMPLETE",
+              "FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    "echo.certforge.r5.submit_async": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "evidence_run_id": {
+            "pattern": "^[A-Za-z0-9._-]{1,64}$",
+            "type": "string"
+          },
+          "evidence_run_nonce": {
+            "maxLength": 128,
+            "minLength": 16,
+            "type": "string"
+          },
+          "expected_base_model_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_base_model_revision": {
+            "maxLength": 128,
+            "minLength": 6,
+            "type": "string"
+          },
+          "expected_gs343_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_r2d2_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_registry_revision": {
+            "maxLength": 128,
+            "minLength": 6,
+            "type": "string"
+          },
+          "expected_registry_snapshot_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_server_build_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_signing_key_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "expected_server_build_digest",
+          "expected_registry_snapshot_digest",
+          "expected_registry_revision",
+          "expected_signing_key_id",
+          "expected_base_model_digest",
+          "expected_base_model_revision",
+          "expected_gs343_digest",
+          "expected_r2d2_digest",
+          "evidence_run_id",
+          "evidence_run_nonce"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /sdk/certification-forge/r5/submit-async",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotent": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "preflight",
+              "full"
+            ],
+            "type": "string"
+          },
+          "poll_capability": {
+            "enum": [
+              "echo.certforge.r5.status"
+            ],
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RESERVED",
+              "RUNNING"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "mode"
+        ],
+        "type": "object"
+      }
+    },
+    "echo.certforge.run": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "type": "string"
+          },
+          "tenant": {
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id",
+          "tenant"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /sdk/certification-forge/run",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "poll_capability": {
+            "enum": [
+              "echo.certforge.status"
+            ],
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "sandboxed": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "CLAIMED"
+            ],
+            "type": "string"
+          },
+          "tenant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "tenant",
+          "sandboxed",
+          "poll_capability"
+        ],
+        "type": "object"
+      }
+    },
+    "echo.certforge.service_status": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/status",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.status": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.submit": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "environment": {
+            "additionalProperties": false,
+            "properties": {
+              "identity_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "runner_image_digest": {
+                "anyOf": [
+                  {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "identity_digest"
+            ],
+            "type": "object"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          },
+          "journey": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policy_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "additionalProperties": false,
+            "properties": {
+              "artifact_sha256": {
+                "anyOf": [
+                  {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "identity_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ref": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reference": {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              "source_commit": {
+                "anyOf": [
+                  {
+                    "maxLength": 64,
+                    "minLength": 7,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "target_type": {
+                "pattern": "^(local|git|archive|container|package|deployment|mcp|sdk|cli)$",
+                "type": "string"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "target_type",
+              "identity_digest",
+              "reference"
+            ],
+            "type": "object"
+          },
+          "tenant_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "environment",
+          "idempotency_key",
+          "policy_version",
+          "target",
+          "tenant_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/certifications",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.subscriber.me": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/me",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.subscription.cancel": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/subscription/cancel",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.subscription.get": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/subscription",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.telemetry": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/telemetry",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.usage": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/subscriber/usage",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.verdict": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}/verdict",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.verify": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/certifications/{run_id}/verify",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.verify_evidence_manifest": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}/evidence/verify",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certforge.verify_verdict": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}/verdict/verify",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "echo.certification_forge.r5.run_negative_controls": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "evidence_run_id": {
+            "pattern": "^[A-Za-z0-9._-]{1,64}$",
+            "type": "string"
+          },
+          "evidence_run_nonce": {
+            "maxLength": 128,
+            "minLength": 16,
+            "type": "string"
+          },
+          "expected_base_model_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_base_model_revision": {
+            "maxLength": 128,
+            "minLength": 6,
+            "type": "string"
+          },
+          "expected_gs343_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_r2d2_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_registry_revision": {
+            "maxLength": 128,
+            "minLength": 6,
+            "type": "string"
+          },
+          "expected_registry_snapshot_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_server_build_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_signing_key_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "expected_server_build_digest",
+          "expected_registry_snapshot_digest",
+          "expected_registry_revision",
+          "expected_signing_key_id",
+          "expected_base_model_digest",
+          "expected_base_model_revision",
+          "expected_gs343_digest",
+          "expected_r2d2_digest",
+          "evidence_run_id",
+          "evidence_run_nonce"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /sdk/certification-forge/r5/run-negative-controls",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_marker": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deployment_authorized": {
+            "type": "boolean"
+          },
+          "evidence_run_id": {
+            "type": "string"
+          },
+          "forge_verification": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "preflight",
+              "full"
+            ],
+            "type": "string"
+          },
+          "operator_exit_code": {
+            "type": "integer"
+          },
+          "operator_report": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "r5_gate": {
+            "enum": [
+              "PASS",
+              "BLOCK"
+            ],
+            "type": "string"
+          },
+          "release_verdict": {
+            "enum": [
+              "NOT_READY"
+            ],
+            "type": "string"
+          },
+          "run_outcome": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "stderr_tail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "mode",
+          "evidence_run_id",
+          "run_outcome",
+          "release_verdict",
+          "r5_gate",
+          "deployment_authorized",
+          "completion_marker",
+          "operator_report",
+          "forge_verification",
+          "operator_exit_code"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "capability_count": 60,
+  "policy": "Every Certification Forge SDK action has a command-bearing strict input schema and an output schema derived from its production route contract.",
+  "schema_version": "1.0.0"
+}

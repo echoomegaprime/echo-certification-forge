@@ -19,6 +19,7 @@ VALUES
       "type":"object",
       "additionalProperties":false,
       "required":[
+        "command",
         "expected_server_build_digest",
         "expected_registry_snapshot_digest",
         "expected_registry_revision",
@@ -31,6 +32,7 @@ VALUES
         "evidence_run_nonce"
       ],
       "properties":{
+        "command":{"type":"string","minLength":1,"maxLength":64},
         "expected_server_build_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
         "expected_registry_snapshot_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
         "expected_registry_revision":{"type":"string","pattern":"^[0-9a-fA-F]{6,128}$"},
@@ -68,7 +70,6 @@ ON CONFLICT (id) DO UPDATE SET
   schema_version = EXCLUDED.schema_version,
   is_builtin = EXCLUDED.is_builtin,
   lifecycle_status = 'active',
-  health_status = 'unknown',
   updated_at = now();
 
 SELECT id, handler_kind, target_url, required_scope, danger_tier,

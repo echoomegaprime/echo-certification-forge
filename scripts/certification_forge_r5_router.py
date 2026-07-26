@@ -70,6 +70,7 @@ class R5Request(BaseModel):
     adapter/key/token surface reaches this capability."""
     model_config = ConfigDict(extra="forbid")
 
+    command: str | None = Field(default=None, min_length=1, max_length=64)
     expected_server_build_digest: str = Field(..., min_length=64, max_length=64)
     expected_registry_snapshot_digest: str = Field(..., min_length=64, max_length=64)
     expected_registry_revision: str = Field(..., min_length=6, max_length=128)
