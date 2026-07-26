@@ -53,6 +53,7 @@ from .subscriber import (
 
 
 _MAX_ADMIN_ARTIFACT_BYTES = 5 * 1024 * 1024
+_SERVICE_VERSION = "0.8.0"
 _TELEMETRY_RUN_LIMIT = 25
 _TELEMETRY_EVENT_LIMIT = 64
 _TERMINAL_STATES = {
@@ -77,6 +78,7 @@ class ServiceContext:
     )
     transport_registry: TrustedTransportRegistry | None = None
     operational_registry: OperationalTelemetryRegistry | None = None
+    adapter_mode: str = "pending"
 
     def __post_init__(self) -> None:
         if self.transport_registry is None:
@@ -175,7 +177,7 @@ class LifecycleRequest(BaseModel):
 
 
 def create_app(context: ServiceContext) -> FastAPI:
-    app = FastAPI(title="Echo Certification Forge", version="0.8.0")
+    app = FastAPI(title="Echo Certification Forge", version=_SERVICE_VERSION)
 
     @app.middleware("http")
     async def production_security_headers(request: Request, call_next):
@@ -350,7 +352,7 @@ def create_app(context: ServiceContext) -> FastAPI:
         # (contracts/certforge-capabilities.v1.json): status, version, custody, anchor, signing.
         return {
             "status": "ok",
-            "version": "0.4.0",
+            "version": _SERVICE_VERSION,
             "custody": "append_only_merkle_verified",
             "anchor": "independent_provider_required",
             "signing": "isolated_out_of_process",
@@ -370,7 +372,9 @@ def create_app(context: ServiceContext) -> FastAPI:
             "rule_manifest_id": context.manifest.manifest_id,
             "rule_manifest_digest": context.manifest.digest,
             "trusted_signing_keys": sorted(context.trusted_keys.keys),
-            "completed_phase_gate": "P3",
+            "completed_phase_gate": "P8C",
+            "customer_surface": "LIVE",
+            "adapter_qualification": context.adapter_mode.upper(),
             "release_verdict": "NOT_READY",
             "evidence_custody": "P3_APPEND_ONLY_VERIFIED",
             "external_evidence_anchor": "P3_INDEPENDENT_PROVIDER_VERIFIED",

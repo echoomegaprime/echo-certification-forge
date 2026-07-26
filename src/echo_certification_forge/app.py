@@ -72,5 +72,6 @@ app = create_app(
         webhook_secrets=WebhookSecretRegistry.from_file(_webhook_keys),
         deployment_credentials=WebhookSecretRegistry.from_file(_deployment_keys),
         transport_registry=_load_transport_registry(_transport_keys),
+        adapter_mode=os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending"),
     )
 )
