@@ -30,6 +30,7 @@ from echo_certification_forge.adapter_registry import (  # noqa: E402
 from echo_certification_forge.canonical import sha256_json  # noqa: E402
 from echo_certification_forge.family_r5 import RECEIPT_SCHEMA  # noqa: E402
 from echo_certification_forge.p5_qualification import (  # noqa: E402
+    QUALIFICATION_SCHEMA,
     QualificationArtifactDigests,
     QualificationEvidenceTrustPins,
     QualificationModels,
@@ -80,7 +81,7 @@ def main() -> int:
     args = parser.parse_args()
 
     qualification_report = load_json(args.qualification_report)
-    if qualification_report.get("schema") == "echo.certification-forge.p5-qualification/v1":
+    if qualification_report.get("schema") == QUALIFICATION_SCHEMA:
         try:
             gs343_model = qualification_report["models"]["gs343"]["candidate"]
             r2d2_model = qualification_report["models"]["r2d2"]["candidate"]

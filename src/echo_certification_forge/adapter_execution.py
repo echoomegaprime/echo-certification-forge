@@ -36,6 +36,7 @@ from .canonical import (
     utc_now,
 )
 from .p5_qualification import (
+    QUALIFICATION_SCHEMA,
     QualificationEvidenceTrustPins,
     QualificationError,
     TrustedRoutingKey,
@@ -350,8 +351,7 @@ def build_records_from_evidence(
     if not sources:
         raise AdapterExecutionError("at least one adapter evidence source is required")
     if (
-        qualification_report.get("schema")
-        != "echo.certification-forge.p5-qualification/v1"
+        qualification_report.get("schema") != QUALIFICATION_SCHEMA
     ):
         raise AdapterExecutionError(
             "legacy qualification reports are not eligible for bundle construction"
