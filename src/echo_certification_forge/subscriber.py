@@ -8,7 +8,7 @@ import secrets
 import sqlite3
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
@@ -3493,14 +3493,17 @@ class SubscriberGovernance:
         if not target_reference.strip():
             raise ValueError("target_reference is required")
         now = to_utc_iso(self._now())
-        target_identity_json = canonical_json(
-            {
-                "tenant_id": reservation.organization_id,
-                "target_type": target_type,
-                "declared_identity_digest": target_identity_digest,
-                "reference": target_reference,
-            }
-        )
+        declared_target = {
+            "tenant_id": reservation.organization_id,
+            "target_type": target_type,
+            "declared_identity_digest": target_identity_digest,
+            "reference": target_reference,
+        }
+        if target_spec.get("artifact_sha256") is not None:
+            declared_target["declared_artifact_sha256"] = target_spec["artifact_sha256"]
+        if target_spec.get("source_commit") is not None:
+            declared_target["declared_source_commit"] = target_spec["source_commit"]
+        target_identity_json = canonical_json(declared_target)
         environment_identity_json = canonical_json(dict(environment_json))
         target_json = canonical_json(dict(target_spec))
         journey_json = canonical_json(journey) if journey is not None else None
@@ -4388,7 +4391,7 @@ class SubscriberGovernance:
         if bool(config.get("local_only_execution")):
             if not plan.local_only_execution:
                 raise SubscriberError(403, "local_execution_not_entitled")
-            if target_type != "local" or execution_location != "local":
+            if target_type not in {"local", "package"} or execution_location != "local":
                 raise SubscriberError(403, "local_execution_required")
 
         require_identifier(signing_authority, "signing_authority")
@@ -4738,6 +4741,116 @@ class SubscriberGovernance:
                 },
             )
             return authorization
+
+    def reconcile_worker_target_identity(
+        self,
+        claim: WorkerRunClaim,
+        *,
+        target_identity: Mapping[str, Any],
+        target_identity_digest: str,
+    ) -> WorkerRunClaim:
+        """Atomically rebind a claimed declared target to the acquired exact identity.
+
+        The dispatch commitment remains the proof source.  No caller-provided artifact can
+        change tenant, type, reference, digest, or source commit during reconciliation.
+        """
+        require_sha256(target_identity_digest, "target_identity_digest")
+        target_data = dict(target_identity)
+        if sha256_json(target_data) != target_identity_digest:
+            raise SubscriberError(409, "worker_target_identity_digest_invalid")
+        now_value = self._now()
+        now = to_utc_iso(now_value)
+        with self._connection(immediate=True) as connection:
+            row = connection.execute(
+                """
+                SELECT r.state, r.claim_token, r.lease_expires_at,
+                       r.target_identity_digest AS declared_digest,
+                       d.target_json, runs.target_identity_json,
+                       runs.target_identity_digest AS run_target_digest
+                FROM subscriber_run_reservations r
+                JOIN subscriber_run_dispatches d
+                  ON d.run_id=r.run_id AND d.organization_id=r.organization_id
+                JOIN runs
+                  ON runs.run_id=r.run_id AND runs.tenant_id=r.organization_id
+                WHERE r.organization_id=? AND r.run_id=? AND r.idempotency_key=?
+                """,
+                (claim.organization_id, claim.run_id, claim.idempotency_key),
+            ).fetchone()
+            if (
+                row is None
+                or row["state"] != "EXECUTING"
+                or row["claim_token"] is None
+                or not hmac.compare_digest(str(row["claim_token"]), claim.claim_token)
+                or row["lease_expires_at"] is None
+                or parse_utc_iso(str(row["lease_expires_at"])) <= now_value
+            ):
+                raise SubscriberError(409, "worker_run_claim_inactive")
+            if row["declared_digest"] != claim.target_identity_digest:
+                raise SubscriberError(409, "worker_target_binding_conflict")
+            spec = json.loads(str(row["target_json"]))
+            declared_digest = sha256_json(
+                {
+                    "tenant_id": claim.organization_id,
+                    "target_type": spec.get("type"),
+                    "artifact_sha256": spec.get("artifact_sha256"),
+                    "source_commit": spec.get("source_commit"),
+                    "reference": spec.get("path"),
+                }
+            )
+            if declared_digest != claim.target_identity_digest:
+                raise SubscriberError(409, "worker_declared_target_integrity_failed")
+            expected = (
+                claim.organization_id,
+                spec.get("type"),
+                spec.get("path"),
+                spec.get("artifact_sha256"),
+                spec.get("source_commit"),
+            )
+            actual = (
+                target_data.get("tenant_id"),
+                target_data.get("target_type"),
+                target_data.get("canonical_ref"),
+                target_data.get("artifact_sha256"),
+                target_data.get("source_commit"),
+            )
+            if actual != expected:
+                raise SubscriberError(409, "worker_target_identity_mismatch")
+            if (
+                row["run_target_digest"] != target_identity_digest
+                or canonical_json(target_data) != str(row["target_identity_json"])
+            ):
+                raise SubscriberError(409, "worker_run_target_not_reconciled")
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_reservations
+                SET target_identity_digest=?, updated_at=?
+                WHERE organization_id=? AND run_id=? AND idempotency_key=?
+                  AND state='EXECUTING' AND claim_token=?
+                  AND target_identity_digest=?
+                """,
+                (
+                    target_identity_digest,
+                    now,
+                    claim.organization_id,
+                    claim.run_id,
+                    claim.idempotency_key,
+                    claim.claim_token,
+                    claim.target_identity_digest,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "worker_target_reconciliation_conflict")
+            self._append_audit(
+                connection,
+                organization_id=claim.organization_id,
+                actor_ref="certforge.run-worker",
+                action="certification.target_reconcile",
+                resource_type="certification",
+                resource_id=claim.run_id,
+                outcome="allowed",
+                details={"target_identity_digest": target_identity_digest},
+            )
+        return replace(claim, target_identity_digest=target_identity_digest)
 
     def heartbeat_worker_claim(self, claim: WorkerRunClaim) -> str:
         now_value = self._now()

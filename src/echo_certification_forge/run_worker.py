@@ -399,7 +399,14 @@ def run(
     if subscribers is not None and target_data.get("declared_artifact_sha256") is not None:
         try:
             store.reconcile_declared_target(run_id, tenant, target, environment)
-        except ValueError as exc:
+            if claim is None:
+                raise SubscriberError(409, "worker_run_claim_missing")
+            claim = subscribers.reconcile_worker_target_identity(
+                claim,
+                target_identity=target.to_dict(),
+                target_identity_digest=target.identity_digest,
+            )
+        except (SubscriberError, ValueError) as exc:
             if heartbeat is not None:
                 heartbeat.stop()
             if claim is not None:
@@ -413,7 +420,7 @@ def run(
             return {
                 "run_id": run_id,
                 "error": "target_reconciliation_failed",
-                "detail": str(exc),
+                "detail": exc.code if isinstance(exc, SubscriberError) else str(exc),
             }
     if adapter_response_content is not None:
         artifact_id = "adapter-response-" + sha256_bytes(run_id.encode("utf-8"))[:32]

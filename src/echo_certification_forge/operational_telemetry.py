@@ -8,6 +8,7 @@ explicitly non-green.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .adapter_transport import parse_verified_adapter_bundle
-from .canonical import parse_utc_iso, sha256_json, to_utc_iso, utc_now
+from .canonical import canonical_json, parse_utc_iso, sha256_json, to_utc_iso, utc_now
 from .runner import (
     RunnerCommand,
     RunnerResponse,
@@ -24,6 +25,7 @@ from .runner import (
     TrustedTransportRegistry,
     verify_runner_response,
 )
+from .windows_package import WindowsPackageResultBody
 
 
 class OperationalTelemetryError(RuntimeError):
@@ -100,6 +102,23 @@ class OperationalTelemetryRegistry:
                 );
                 CREATE INDEX IF NOT EXISTS idx_authenticated_heartbeat_tenant_time
                     ON authenticated_worker_heartbeats(tenant_id, observed_at DESC);
+                CREATE TABLE IF NOT EXISTS authenticated_windows_package_results (
+                    run_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    runner_id TEXT NOT NULL,
+                    response_id TEXT NOT NULL UNIQUE,
+                    sequence INTEGER NOT NULL,
+                    body_json TEXT NOT NULL,
+                    body_sha256 TEXT NOT NULL,
+                    credential_id TEXT NOT NULL,
+                    control_plane_key_id TEXT NOT NULL,
+                    runner_key_id TEXT NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    PRIMARY KEY(run_id, tenant_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_windows_package_result_tenant_time
+                    ON authenticated_windows_package_results(tenant_id, observed_at DESC);
                 CREATE TABLE IF NOT EXISTS authenticated_adapter_inventory (
                     tenant_id TEXT NOT NULL,
                     adapter_id TEXT NOT NULL,
@@ -1053,6 +1072,154 @@ class OperationalTelemetryRegistry:
                     ),
                 )
         return {"accepted": True, "idempotent": False, "adapter_count": len(records)}
+
+    def ingest_windows_package_result(
+        self,
+        report: SignedOperationalReport,
+        trusted: TrustedTransportRegistry,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Accept one enrolled, signed, digest-pinned P8C Windows package observation."""
+        current = now or utc_now()
+        claims = self._authenticate(
+            report, trusted, required_scope=RunnerCommand.TRANSITION, now=current
+        )
+        response = report.response
+        if response.status != "COMPLETED":
+            raise OperationalTelemetryError("windows_package_result_status_invalid", 422)
+        try:
+            body = WindowsPackageResultBody.model_validate(response.body)
+        except ValueError as exc:
+            raise OperationalTelemetryError("windows_package_result_body_invalid", 422) from exc
+        received_at = to_utc_iso(current)
+        observed_at = to_utc_iso(response.issued_at)
+        with self._connect() as connection:
+            binding = connection.execute(
+                """
+                SELECT r.state AS reservation_state, r.target_type,
+                       r.target_reference, r.target_identity_digest,
+                       d.target_json, runs.state AS run_state,
+                       runs.environment_identity_digest
+                FROM subscriber_run_reservations r
+                JOIN subscriber_run_dispatches d
+                  ON d.run_id=r.run_id AND d.organization_id=r.organization_id
+                JOIN runs
+                  ON runs.run_id=r.run_id AND runs.tenant_id=r.organization_id
+                WHERE r.organization_id=? AND r.run_id=?
+                """,
+                (response.tenant_id, response.run_id),
+            ).fetchone()
+            if (
+                binding is None
+                or binding["reservation_state"] != "BOUND"
+                or binding["run_state"] != "QUEUED"
+                or binding["target_type"] != "package"
+            ):
+                raise OperationalTelemetryError("windows_package_run_not_dispatchable", 409)
+            spec = json.loads(str(binding["target_json"]))
+            if (
+                spec.get("type") != "package"
+                or spec.get("path") != body.reference
+                or spec.get("artifact_sha256") != body.artifact_sha256
+                or spec.get("source_commit") != body.source_commit
+                or binding["target_reference"] != body.reference
+                or binding["environment_identity_digest"]
+                != body.environment_identity_digest
+            ):
+                raise OperationalTelemetryError("windows_package_result_binding_mismatch", 409)
+            declared_digest = sha256_json(
+                {
+                    "tenant_id": response.tenant_id,
+                    "target_type": "package",
+                    "artifact_sha256": body.artifact_sha256,
+                    "source_commit": body.source_commit,
+                    "reference": body.reference,
+                }
+            )
+            if declared_digest != binding["target_identity_digest"]:
+                raise OperationalTelemetryError("windows_package_declared_digest_mismatch", 409)
+            enrollment = connection.execute(
+                """
+                SELECT status, runner_key_id, worker_image_sha256
+                FROM operational_runner_enrollments
+                WHERE tenant_id=? AND runner_id=?
+                """,
+                (response.tenant_id, response.runner_id),
+            ).fetchone()
+            if enrollment is None or enrollment["status"] != "ACTIVE":
+                raise OperationalTelemetryError("runner_not_enrolled", 403)
+            if (
+                enrollment["runner_key_id"] != claims.runner_key_id
+                or enrollment["worker_image_sha256"] != body.worker_image_sha256
+            ):
+                raise OperationalTelemetryError("runner_enrollment_identity_mismatch", 409)
+            if not self._reserve_report(
+                connection,
+                report,
+                report_kind="windows_package_result",
+                received_at=received_at,
+            ):
+                return {
+                    "accepted": True,
+                    "idempotent": True,
+                    "run_id": response.run_id,
+                    "ready_candidate": body.ready_candidate,
+                }
+            existing = connection.execute(
+                """
+                SELECT 1 FROM authenticated_windows_package_results
+                WHERE run_id=? AND tenant_id=?
+                """,
+                (response.run_id, response.tenant_id),
+            ).fetchone()
+            if existing is not None:
+                raise OperationalTelemetryError("windows_package_result_already_recorded", 409)
+            connection.execute(
+                """
+                INSERT INTO authenticated_windows_package_results(
+                    run_id, tenant_id, runner_id, response_id, sequence,
+                    body_json, body_sha256, credential_id, control_plane_key_id,
+                    runner_key_id, observed_at, received_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    response.run_id,
+                    response.tenant_id,
+                    response.runner_id,
+                    response.response_id,
+                    response.sequence,
+                    canonical_json(body.model_dump(mode="json")),
+                    response.body_sha256,
+                    claims.credential_id,
+                    report.credential.key_id,
+                    claims.runner_key_id,
+                    observed_at,
+                    received_at,
+                ),
+            )
+        return {
+            "accepted": True,
+            "idempotent": False,
+            "run_id": response.run_id,
+            "ready_candidate": body.ready_candidate,
+        }
+
+    def windows_package_result(self, run_id: str, tenant_id: str) -> dict[str, Any] | None:
+        """Return a verified stored result for the key-holding finalizer."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT runner_id, response_id, body_json, body_sha256,
+                       runner_key_id, observed_at, received_at
+                FROM authenticated_windows_package_results
+                WHERE run_id=? AND tenant_id=?
+                """,
+                (run_id, tenant_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {**dict(row), "body": json.loads(str(row["body_json"]))}
 
     def snapshot(
         self,

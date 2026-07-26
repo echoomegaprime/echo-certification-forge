@@ -66,6 +66,7 @@
     "POST /v1/hooks/build": "External build webhook signature and timestamp verification.",
     "POST /v1/hooks/registry": "External registry webhook signature and timestamp verification.",
     "POST /v1/internal/worker-heartbeats": "Ed25519-authenticated worker telemetry ingress.",
-    "POST /v1/internal/adapter-inventory": "Ed25519-authenticated adapter inventory ingress."
+    "POST /v1/internal/adapter-inventory": "Ed25519-authenticated adapter inventory ingress.",
+    "POST /v1/internal/windows-package-results": "Ed25519-authenticated, reservation-bound Windows installer observation ingress; static inspection only and never a verdict authority."
   }
 }

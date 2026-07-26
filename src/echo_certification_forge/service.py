@@ -1465,6 +1465,15 @@ def create_app(context: ServiceContext) -> FastAPI:
         except OperationalTelemetryError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
 
+    @app.post("/v1/internal/windows-package-results")
+    def ingest_windows_package_result(report: SignedOperationalReport) -> dict[str, Any]:
+        try:
+            return context.operational_registry.ingest_windows_package_result(
+                report, context.transport_registry
+            )
+        except OperationalTelemetryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
     @app.get("/v1/subscriber/telemetry")
     def subscriber_telemetry(
         x_tenant_id: str | None = Header(default=None),

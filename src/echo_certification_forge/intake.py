@@ -73,6 +73,15 @@ class SubmitTarget(BaseModel):
                     "ref": reference[separator + 1 :],
                 }
             return {"type": "git", "url": reference}
+        if self.target_type == "package":
+            if self.artifact_sha256 is None or self.source_commit is None:
+                raise ValueError("package target requires artifact_sha256 and source_commit")
+            return {
+                "type": "package",
+                "path": self.path or self.reference,
+                "artifact_sha256": self.artifact_sha256,
+                "source_commit": self.source_commit,
+            }
         raise ValueError("target type is not dispatchable")
 
 
