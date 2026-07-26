@@ -20,6 +20,11 @@ from typing import Any
 import httpx
 
 
+def sdk_params(capability: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Return the strict SDK payload without mutating the caller's mapping."""
+    return {"command": capability.rsplit(".", 1)[-1], **params}
+
+
 def sovereign_key(path: Path) -> str:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("SOVEREIGN_KEY="):
@@ -40,10 +45,11 @@ async def invoke(
 ) -> dict[str, Any]:
     from routers._auth_p4 import hmac_sign
 
+    request_params = sdk_params(capability, params)
     envelope: dict[str, Any] = {
         "envelope_version": 1,
         "capability": capability,
-        "params": params,
+        "params": request_params,
     }
     if tier >= 2:
         nonce = secrets.token_hex(24)
@@ -53,7 +59,7 @@ async def invoke(
                 secret_hmac,
                 api_key,
                 capability,
-                params,
+                request_params,
                 nonce,
                 timestamp,
             ),
