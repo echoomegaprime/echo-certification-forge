@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import sqlite3
 from urllib import request as urllib_request
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -47,6 +48,7 @@ from echo_certification_forge.windows_package import (
     sign_package_result,
     windows_package_environment,
 )
+import echo_certification_forge.windows_package as windows_package_module
 from echo_certification_forge.windows_package_credential import (
     initialize_authority,
     issue_credential,
@@ -294,6 +296,33 @@ def test_static_windows_observer_checks_digest_commit_and_authenticode(
             expected_source_commit="0" * 40,
             expected_reference=str(artifact),
         )
+
+
+def test_authenticode_path_uses_child_environment_not_command_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = tmp_path / "installer with spaces & metacharacters.exe"
+    artifact.write_bytes(b"not executed")
+    captured: dict[str, object] = {}
+
+    def _run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["environment"] = kwargs["env"]
+        return SimpleNamespace(
+            returncode=0,
+            stderr="",
+            stdout=(
+                '{"Status":"NotSigned","SignerSubject":null,'
+                '"TimestamperSubject":null}'
+            ),
+        )
+
+    monkeypatch.setattr(windows_package_module.subprocess, "run", _run)
+    result = windows_package_module._authenticode(artifact)
+    assert result["Status"] == "NotSigned"
+    assert captured["argv"][0] == "pwsh.exe"
+    assert str(artifact) not in captured["argv"]
+    assert captured["environment"]["ECHO_CERTFORGE_PACKAGE_PATH"] == str(artifact)
 
 
 def test_transport_and_runner_identity_clis_are_short_lived_and_non_overwriting(

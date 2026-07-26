@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import stat
 import subprocess
 from datetime import datetime
@@ -38,6 +39,17 @@ _CHECK_NAMES = frozenset(
         "no_reparse_point",
         "authenticode_valid",
         "authenticode_timestamped",
+    }
+)
+_AUTHENTICODE_STATUSES = frozenset(
+    {
+        "Valid",
+        "UnknownError",
+        "NotSigned",
+        "HashMismatch",
+        "NotTrusted",
+        "NotSupportedFileFormat",
+        "Incompatible",
     }
 )
 
@@ -130,27 +142,34 @@ def _git_head(source_root: Path) -> str:
 
 def _authenticode(path: Path) -> dict[str, Any]:
     script = (
-        "$s=Get-AuthenticodeSignature -LiteralPath $args[0];"
+        "$s=Get-AuthenticodeSignature -LiteralPath $env:ECHO_CERTFORGE_PACKAGE_PATH;"
         "[pscustomobject]@{Status=[string]$s.Status;"
         "SignerSubject=if($s.SignerCertificate){$s.SignerCertificate.Subject}else{$null};"
         "TimestamperSubject=if($s.TimeStamperCertificate){$s.TimeStamperCertificate.Subject}else{$null}}"
         "|ConvertTo-Json -Compress"
     )
+    child_environment = os.environ.copy()
+    child_environment["ECHO_CERTFORGE_PACKAGE_PATH"] = str(path)
     process = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script, str(path)],
+        ["pwsh.exe", "-NoProfile", "-NonInteractive", "-Command", script],
         check=False,
         capture_output=True,
+        env=child_environment,
         text=True,
         timeout=30,
         shell=False,
     )
-    if process.returncode != 0:
+    if process.returncode != 0 or process.stderr.strip():
         raise RuntimeError("Authenticode inspection failed")
     try:
         result = json.loads(process.stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError("Authenticode inspection returned invalid JSON") from exc
-    if not isinstance(result, dict) or not isinstance(result.get("Status"), str):
+    if (
+        not isinstance(result, dict)
+        or not isinstance(result.get("Status"), str)
+        or result["Status"] not in _AUTHENTICODE_STATUSES
+    ):
         raise RuntimeError("Authenticode inspection returned an invalid result")
     return result
 
