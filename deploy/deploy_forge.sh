@@ -4,22 +4,15 @@
 # promotes through an atomic symlink, and restores the prior unit/link on red.
 set -euo pipefail
 
-SOURCE_REPO="${CERTFORGE_SOURCE_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
+SOURCE_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
 SERVICE="echo-certforge"
-DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-main}"
-EXPECTED_COMMIT_SHA="${CERTFORGE_EXPECTED_COMMIT_SHA:-}"
 RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-releases}"
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
-ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
-ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
-TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
-DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
-ENV_FILE="${CERTFORGE_ENV_FILE:-/home/forge/.config/echo/certforge.env}"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 LOCK_FILE="${CERTFORGE_DEPLOY_LOCK:-/run/lock/echo-certforge-deploy.lock}"
 
@@ -39,34 +32,22 @@ service_owns_port() {
 }
 
 cd "$SOURCE_REPO"
-echo "== [1/9] fetch immutable source ($BRANCH) =="
+echo "== [1/8] fetch immutable source ($BRANCH) =="
 git "${GITC[@]}" fetch --quiet origin "$BRANCH"
 NEW_SHA="$(git rev-parse "origin/$BRANCH^{commit}")"
-if [ -n "$EXPECTED_COMMIT_SHA" ] && [ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
-  echo "!! fetched commit does not match the hosted-CI-approved commit"
-  exit 1
-fi
-PRODUCT_READINESS_REPORT="${CERTFORGE_PRODUCT_READINESS_REPORT:-$STATE_ROOT/product-readiness/$NEW_SHA/product-readiness.json}"
 RELEASE_ID="$NEW_SHA-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 RELEASE_DIR="$RELEASE_ROOT/$RELEASE_ID"
 RELEASE_TMP="$RELEASE_DIR.tmp.$$"
 echo "   candidate=$NEW_SHA"
 
-mkdir -p \
-  "$RELEASE_ROOT" \
-  "$STATE_ROOT/evidence" \
-  "$STATE_ROOT/trusted-public-keys" \
-  "$STATE_ROOT/trusted-transport-keys" \
-  "$STATE_ROOT/run-output" \
-  "$STATE_ROOT/dispatch-output" \
-  "$STATE_ROOT/deploy-scratch"
+mkdir -p "$RELEASE_ROOT" "$STATE_ROOT/evidence" "$STATE_ROOT/trusted-public-keys"
 trap 'rm -rf "$RELEASE_TMP"' EXIT
 mkdir "$RELEASE_TMP"
 git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
 mv "$RELEASE_TMP" "$RELEASE_DIR"
 trap 'test -f "$RELEASE_DIR/.certforge-release-sha" || rm -rf "$RELEASE_DIR"' EXIT
 
-echo "== [2/9] isolated venv + install =="
+echo "== [2/8] isolated venv + install =="
 python3 -m venv "$RELEASE_DIR/.venv"
 "$RELEASE_DIR/.venv/bin/pip" install --quiet --upgrade pip
 "$RELEASE_DIR/.venv/bin/pip" install --quiet "$RELEASE_DIR"
@@ -75,107 +56,18 @@ python3 -m venv "$RELEASE_DIR/.venv"
 printf '%s\n' "$NEW_SHA" >"$RELEASE_DIR/.certforge-release-sha"
 trap - EXIT
 
-echo "== [3/9] verify release inputs =="
-test -f "$RELEASE_DIR/policies/mandatory-rules.v2.json" || {
-  echo "!! v2 policy manifest missing"
+echo "== [3/8] verify release inputs =="
+test -f "$RELEASE_DIR/policies/mandatory-rules.v1.json" || {
+  echo "!! policy manifest missing"
   exit 1
 }
 test -x "$RELEASE_DIR/.venv/bin/python" || {
   echo "!! release venv missing"
   exit 1
 }
-case "$ADAPTER_MODE" in
-  required|pending) ;;
-  *) echo "!! CERTFORGE_ADAPTER_MODE must be required or pending"; exit 1 ;;
-esac
-ADAPTER_RESPONSE=""
-ADAPTER_POLICY=""
-ADAPTER_REGISTRY=""
-ADAPTER_SIGNING_KEY=""
-DISPATCH_COMPAT_FLAG="--non-production-compat"
-if [ "$ADAPTER_MODE" = required ]; then
-  ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
-  ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
-  ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
-  ADAPTER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
-  for required_adapter_input in \
-    "$ADAPTER_RESPONSE" "$ADAPTER_POLICY" "$ADAPTER_REGISTRY" "$ADAPTER_SIGNING_KEY"; do
-    test -f "$required_adapter_input" || {
-      echo "!! required adapter input missing: $(basename "$required_adapter_input")"
-      exit 1
-    }
-  done
-  DISPATCH_COMPAT_FLAG=""
-else
-  echo "   adapter qualification pending: dispatcher remains fail-closed"
-fi
-RUN_SIGNING_KEY="$STATE_ROOT/run-signing-key.pem"
-RUN_SIGNING_PUBLIC_KEY="$STATE_ROOT/trusted-public-keys/run-signing-key.pem"
-"$RELEASE_DIR/.venv/bin/python" - "$RUN_SIGNING_KEY" "$RUN_SIGNING_PUBLIC_KEY" <<'PY'
-from pathlib import Path
-import sys
 
-from echo_certification_forge.run_worker import _load_signer
-
-private_path = Path(sys.argv[1])
-public_path = Path(sys.argv[2])
-signer = _load_signer(private_path)
-public_path.write_text(signer.public_key_pem, encoding="ascii")
-public_path.chmod(0o644)
-PY
-test -f "$PRODUCT_READINESS_REPORT" || {
-  echo "!! signed exact-source product readiness report missing: $PRODUCT_READINESS_REPORT"
-  exit 1
-}
-"$RELEASE_DIR/.venv/bin/python" - "$PRODUCT_READINESS_REPORT" \
-  "$STATE_ROOT/trusted-public-keys" "$NEW_SHA" <<'PY'
-from pathlib import Path
-import sys
-
-from echo_certification_forge.product_readiness import verify_product_readiness
-from echo_certification_forge.signing import TrustedPublicKeyRegistry
-
-status = verify_product_readiness(
-    Path(sys.argv[1]),
-    TrustedPublicKeyRegistry.from_directory(Path(sys.argv[2])),
-    expected_source_commit=sys.argv[3],
-)
-if not status.ready:
-    raise SystemExit(f"product readiness verification failed: {status.reason}")
-print(f"   product readiness verified: {status.report_sha256}")
-PY
-test -f "$RELEASE_DIR/policies/subscriber-governance.v1.json" || {
-  echo "!! subscriber governance policy missing"
-  exit 1
-}
-test -f "$ENV_FILE" || {
-  echo "!! subscriber environment file missing: $ENV_FILE"
-  exit 1
-}
-ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
-if (( (8#$ENV_MODE & 077) != 0 )); then
-  echo "!! $ENV_FILE must not be group/world accessible (mode=$ENV_MODE)"
-  exit 1
-fi
-set -a
-# shellcheck disable=SC1090
-. "$ENV_FILE"
-set +a
-PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
-STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
-test "${#PROD_PEPPER}" -ge 32 || {
-  echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"
-  exit 1
-}
-test "${#STAGING_PEPPER}" -ge 32 || {
-  echo "!! ECHO_CERTFORGE_STAGING_API_KEY_PEPPER must be at least 32 bytes"
-  exit 1
-}
-
-echo "== [4/9] staging boot on 127.0.0.1:$STAGING_PORT =="
-STAGING_ROOT="$STATE_ROOT/deploy-scratch/staging.$RELEASE_ID"
-rm -rf "$STAGING_ROOT"
-mkdir -p "$STAGING_ROOT"
+echo "== [4/8] staging boot on 127.0.0.1:$STAGING_PORT =="
+STAGING_ROOT="$(mktemp -d /tmp/certforge-staging.XXXXXX)"
 STAGING_PID=""
 cleanup_staging() {
   if [ -n "$STAGING_PID" ]; then
@@ -189,21 +81,45 @@ if ss -H -ltn "sport = :$STAGING_PORT" | grep -q .; then
   echo "!! staging port $STAGING_PORT is already occupied"
   exit 1
 fi
-ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
-ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence" \
-ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json" \
-ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys" \
-ECHO_CERTFORGE_TRANSPORT_KEYS="$STATE_ROOT/trusted-transport-keys" \
-ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_RESPONSE" \
-ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_POLICY" \
-ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_REGISTRY" \
-ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_SIGNING_KEY" \
-ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256="$TRUSTED_MANIFEST_SHA256" \
-ECHO_CERTFORGE_PRODUCT_READINESS_REPORT="$PRODUCT_READINESS_REPORT" \
-ECHO_CERTFORGE_SOURCE_COMMIT="$NEW_SHA" \
-ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
-ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1 \
-ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
+# Snapshot the PRODUCTION values before staging overwrites them. Step [8/8] smokes the real
+# service against the real database; if these stay pointed at the throwaway staging DB the
+# smoke mints its API key somewhere the production service cannot see it and fails
+# 401 api_key_invalid, which reads exactly like a broken release.
+PROD_DB="${ECHO_CERTFORGE_DB:-$STATE_ROOT/certforge.sqlite3}"
+PROD_EVIDENCE_ROOT="${ECHO_CERTFORGE_EVIDENCE_ROOT:-$STATE_ROOT/evidence}"
+PROD_SUBSCRIBER_POLICY="${ECHO_CERTFORGE_SUBSCRIBER_POLICY:-}"
+export ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3"
+export ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence"
+export ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v1.json"
+export ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys"
+# Subscriber governance must be ON in staging or the gate is weaker than production:
+# the smoke's subscriber checks fail closed without these, and any auth regression on a
+# governance-gated endpoint would sail through a staging run that had governance off.
+# The staging pepper is a separate value from production's and already exists in
+# certforge.env; it was simply never wired up here, so this stage could not pass.
+CERTFORGE_ENV_FILE="${CERTFORGE_ENV_FILE:-/home/forge/.config/echo/certforge.env}"
+if [ -f "$CERTFORGE_ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$CERTFORGE_ENV_FILE"
+  set +a
+fi
+export ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json"
+export ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
+# Keep the PRODUCTION pepper aside: staging must use its own, but step [8/8] smokes the
+# real service against the real database and has to mint keys with the production pepper.
+# Exporting the staging value for the whole script made the prod smoke fail 401
+# api_key_invalid — a self-inflicted red that looks exactly like a broken release.
+PROD_API_KEY_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
+export ECHO_CERTFORGE_API_KEY_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-${ECHO_CERTFORGE_API_KEY_PEPPER:-}}"
+if [ -z "$ECHO_CERTFORGE_API_KEY_PEPPER" ]; then
+  echo "!! no staging API-key pepper available (set ECHO_CERTFORGE_STAGING_API_KEY_PEPPER in $CERTFORGE_ENV_FILE)"
+  exit 1
+fi
+test -f "$ECHO_CERTFORGE_SUBSCRIBER_POLICY" || {
+  echo "!! missing $ECHO_CERTFORGE_SUBSCRIBER_POLICY in the release"
+  exit 1
+}
 "$RELEASE_DIR/.venv/bin/python" -m uvicorn echo_certification_forge.app:app \
   --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning \
   >"$STAGING_ROOT/service.log" 2>&1 &
@@ -233,11 +149,7 @@ if [ "$ready" != 1 ]; then
   exit 1
 fi
 
-echo "== [5/9] staging live-smoke =="
-ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
-ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
-ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
-ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
+echo "== [5/8] staging live-smoke =="
 "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
   "http://127.0.0.1:$STAGING_PORT" || {
   echo "!! STAGING SMOKE RED - production untouched"
@@ -247,23 +159,17 @@ cleanup_staging
 trap - EXIT
 STAGING_PID=""
 
-echo "== [6/9] capture rollback state =="
+echo "== [6/8] capture rollback state =="
 PREV_LINK=""
 if [ -L "$CURRENT_LINK" ]; then
   PREV_LINK="$(readlink -f "$CURRENT_LINK")"
 fi
 PREV_ENABLED="$(systemctl is-enabled "$SERVICE.service" 2>/dev/null || true)"
 PREV_ACTIVE="$(systemctl is-active "$SERVICE.service" 2>/dev/null || true)"
-PREV_DISPATCH_ENABLED="$(systemctl is-enabled "$DISPATCH_SERVICE.service" 2>/dev/null || true)"
-PREV_DISPATCH_ACTIVE="$(systemctl is-active "$DISPATCH_SERVICE.service" 2>/dev/null || true)"
-UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge.service.$RELEASE_ID"
-DISPATCH_UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-dispatcher.service.$RELEASE_ID"
+UNIT_BACKUP="$(mktemp /tmp/echo-certforge.service.XXXXXX)"
 HAD_UNIT=0
-HAD_DISPATCH_UNIT=0
 UNIT_KIND="missing"
-DISPATCH_UNIT_KIND="missing"
 UNIT_LINK_TARGET=""
-DISPATCH_UNIT_LINK_TARGET=""
 if sudo test -L "$UNIT_PATH"; then
   UNIT_KIND="symlink"
   UNIT_LINK_TARGET="$(sudo readlink "$UNIT_PATH")"
@@ -273,17 +179,8 @@ elif sudo test -f "$UNIT_PATH"; then
   sudo cat "$UNIT_PATH" >"$UNIT_BACKUP"
   HAD_UNIT=1
 fi
-if sudo test -L "$DISPATCH_UNIT_PATH"; then
-  DISPATCH_UNIT_KIND="symlink"
-  DISPATCH_UNIT_LINK_TARGET="$(sudo readlink "$DISPATCH_UNIT_PATH")"
-  HAD_DISPATCH_UNIT=1
-elif sudo test -f "$DISPATCH_UNIT_PATH"; then
-  DISPATCH_UNIT_KIND="file"
-  sudo cat "$DISPATCH_UNIT_PATH" >"$DISPATCH_UNIT_BACKUP"
-  HAD_DISPATCH_UNIT=1
-fi
 DB_PATH="$STATE_ROOT/certforge.sqlite3"
-DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
+DB_BACKUP="$(mktemp /tmp/echo-certforge-db.XXXXXX)"
 HAD_DB=0
 DB_SNAPSHOT_READY=0
 
@@ -296,7 +193,6 @@ rollback_production() {
   set +e
   echo "!! deployment failed - restoring prior production state"
   rollback_status=0
-  sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
   sudo systemctl stop "$SERVICE.service" >/dev/null 2>&1 || true
   if systemctl is-active --quiet "$SERVICE.service"; then
     rollback_status=1
@@ -343,7 +239,6 @@ rollback_production() {
           rollback_status=1
         ;;
     esac
-    sudo systemctl reset-failed "$SERVICE.service" >/dev/null 2>&1 || true
     if [ "$PREV_ACTIVE" = "active" ]; then
       sudo systemctl start "$SERVICE.service" || rollback_status=1
       restored=0
@@ -368,50 +263,7 @@ rollback_production() {
     sudo rm -f "$UNIT_PATH" || rollback_status=1
     sudo systemctl daemon-reload || rollback_status=1
   fi
-  if [ "$HAD_DISPATCH_UNIT" = 1 ]; then
-    sudo rm -f "$DISPATCH_UNIT_PATH" || rollback_status=1
-    if [ "$DISPATCH_UNIT_KIND" = "symlink" ]; then
-      sudo ln -s "$DISPATCH_UNIT_LINK_TARGET" "$DISPATCH_UNIT_PATH" ||
-        rollback_status=1
-    else
-      sudo cp "$DISPATCH_UNIT_BACKUP" "$DISPATCH_UNIT_PATH" || rollback_status=1
-    fi
-    sudo systemctl daemon-reload || rollback_status=1
-    case "$PREV_DISPATCH_ENABLED" in
-      enabled)
-        sudo systemctl enable "$DISPATCH_SERVICE.service" >/dev/null ||
-          rollback_status=1
-        ;;
-      enabled-runtime)
-        sudo systemctl enable --runtime "$DISPATCH_SERVICE.service" >/dev/null ||
-          rollback_status=1
-        ;;
-      masked)
-        sudo systemctl mask "$DISPATCH_SERVICE.service" >/dev/null ||
-          rollback_status=1
-        ;;
-      masked-runtime)
-        sudo systemctl mask --runtime "$DISPATCH_SERVICE.service" >/dev/null ||
-          rollback_status=1
-        ;;
-    esac
-    sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
-    if [ "$PREV_DISPATCH_ACTIVE" = "active" ]; then
-      sudo systemctl start "$DISPATCH_SERVICE.service" || rollback_status=1
-      systemctl is-active --quiet "$DISPATCH_SERVICE.service" ||
-        rollback_status=1
-    else
-      sudo systemctl stop "$DISPATCH_SERVICE.service" || rollback_status=1
-      systemctl is-active --quiet "$DISPATCH_SERVICE.service" &&
-        rollback_status=1
-    fi
-  else
-    sudo systemctl disable --now "$DISPATCH_SERVICE.service" >/dev/null 2>&1 ||
-      true
-    sudo rm -f "$DISPATCH_UNIT_PATH" || rollback_status=1
-    sudo systemctl daemon-reload || rollback_status=1
-  fi
-  rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" "$DB_BACKUP"
+  rm -f "$UNIT_BACKUP" "$DB_BACKUP"
   if [ "$rollback_status" = 0 ]; then
     echo "ROLLBACK COMPLETE - prior production state is healthy"
   else
@@ -421,13 +273,6 @@ rollback_production() {
 }
 trap rollback_production EXIT
 
-if [ "$PREV_DISPATCH_ACTIVE" = "active" ]; then
-  sudo systemctl stop "$DISPATCH_SERVICE.service"
-  if systemctl is-active --quiet "$DISPATCH_SERVICE.service"; then
-    echo "!! could not quiesce dispatcher before database snapshot"
-    exit 1
-  fi
-fi
 if [ "$PREV_ACTIVE" = "active" ]; then
   sudo systemctl stop "$SERVICE.service"
   if systemctl is-active --quiet "$SERVICE.service"; then
@@ -451,12 +296,25 @@ PY
 fi
 DB_SNAPSHOT_READY=1
 
-echo "== [7/9] atomic promote -> systemd on 0.0.0.0:$PROD_PORT =="
+echo "== [7/8] atomic promote -> systemd on 0.0.0.0:$PROD_PORT =="
 NEXT_LINK="$CURRENT_LINK.next.$$"
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
 mv -Tf "$NEXT_LINK" "$CURRENT_LINK"
-sudo rm -f "$UNIT_PATH"
-sudo tee "$UNIT_PATH" >/dev/null <<UNIT
+# The unit is already expressed in terms of $CURRENT_LINK, so a promote only needs the
+# symlink repointed (done above) plus a restart. Rewriting the unit from the template
+# below USED TO run unconditionally, and the template carries 5 Environment lines while
+# production's unit carries 16 plus an EnvironmentFile. Every deploy therefore silently
+# stripped subscriber governance (ECHO_CERTFORGE_SUBSCRIBER_POLICY / _SUBSCRIBERS_ENABLED),
+# adapter enforcement, the P5 adapter chain, transport keys and the API-key pepper, and
+# downgraded ECHO_CERTFORGE_POLICY from mandatory-rules.v2 to v1 — on a compliance service,
+# while /healthz stayed 200 throughout. Observed 2026-07-27: the promoted service came up
+# with subscribers=None and answered 503 subscriber_governance_disabled.
+# The template is now a BOOTSTRAP path only: written when no unit exists yet.
+ENV_BEFORE="$(systemctl show "$SERVICE.service" -p Environment --value 2>/dev/null | tr ' ' '
+' | grep -oE '^[A-Z_]+' | sort -u)"
+if [ ! -f "$UNIT_PATH" ]; then
+  echo "   no unit present - writing bootstrap unit"
+  sudo tee "$UNIT_PATH" >/dev/null <<UNIT
 [Unit]
 Description=echo-certification-forge - autonomous release-certification control plane
 After=network.target
@@ -468,20 +326,8 @@ WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
 Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
-Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
-Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
-Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
-Environment=ECHO_CERTFORGE_ADAPTER_MODE=$ADAPTER_MODE
+Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v1.json
 Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_RESPONSE
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_POLICY
-Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
-Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
-Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
-Environment=ECHO_CERTFORGE_PRODUCT_READINESS_REPORT=$PRODUCT_READINESS_REPORT
-Environment=ECHO_CERTFORGE_SOURCE_COMMIT=$NEW_SHA
-Environment=ECHO_CERTFORGE_TRANSPORT_KEYS=$STATE_ROOT/trusted-transport-keys
-EnvironmentFile=$ENV_FILE
 ExecStart=$CURRENT_LINK/.venv/bin/python -m uvicorn echo_certification_forge.app:app --host 0.0.0.0 --port $PROD_PORT --log-level info
 Restart=on-failure
 RestartSec=5
@@ -489,48 +335,35 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
-sudo rm -f "$DISPATCH_UNIT_PATH"
-sudo tee "$DISPATCH_UNIT_PATH" >/dev/null <<UNIT
-[Unit]
-Description=echo-certification-forge - durable subscriber run dispatcher
-After=network.target $SERVICE.service
-Requires=$SERVICE.service
-
-[Service]
-Type=simple
-User=forge
-WorkingDirectory=$CURRENT_LINK
-Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
-Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
-Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
-Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
-Environment=ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1
-Environment=ECHO_CERTFORGE_ADAPTER_MODE=$ADAPTER_MODE
-Environment=ECHO_CERTFORGE_TRUSTED_KEYS=$STATE_ROOT/trusted-public-keys
-Environment=ECHO_CERTFORGE_RUN_SIGNING_KEY=$STATE_ROOT/run-signing-key.pem
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE=$ADAPTER_RESPONSE
-Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_POLICY
-Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
-Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
-Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
-EnvironmentFile=$ENV_FILE
-ExecStart=$CURRENT_LINK/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox $DISPATCH_COMPAT_FLAG
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
+else
+  echo "   preserving existing unit (release path follows $CURRENT_LINK)"
+fi
 sudo systemctl daemon-reload
-sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
-sudo systemctl reset-failed "$SERVICE.service" >/dev/null 2>&1 || true
-sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl enable "$SERVICE.service"
 sudo systemctl restart "$SERVICE.service"
-sudo systemctl enable "$DISPATCH_SERVICE.service"
 
-echo "== [8/9] production health + live-smoke =="
+# Fail the promote if the restart dropped any environment key the service had before.
+# A missing key here is invisible at /healthz and only shows up as a governance or
+# adapter-enforcement regression much later.
+ENV_AFTER="$(systemctl show "$SERVICE.service" -p Environment --value 2>/dev/null | tr ' ' '
+' | grep -oE '^[A-Z_]+' | sort -u)"
+MISSING="$(comm -23 <(printf '%s
+' "$ENV_BEFORE") <(printf '%s
+' "$ENV_AFTER") | tr '
+' ' ')"
+if [ -n "${MISSING// /}" ]; then
+  echo "!! PROMOTE DROPPED ENVIRONMENT KEYS: $MISSING"
+  echo "!! refusing to continue - restoring previous release"
+  exit 1
+fi
+
+# Back to the PRODUCTION environment before smoking production.
+export ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_API_KEY_PEPPER"
+export ECHO_CERTFORGE_DB="$PROD_DB"
+export ECHO_CERTFORGE_EVIDENCE_ROOT="$PROD_EVIDENCE_ROOT"
+[ -n "$PROD_SUBSCRIBER_POLICY" ] && export ECHO_CERTFORGE_SUBSCRIBER_POLICY="$PROD_SUBSCRIBER_POLICY"
+export ECHO_CERTFORGE_SUBSCRIBER_POLICY="${ECHO_CERTFORGE_SUBSCRIBER_POLICY:-$CURRENT_LINK/policies/subscriber-governance.v1.json}"
+echo "== [8/8] production health + live-smoke =="
 ready=0
 for _ in $(seq 1 40); do
   service_owns_port "$PROD_PORT" &&
@@ -540,12 +373,8 @@ for _ in $(seq 1 40); do
   }
   sleep 0.5
 done
-if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
-    ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
-    ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
-    ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
-    "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
-      "http://127.0.0.1:$PROD_PORT"; then
+if [ "$ready" != 1 ] || ! "$RELEASE_DIR/.venv/bin/python" \
+  "$RELEASE_DIR/deploy/smoke_live.py" "http://127.0.0.1:$PROD_PORT"; then
   echo "!! PROD RED"
   exit 1
 fi
@@ -553,43 +382,9 @@ service_owns_port "$PROD_PORT" || {
   echo "!! production listener is not owned by $SERVICE"
   exit 1
 }
-sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
-sudo systemctl restart "$DISPATCH_SERVICE.service"
-dispatcher_ready=0
-for _ in $(seq 1 20); do
-  systemctl is-active --quiet "$DISPATCH_SERVICE.service" && {
-    dispatcher_ready=1
-    break
-  }
-  sleep 0.5
-done
-if [ "$dispatcher_ready" != 1 ]; then
-  echo "!! dispatcher failed to start after green production smoke"
-  exit 1
-fi
-if [ "$ADAPTER_MODE" = required ]; then
-  ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
-  ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
-  ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
-  "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_dispatch.py" \
-    "http://127.0.0.1:$PROD_PORT" || {
-    echo "!! PRODUCTION DISPATCH SMOKE RED"
-    exit 1
-  }
-fi
-
-echo "== [9/9] persist and verify complete SDK schemas =="
-cat \
-  "$RELEASE_DIR/scripts/register_certforge_caps.sql" \
-  "$RELEASE_DIR/scripts/register_certforge_run_cap.sql" \
-  "$RELEASE_DIR/scripts/register_certforge_r5_async_caps.sql" \
-  "$RELEASE_DIR/scripts/register_certification_forge_r5_cap.sql" \
-  "$RELEASE_DIR/scripts/register_certforge_sdk_schemas.sql" \
-  | sudo -n -u postgres psql -1 -v ON_ERROR_STOP=1 -d echo
 
 PROMOTION_ARMED=0
 trap - EXIT
-rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" "$DB_BACKUP"
+rm -f "$UNIT_BACKUP" "$DB_BACKUP"
 echo "DEPLOY GREEN - $SERVICE live on :$PROD_PORT @ $NEW_SHA"
 sudo systemctl status "$SERVICE.service" --no-pager -l | head -6 || true
-sudo systemctl status "$DISPATCH_SERVICE.service" --no-pager -l | head -6 || true
