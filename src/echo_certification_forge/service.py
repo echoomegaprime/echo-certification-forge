@@ -35,6 +35,7 @@ from .intake import (
     submit,
 )
 from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
+from .openapi_auth import install_openapi_auth
 from .policy import RuleManifest
 from .product_readiness import verify_product_readiness
 from .release_hooks import WebhookSecretRegistry
@@ -231,6 +232,9 @@ class OperationalReasonRequest(BaseModel):
 
 def create_app(context: ServiceContext) -> FastAPI:
     app = FastAPI(title="Echo Certification Forge", version=_SERVICE_VERSION)
+    # Publish the auth contract the service actually enforces: securitySchemes,
+    # per-operation security, the declared public exceptions, and 401/403 responses.
+    install_openapi_auth(app, title="Echo Certification Forge", version=_SERVICE_VERSION)
 
     @app.middleware("http")
     async def remove_sdk_control_metadata(request: Request, call_next):
@@ -1882,11 +1886,33 @@ def create_app(context: ServiceContext) -> FastAPI:
         ledger=DeploymentLedger(ledger_path),
         active_rule_manifest_digest=context.manifest.digest,
     )
+    def resolve_deployment_read_tenant(
+        x_tenant_id: str | None,
+        authorization: str | None,
+        permission: str,
+        action: str,
+    ) -> str:
+        """Principal-bound tenant for the P6 deployment READ endpoints.
+
+        These reads used to trust ``X-Tenant-ID`` on its own, so an unauthenticated
+        caller could name any tenant and read that tenant's deployment audit chain,
+        rollback target, and release-gate status; only a *missing* header was
+        rejected. Routing them through ``authorize`` makes the Bearer principal's
+        organization_id authoritative and reduces the header to a hint — the same
+        rule the rest of the API already follows and that the OpenAPI contract
+        already advertised for these operations.
+        """
+        tenant_id, _principal = authorize(
+            x_tenant_id, authorization, Permission(permission), action
+        )
+        return tenant_id
+
     install_deployment_api(
         app,
         controller,
         context.webhook_secrets,
         context.deployment_credentials,
+        resolve_deployment_read_tenant,
     )
 
     return app

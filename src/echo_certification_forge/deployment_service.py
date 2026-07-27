@@ -19,6 +19,24 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+from typing import Protocol
+
+
+class TenantResolver(Protocol):
+    """Resolves the authoritative tenant for a READ from the authenticated principal.
+
+    Implemented by the service layer over its subscriber ``authorize`` helper: the
+    Bearer principal's ``organization_id`` is the tenant, and ``x_tenant_id`` is at
+    most a consistency hint. Raises 401 when no valid principal is presented.
+    """
+
+    def __call__(
+        self,
+        x_tenant_id: str | None,
+        authorization: str | None,
+        permission: str,
+        action: str,
+    ) -> str: ...
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -115,10 +133,28 @@ def install_deployment_api(
     controller: DeploymentAdmissionController,
     webhook_secrets: WebhookSecretRegistry,
     deployment_credentials: WebhookSecretRegistry,
+    resolve_read_tenant: TenantResolver,
 ) -> None:
+    """Install the P6 deployment surface.
+
+    ``resolve_read_tenant`` is REQUIRED and has no default on purpose. The read
+    endpoints below (rollback target, release status, deployment audit) previously
+    derived the tenant from ``tenant(x_tenant_id)`` — i.e. from an unauthenticated,
+    caller-supplied header. Any caller could name any tenant and read that tenant's
+    deployment audit chain, rollback target, and release-gate status; only a
+    *missing* header was rejected. Supplying a resolver is therefore not optional,
+    because a defaulted one would let this regress silently back to header-trust.
+    """
     store = controller.store
 
     def tenant(value: str | None) -> str:
+        """Header-only tenant, for signature-authenticated surfaces ONLY.
+
+        Legitimate where a shared-secret HMAC over the request (deployment
+        credential / webhook secret) already binds the tenant id — there the header
+        is an input to the signature, not the authorization. NEVER use this for a
+        plain read; use ``resolve_read_tenant``.
+        """
         if value is None or not value.strip():
             raise HTTPException(status_code=401, detail="X-Tenant-ID is required")
         return value
@@ -264,8 +300,11 @@ def install_deployment_api(
     def rollback_target(
         environment: str = PRODUCTION,
         x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
     ) -> dict[str, object]:
-        tenant_id = tenant(x_tenant_id)
+        tenant_id = resolve_read_tenant(
+            x_tenant_id, authorization, "release-gates:evaluate", "deployment.rollback_target.read"
+        )
         if environment != PRODUCTION:
             raise HTTPException(status_code=422, detail="only production rollback targets exist")
         target = controller.rollback_target(tenant_id)
@@ -277,8 +316,11 @@ def install_deployment_api(
         environment_identity_digest: str | None = None,
         rule_manifest_digest: str | None = None,
         x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
     ) -> dict[str, object]:
-        tenant_id = tenant(x_tenant_id)
+        tenant_id = resolve_read_tenant(
+            x_tenant_id, authorization, "release-gates:evaluate", "release.status.read"
+        )
         try:
             return controller.release_status(
                 tenant_id,
@@ -293,8 +335,11 @@ def install_deployment_api(
     def deployment_audit(
         artifact_sha256: str | None = None,
         x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
     ) -> dict[str, object]:
-        tenant_id = tenant(x_tenant_id)
+        tenant_id = resolve_read_tenant(
+            x_tenant_id, authorization, "audit:read", "deployment.audit.read"
+        )
         chain_valid, broken_ordinal = controller.ledger.verify_chain()
         records = controller.ledger.trail(tenant_id, artifact_sha256)
         return {
