@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -490,16 +490,34 @@ def create_app(context: ServiceContext) -> FastAPI:
             result.update(context.certification_environment)
         return result
 
+    def require_run_create(
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> tuple[str, SubscriberPrincipal | None]:
+        """Credential check for submit, as a dependency rather than a first line.
+
+        This must NOT be called from inside the endpoint. `submit_certification`
+        takes a `SubmitRequest` body, and FastAPI validates body parameters before
+        it invokes the endpoint -- so an in-handler check never runs on a malformed
+        body and the caller gets 422 instead of 401. That difference is a schema
+        oracle: an anonymous caller can brute-force the request shape by watching
+        which bodies stop returning 422 (measured on sha 3423029: valid body -> 401,
+        invalid body -> 422, no credential in either case).
+
+        As a dependency it is solved and invoked *before* accumulated body-validation
+        errors are raised, so anonymous callers get an identical 401 either way.
+        """
+        return authorize(
+            x_tenant_id, authorization, Permission.RUN_CREATE, "certifications.submit"
+        )
+
     @app.post("/v1/certifications", status_code=201)
     def submit_certification(
         request: SubmitRequest,
         response: Response,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        auth: tuple[str, SubscriberPrincipal | None] = Depends(require_run_create),
     ) -> dict[str, object]:
-        tenant_id, principal = authorize(
-            x_tenant_id, authorization, Permission.RUN_CREATE, "certifications.submit"
-        )
+        tenant_id, principal = auth
         reservation = None
         run_id = request.run_id(context.manifest.digest)
         manifest_request_digest = sha256_json(
