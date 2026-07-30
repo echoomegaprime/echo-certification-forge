@@ -16,6 +16,7 @@ from typing import Any
 
 from .canonical import parse_utc_iso, require_sha256, sha256_bytes
 from .models import SignedVerdictEnvelope
+from .adapter_gate import evaluate_adapter_gate
 from .signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 
 _SCHEMA_VERSION = "1.0.0"
@@ -95,6 +96,7 @@ def verify_product_readiness(
     trusted_keys: TrustedPublicKeyRegistry,
     *,
     expected_source_commit: str | None,
+    adapter_report_path: Path | None,
     now: datetime | None = None,
 ) -> ProductReadinessStatus:
     """Verify a product report against trust roots and the deployed source commit."""
@@ -145,6 +147,28 @@ def verify_product_readiness(
             source_commit or None,
             str(generated_at) if generated_at else None,
             str(expires_at) if expires_at else None,
+        )
+    # ADAPTER QUALIFICATION -- the gate that was structurally absent (P0 #26804 defect 3).
+    # Everything above proves the report is AUTHENTIC (signature, source commit, freshness). None
+    # of it proves the product is READY: _validate_payload requires the payload to *claim*
+    # PRODUCTION_READY and this function then echoed that claim back, so the verdict was an input,
+    # not a computation. gate.evidence_sha256 was never resolved to an artifact and no artifact
+    # contents were ever read. Consequence: the public surface advertised
+    # adapter_qualification=REQUIRED with release_verdict=PRODUCTION_READY while the committed
+    # adapter acceptance report said adapter_gate=BLOCK.
+    #
+    # adapter_report_path is REQUIRED, not optional-with-a-default. An optional gate that a
+    # caller can forget to pass is fail-open by construction, which is the defect class this
+    # closes; passing None yields BLOCK.
+    adapter = evaluate_adapter_gate(adapter_report_path)
+    if not adapter.passed:
+        return ProductReadinessStatus(
+            "NOT_READY",
+            f"adapter_qualification_failed:{adapter.reason}",
+            report_sha256,
+            source_commit,
+            str(generated_at),
+            str(expires_at),
         )
     return ProductReadinessStatus(
         "PRODUCTION_READY",

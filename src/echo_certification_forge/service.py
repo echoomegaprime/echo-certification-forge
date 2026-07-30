@@ -85,6 +85,10 @@ class ServiceContext:
     adapter_mode: str = "pending"
     certification_environment: dict[str, str] | None = None
     product_readiness_report_path: Path | None = None
+    # Adapter acceptance evidence. Deliberately has no usable default: an unset path makes
+    # the adapter gate BLOCK, so a misconfigured deployment fails closed instead of
+    # publishing PRODUCTION_READY over unread evidence (P0 #26804).
+    adapter_acceptance_report_path: Path | None = None
     source_commit: str | None = None
 
     def __post_init__(self) -> None:
@@ -455,6 +459,7 @@ def create_app(context: ServiceContext) -> FastAPI:
             context.product_readiness_report_path,
             context.trusted_keys,
             expected_source_commit=context.source_commit,
+            adapter_report_path=context.adapter_acceptance_report_path,
         )
         result: dict[str, object] = {
             "service": "echo-certification-forge",

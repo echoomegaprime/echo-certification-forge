@@ -55,11 +55,48 @@ def _write_report(path: Path, signer: Ed25519VerdictSigner) -> TrustedPublicKeyR
     return trusted
 
 
-def test_missing_report_fails_closed() -> None:
+def _passing_adapter_report(tmp_path: Path) -> Path:
+    """Adapter evidence that genuinely qualifies.
+
+    Built by RAISING the evidence to policy (maturity STABLE, no critical failures, all cases
+    passed) -- never by lowering a threshold. This is the positive control required by P0 #26804:
+    without it, a gate that blocked unconditionally would pass every negative test while making
+    the product unshippable.
+    """
+    report = {
+        "schema_version": "1.0.0",
+        "adapter_gate": "GO",
+        "adapter_gate_eligible": True,
+        "release_verdict": "READY",
+        "policy": {
+            "required_maturity": "STABLE",
+            "minimum_cases": 3,
+            "required_adapters": [{"adapter_id": "gs343"}, {"adapter_id": "r2d2"}],
+        },
+        "records": [
+            {
+                "identity": {"adapter_id": a, "maturity": "STABLE"},
+                "quality": {
+                    "adapter_id": a,
+                    "passed_cases": 240,
+                    "total_cases": 240,
+                    "critical_failures": [],
+                },
+            }
+            for a in ("gs343", "r2d2")
+        ],
+    }
+    path = tmp_path / "adapter-acceptance-report.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    return path
+
+
+def test_missing_report_fails_closed(tmp_path: Path) -> None:
     status = verify_product_readiness(
         None,
         TrustedPublicKeyRegistry.empty(),
         expected_source_commit=SOURCE_COMMIT,
+        adapter_report_path=_passing_adapter_report(tmp_path),
     )
     assert status.release_verdict == "NOT_READY"
     assert status.reason == "product_readiness_report_missing"
@@ -73,6 +110,7 @@ def test_signed_exact_source_report_promotes_status(tmp_path: Path) -> None:
         trusted,
         expected_source_commit=SOURCE_COMMIT,
         now=datetime(2026, 7, 27, tzinfo=UTC),
+        adapter_report_path=_passing_adapter_report(tmp_path),
     )
     assert status.ready
     assert status.reason == "signed_exact_source_acceptance_verified"
@@ -89,6 +127,7 @@ def test_wrong_commit_tamper_and_untrusted_key_fail_closed(tmp_path: Path) -> No
         trusted,
         expected_source_commit="c" * 40,
         now=datetime(2026, 7, 27, tzinfo=UTC),
+        adapter_report_path=_passing_adapter_report(tmp_path),
     )
     assert wrong_commit.release_verdict == "NOT_READY"
 
@@ -100,6 +139,7 @@ def test_wrong_commit_tamper_and_untrusted_key_fail_closed(tmp_path: Path) -> No
         trusted,
         expected_source_commit=SOURCE_COMMIT,
         now=datetime(2026, 7, 27, tzinfo=UTC),
+        adapter_report_path=_passing_adapter_report(tmp_path),
     )
     assert tampered.reason == "product_readiness_invalid_signature"
 
@@ -109,6 +149,7 @@ def test_wrong_commit_tamper_and_untrusted_key_fail_closed(tmp_path: Path) -> No
         TrustedPublicKeyRegistry.empty(),
         expected_source_commit=SOURCE_COMMIT,
         now=datetime(2026, 7, 27, tzinfo=UTC),
+        adapter_report_path=_passing_adapter_report(tmp_path),
     )
     assert untrusted.reason == "product_readiness_untrusted_signing_key"
 
@@ -122,6 +163,7 @@ def test_expired_or_incomplete_gate_report_is_rejected(tmp_path: Path) -> None:
         trusted,
         expected_source_commit=SOURCE_COMMIT,
         now=datetime(2026, 9, 1, tzinfo=UTC),
+        adapter_report_path=_passing_adapter_report(tmp_path),
     )
     assert expired.release_verdict == "NOT_READY"
     assert expired.reason == "product_readiness_contract_invalid"
