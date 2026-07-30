@@ -6,7 +6,7 @@
 | P2 runner and authenticated transport foundation | COMPLETE | `artifacts/p2_forge_acceptance.json`, `artifacts/p2_forge_acceptance.summary.json`, `artifacts/p2_verification_report.json` | NOT_READY |
 | P3 production evidence custody, anchoring, and signing | COMPLETE | `artifacts/p3_forge_acceptance.json`, `artifacts/p3_forge_acceptance.summary.json`, `artifacts/p3_offline_bundle/`, `artifacts/p3_verification_report.json` | NOT_READY |
 | P4 hostile runner, signer image, and supply-chain qualification | COMPLETE | FORGE gate `passed=True, run_outcome=COMPLETE` — `p4-runs/p4-8c6b30d-rerun7c/p4_hostile_result.json` (2026-07-20, commit 8c6b30d) | NOT_READY |
-| P5 adapter breadth and service modes | COMPLETE | `artifacts/p5-adapter-bundle-20260723/adapter-acceptance-report.json`: adapter gate GO; GS343 and R2D2 both STABLE; 240/240 cases each; zero critical failures. Production bundle re-verified on FORGE. | GATE COMPLETE |
+| P5 adapter breadth and service modes | IN_PROGRESS / BLOCKED | Live ANVIL R5 routing controls PASS for GS343 and R2D2, but the signed acceptance report `artifacts/p5-adapter-bundle-20260723/adapter-acceptance-report.json` **blocks both adapters**: `adapter_gate=BLOCK`, `adapter_gate_eligible=false`, `accepted_adapters=[]`, `policy.required_maturity=STABLE` while GS343 is `EXPERIMENTAL` at 7/11 cases and R2D2 is `EXPERIMENTAL` at 1/3 cases, `release_verdict=NOT_READY`. Routing proof is not an adapter gate. | NOT_READY |
 | P6 deployment enforcement and platform integration | COMPLETE | `artifacts/p6_acceptance.summary.json`: 12/12 executable checks pass, including staging-first promotion, rollback, ledger enforcement, and exact-image isolation. | GATE COMPLETE |
 | P7 subscriber productization and governance | COMPLETE | `artifacts/p7_acceptance_report.json`: all tenant, billing, lease, quota, audit, and dispatch scenarios pass fail-closed. | GATE COMPLETE |
 | SDK final contract | COMPLETE | `contracts/certforge-sdk-capabilities.v1.json`: exactly 60 unique closed-schema Certification Forge capabilities. | GATE COMPLETE |
@@ -78,7 +78,7 @@ attestations fail closed to `NOT_READY`.
 - P3 re-certified 2026-07-18 against corrected `scripts/p3_forge_acceptance.py` (signer-identity fix source identity): passed
 - P4 deterministic closure verifier: passed after P3 re-cert
 - Central `echo.certforge.*`: **REGISTERED + live-verified** (12 caps green, 2026-07-21)
-- P5 adapter gate: **GO** — GS343 and R2D2 are both STABLE at 240/240 with zero critical failures.
+- P5 adapter gate: **BLOCK** — the signed acceptance report records `adapter_gate=BLOCK`, `adapter_gate_eligible=false` and `accepted_adapters=[]`. Against `required_maturity=STABLE`, GS343 and R2D2 are both `EXPERIMENTAL`, passing 7 of 11 and 1 of 3 cases respectively; `release_verdict=NOT_READY`.
 - P6 executable acceptance: **12/12 PASS**.
 - P7 executable acceptance: **all scenarios PASS**.
 - Hosted CI: must be successful for the exact deployed source commit and is checked by the final signer.
