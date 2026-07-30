@@ -93,9 +93,16 @@ def evaluate_adapter_gate(report_path: Path | None) -> AdapterGateResult:
                       reasons=report.get("reasons"))
     if report.get("adapter_gate_eligible") is not True:
         return _block("adapter_gate_not_eligible")
-    verdict = str(report.get("release_verdict", "")).upper()
-    if verdict == "NOT_READY":
-        return _block("adapter_release_verdict_not_ready")
+    # DELIBERATELY NOT CHECKED: report["release_verdict"].
+    #
+    # It is the PRODUCT verdict, not the adapter verdict, and it reads NOT_READY in BOTH the
+    # failing repo copy AND the genuinely-passing bundle that production is bound to
+    # (var/p5-releases/certforge-p5-v2-c696e39-promotion: adapter_gate=GO, both adapters STABLE
+    # 240/240, zero critical failures -- yet release_verdict=NOT_READY).
+    #
+    # An earlier revision of this gate treated it as an adapter signal, which would have BLOCKED
+    # a production deployment whose adapters genuinely qualify. The authoritative adapter signals
+    # are adapter_gate, adapter_gate_eligible, and the per-record policy check below.
 
     # 2. Re-derive from the records against the report's OWN policy, so a hand-edited summary
     #    field cannot carry the verdict on its own.

@@ -168,10 +168,28 @@ def test_missing_policy_blocks(tmp_path):
 @pytest.mark.parametrize("field,value", [
     ("adapter_gate", "BLOCK"),
     ("adapter_gate_eligible", False),
-    ("release_verdict", "NOT_READY"),
 ])
 def test_each_summary_field_is_load_bearing(tmp_path, field, value):
     """Break one field at a time from a KNOWN-PASSING baseline."""
     d = _make_passing(_load_real())
     d[field] = value
     assert not evaluate_adapter_gate(_write(tmp_path, d)).passed
+
+
+def test_release_verdict_is_deliberately_NOT_an_adapter_signal(tmp_path):
+    """report['release_verdict'] is the PRODUCT verdict, not the adapter verdict.
+
+    It reads NOT_READY in BOTH the failing repo copy AND the genuinely-passing bundle that
+    production is bound to (adapter_gate=GO, both adapters STABLE 240/240, zero critical
+    failures). An earlier revision of this gate treated it as an adapter signal, which would
+    have BLOCKED a production deployment whose adapters genuinely qualify.
+
+    This test pins that decision so nobody 'restores' the check and takes production down.
+    """
+    d = _make_passing(_load_real())
+    d["release_verdict"] = "NOT_READY"
+    result = evaluate_adapter_gate(_write(tmp_path, d))
+    assert result.passed, (
+        "release_verdict must not gate adapter qualification -- production's own passing "
+        "bundle carries release_verdict=NOT_READY"
+    )
