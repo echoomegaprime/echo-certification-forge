@@ -56,6 +56,8 @@ _transport_keys = Path(
     )
 )
 _product_readiness_report_value = os.environ.get("ECHO_CERTFORGE_PRODUCT_READINESS_REPORT")
+_adapter_report_value = os.environ.get("ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT")
+_adapter_report = Path(_adapter_report_value) if _adapter_report_value else None
 _product_readiness_report = (
     Path(_product_readiness_report_value) if _product_readiness_report_value else None
 )
@@ -109,6 +111,7 @@ app = create_app(
         adapter_mode=os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending"),
         certification_environment=_load_certification_environment(),
         product_readiness_report_path=_product_readiness_report,
+        adapter_acceptance_report_path=_adapter_report,
         source_commit=_source_commit,
     )
 )

@@ -14,6 +14,46 @@ from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 
 
+
+def _adapter_report(tmp_path, *, passing: bool):
+    """Adapter acceptance evidence for the status tests.
+
+    passing=True RAISES the evidence to policy (STABLE, all cases passed, no critical
+    failures). passing=False mirrors what is actually committed in
+    artifacts/p5-adapter-bundle-20260723: EXPERIMENTAL maturity, partial cases, gate BLOCK.
+    Thresholds are never lowered in either direction.
+    """
+    import json as _json
+
+    maturity = "STABLE" if passing else "EXPERIMENTAL"
+    report = {
+        "schema_version": "1.0.0",
+        "adapter_gate": "GO" if passing else "BLOCK",
+        "adapter_gate_eligible": bool(passing),
+        "release_verdict": "READY" if passing else "NOT_READY",
+        "policy": {
+            "required_maturity": "STABLE",
+            "minimum_cases": 3,
+            "required_adapters": [{"adapter_id": "gs343"}, {"adapter_id": "r2d2"}],
+        },
+        "records": [
+            {
+                "identity": {"adapter_id": a, "maturity": maturity},
+                "quality": {
+                    "adapter_id": a,
+                    "passed_cases": 240 if passing else 7,
+                    "total_cases": 240,
+                    "critical_failures": [] if passing else ["probe_failed:3"],
+                },
+            }
+            for a in ("gs343", "r2d2")
+        ],
+    }
+    path = tmp_path / ("adapter-pass.json" if passing else "adapter-block.json")
+    path.write_text(_json.dumps(report), encoding="utf-8")
+    return path
+
+
 def test_state_machine_rejects_skipped_transition(store, manifest, target, environment):
     store.register_run("cert-state", target, environment, manifest.manifest_id, manifest.digest)
     with pytest.raises(ValueError, match="illegal run-state transition"):
@@ -127,6 +167,7 @@ def test_status_promotes_only_from_signed_exact_source_product_report(
             trusted,
             product_readiness_report_path=report,
             source_commit="a" * 40,
+            adapter_acceptance_report_path=_adapter_report(tmp_path, passing=True),
         )
     )
 
@@ -135,3 +176,39 @@ def test_status_promotes_only_from_signed_exact_source_product_report(
     assert body["release_verdict"] == "PRODUCTION_READY"
     assert body["product_readiness_reason"] == "signed_exact_source_acceptance_verified"
     assert body["source_commit"] == "a" * 40
+
+    # NEGATIVE CONTROL (P0 #26804 acceptance): identical signed report, identical source commit,
+    # only the adapter evidence degraded to what is actually committed today (EXPERIMENTAL /
+    # partial cases). /v1/status MUST refuse to promote. Before this gate existed the endpoint
+    # returned PRODUCTION_READY here, because the verdict was read out of the signed payload
+    # rather than derived from evidence.
+    blocked_app = create_app(
+        ServiceContext(
+            store,
+            manifest,
+            trusted,
+            product_readiness_report_path=report,
+            source_commit="a" * 40,
+            adapter_acceptance_report_path=_adapter_report(tmp_path, passing=False),
+        )
+    )
+    blocked = TestClient(blocked_app).get("/v1/status").json()
+    assert blocked["release_verdict"] == "NOT_READY", (
+        "status promoted despite EXPERIMENTAL adapter evidence -- the adapter gate is not wired "
+        "into the live verdict path"
+    )
+    assert blocked["product_readiness_reason"].startswith("adapter_qualification_failed:")
+
+    # Unconfigured adapter evidence must also block: a deployment that forgets to point at the
+    # report must not publish PRODUCTION_READY over evidence nobody read.
+    unset_app = create_app(
+        ServiceContext(
+            store,
+            manifest,
+            trusted,
+            product_readiness_report_path=report,
+            source_commit="a" * 40,
+        )
+    )
+    unset = TestClient(unset_app).get("/v1/status").json()
+    assert unset["release_verdict"] == "NOT_READY"
