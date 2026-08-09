@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "echo-certification-forge"
-version = "1.0.0"
+version = "1.1.0"
 description = "Deterministic, evidence-backed release authority for EchoForge"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -26,6 +26,7 @@ dev = [
 
 [project.scripts]
 echo-cert = "echo_certification_forge.cli:main"
+echo-cert-graphic = "echo_certification_forge.certificate_graphic:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/echo_certification_forge"]

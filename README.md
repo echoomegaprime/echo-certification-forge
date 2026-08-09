@@ -89,6 +89,26 @@ $env:ECHO_CERTFORGE_EVIDENCE_ROOT = "$PWD\var\evidence"
 
 The API intentionally exposes no signing-key material and no generic command-execution surface.
 
+## Repository certificate graphic
+
+Every repository that passes both release gates receives a self-contained SVG certificate and a
+machine-readable integrity manifest. Rendering is fail-closed: the exact 40-character Git commit
+must have a signed Cert Forge `PRODUCTION_READY` receipt and an 8/8 GitHub App Suite `PASSED`
+receipt. The artwork carries deterministic payload and graphic SHA-256 values, a verification link,
+and elegant visual sign-offs from **ECHO OMEGA PRIME** and **Bob McWilliams II**. The visual names do
+not replace the underlying cryptographic signatures.
+
+```powershell
+python -m echo_certification_forge.certificate_graphic `
+  --input repository-certificate.json `
+  --output repository-certificate.svg `
+  --manifest-output repository-certificate.manifest.json
+```
+
+Publish the SVG, integrity manifest, signed Cert Forge evidence, and GitHub App Suite conformance
+certificate together as immutable release assets. Never render or publish the graphic when either
+gate is incomplete.
+
 ## SDK capability contract
 
 The checked contract at `contracts/certforge-sdk-capabilities.v1.json` covers all 60
