@@ -26,6 +26,7 @@ from .canonical import (
     to_utc_iso,
     utc_now,
 )
+from .models import declared_target_identity_digest, is_exact_git_commit
 
 _ZERO_HASH = "0" * 64
 _TERMINAL_RUN_STATES = ("COMPLETED", "CANCELLED", "INFRASTRUCTURE_FAILURE")
@@ -4788,32 +4789,34 @@ class SubscriberGovernance:
             if row["declared_digest"] != claim.target_identity_digest:
                 raise SubscriberError(409, "worker_target_binding_conflict")
             spec = json.loads(str(row["target_json"]))
-            declared_digest = sha256_json(
-                {
-                    "tenant_id": claim.organization_id,
-                    "target_type": spec.get("type"),
-                    "artifact_sha256": spec.get("artifact_sha256"),
-                    "source_commit": spec.get("source_commit"),
-                    "reference": spec.get("path"),
-                }
+            declared_artifact = spec.get("artifact_sha256")
+            declared_commit = spec.get("source_commit")
+            declared_type = spec.get("type")
+            declared_digest = declared_target_identity_digest(
+                claim.organization_id,
+                str(declared_type),
+                declared_artifact,
+                declared_commit,
+                claim.target_reference,
             )
             if declared_digest != claim.target_identity_digest:
                 raise SubscriberError(409, "worker_declared_target_integrity_failed")
-            expected = (
-                claim.organization_id,
-                spec.get("type"),
-                spec.get("path"),
-                spec.get("artifact_sha256"),
-                spec.get("source_commit"),
+            exact_git_commitment = (
+                declared_type == "git"
+                and declared_artifact is None
+                and is_exact_git_commit(declared_commit)
             )
-            actual = (
-                target_data.get("tenant_id"),
-                target_data.get("target_type"),
-                target_data.get("canonical_ref"),
-                target_data.get("artifact_sha256"),
-                target_data.get("source_commit"),
+            common_identity_matches = (
+                target_data.get("tenant_id") == claim.organization_id
+                and target_data.get("target_type") == declared_type
+                and target_data.get("canonical_ref") == claim.target_reference
+                and target_data.get("source_commit") == declared_commit
             )
-            if actual != expected:
+            artifact_matches = (
+                exact_git_commitment
+                and isinstance(target_data.get("artifact_sha256"), str)
+            ) or target_data.get("artifact_sha256") == declared_artifact
+            if not common_identity_matches or not artifact_matches:
                 raise SubscriberError(409, "worker_target_identity_mismatch")
             if (
                 row["run_target_digest"] != target_identity_digest

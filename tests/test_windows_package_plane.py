@@ -235,6 +235,26 @@ def test_package_intake_dispatches_only_with_both_immutable_pins() -> None:
         target.model_copy(update={"source_commit": None}).worker_spec()
 
 
+def test_git_intake_preserves_exact_commit_for_worker_reconciliation() -> None:
+    source_commit = "a" * 40
+    repository = "https://github.com/echo/example.git"
+    target = SubmitTarget(
+        target_type="git",
+        identity_digest="b" * 64,
+        reference=f"{repository}@{source_commit}",
+        source_commit=source_commit,
+        url=repository,
+        ref=source_commit,
+    )
+
+    assert target.worker_spec() == {
+        "type": "git",
+        "url": repository,
+        "ref": source_commit,
+        "source_commit": source_commit,
+    }
+
+
 def test_static_windows_observer_checks_digest_commit_and_authenticode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

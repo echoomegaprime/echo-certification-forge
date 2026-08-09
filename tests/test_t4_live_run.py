@@ -69,6 +69,7 @@ def test_acquire_git_exact_commit_fetches_and_verifies_sha(tmp_path, monkeypatch
     )
 
     assert acquired.canonical_ref.endswith(f"@{source_commit}")
+    assert acquired.source_commit == source_commit
     assert any("fetch" in command and source_commit in command for command in commands)
     assert any("checkout" in command and "FETCH_HEAD" in command for command in commands)
     assert any("rev-parse" in command and "HEAD" in command for command in commands)

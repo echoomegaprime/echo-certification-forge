@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .canonical import sha256_bytes
+from .models import is_exact_git_commit
 
 
 class AcquisitionError(RuntimeError):
@@ -37,10 +38,10 @@ class AcquiredTarget:
     target_type: str
     canonical_ref: str
     artifact_sha256: str
+    source_commit: str | None = None
 
 
 _OCI_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_GIT_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
 _OCI_NAME_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$")
 _OCI_MANIFEST_ACCEPT = ", ".join(
     (
@@ -396,7 +397,8 @@ def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) ->
                 raise AcquisitionError(f"git {operation} exited {process.returncode}: {detail}")
             return process
 
-        if ref and _GIT_COMMIT_RE.fullmatch(ref):
+        actual_ref: str | None = None
+        if ref and is_exact_git_commit(ref):
             # `git clone --branch <sha>` does not reliably accept raw commit IDs. Fetch the
             # immutable object explicitly, detach at FETCH_HEAD, and then prove HEAD is exact.
             run_git(["init", "--", str(dest)], "init")
@@ -418,12 +420,15 @@ def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) ->
                 clone_args += ["--branch", ref]
             clone_args += ["--", url, str(dest)]
             run_git(clone_args, "clone")
+            actual_ref = run_git(
+                ["-C", str(dest), "rev-parse", "HEAD"], "rev-parse"
+            ).stdout.strip()
         # remove the .git dir so no repo metadata/hooks enter the scanned build context
         git_dir = dest / ".git"
         if git_dir.exists():
             shutil.rmtree(git_dir, ignore_errors=True)
         canonical = f"{url}@{ref}" if ref else url
-        return AcquiredTarget(dest, "git", canonical, _tree_digest(dest))
+        return AcquiredTarget(dest, "git", canonical, _tree_digest(dest), actual_ref)
 
     if target_type == "oci":
         return _acquire_oci(spec, dest, clone_timeout_s)

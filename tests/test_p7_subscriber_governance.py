@@ -24,7 +24,11 @@ from echo_certification_forge.canonical import parse_utc_iso
 from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.intake import SubmitRequest
-from echo_certification_forge.models import RunState, TargetIdentity
+from echo_certification_forge.models import (
+    RunState,
+    TargetIdentity,
+    declared_target_identity_digest,
+)
 from echo_certification_forge.run_worker import _worker_environment, run
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
@@ -2831,6 +2835,103 @@ def test_api_worker_reconciles_canonical_identities_and_rejects_digest_drift(
     assert environment_result["detail"] == "worker_environment_identity_mismatch"
     assert not environment_marker.exists()
     assert store.latest_signed_verdict(environment_run_id, org.organization_id) is None
+
+
+def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
+    tmp_path, manifest, monkeypatch
+):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "git-identity-reconciliation", plan_code="professional")
+    project_response = _project(
+        client,
+        org.organization_id,
+        org.bootstrap_api_key,
+        slug="git-exact-commit",
+    )
+    assert project_response.status_code == 201
+
+    source = tmp_path / "git-exact-source"
+    source.mkdir()
+    marker = tmp_path / "git-exact-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    source_commit = "a" * 40
+    repository = "https://github.com/echo/example.git"
+    reference = f"{repository}@{source_commit}"
+    artifact_sha256 = _digest("verified-acquired-git-tree")
+    environment = _worker_environment()
+    declared_digest = declared_target_identity_digest(
+        org.organization_id,
+        "git",
+        None,
+        source_commit,
+        reference,
+    )
+    payload = {
+        "tenant_id": org.organization_id,
+        "project_id": project_response.json()["project_id"],
+        "target": {
+            "target_type": "git",
+            "identity_digest": declared_digest,
+            "reference": reference,
+            "source_commit": source_commit,
+            "url": repository,
+            "ref": source_commit,
+        },
+        "environment": {
+            "identity_digest": environment.identity_digest,
+            "runner_image_digest": "sha256:" + environment.runner_image_sha256,
+        },
+        "policy_version": manifest.manifest_id,
+        "idempotency_key": "git-identity-reconciliation-0001",
+        "journey": [sys.executable, "journey.py"],
+    }
+    response = client.post(
+        "/v1/certifications",
+        headers=_headers(org.organization_id, org.bootstrap_api_key),
+        json=payload,
+    )
+    assert response.status_code == 201, response.text
+    request = SubmitRequest.model_validate(payload)
+    assert request.target.worker_spec()["source_commit"] == source_commit
+    monkeypatch.setattr(
+        "echo_certification_forge.run_worker.acquire_target",
+        lambda _spec, _dest: AcquiredTarget(
+            source,
+            "git",
+            reference,
+            artifact_sha256,
+            source_commit,
+        ),
+    )
+
+    result = run(
+        response.json()["run_id"],
+        org.organization_id,
+        request.target.worker_spec(),
+        store=store,
+        manifest=manifest,
+        signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+        journey=[sys.executable, "journey.py"],
+    )
+
+    persisted = store.get_run(response.json()["run_id"], org.organization_id)
+    expected_target = TargetIdentity(
+        tenant_id=org.organization_id,
+        target_type="git",
+        canonical_ref=reference,
+        artifact_sha256=artifact_sha256,
+        source_commit=source_commit,
+    )
+    assert result["state"] == RunState.COMPLETED.value
+    assert result["signed"] is True
+    assert marker.exists()
+    assert json.loads(persisted["target_identity_json"]) == expected_target.to_dict()
+    assert persisted["target_identity_digest"] == expected_target.identity_digest
 
 
 def test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalizes(

@@ -36,7 +36,12 @@ from echo_certification_forge.deployment_service import (
     sign_deployment_request,
 )
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
-from echo_certification_forge.models import EnvironmentIdentity, RunState, TargetIdentity
+from echo_certification_forge.models import (
+    EnvironmentIdentity,
+    RunState,
+    TargetIdentity,
+    declared_target_identity_digest,
+)
 from echo_certification_forge.release_hooks import (
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
@@ -652,6 +657,66 @@ def test_reconciliation_refuses_mismatched_artifact_and_run_stays_undeployable(
     response = _post_signed(client, f"/v1/certifications/{run_id}/bindings")
     assert response.status_code == 409
     assert response.json()["detail"] == "signed_verdict_missing"
+
+
+def test_reconciliation_rejects_mutable_or_different_git_identity_without_artifact(
+    store, manifest, environment
+):
+    repository = "https://github.com/echo/example.git"
+    mutable_reference = f"{repository}@main"
+    mutable_run = "cert-git-mutable-ref"
+    store.register_declared_run(
+        run_id=mutable_run,
+        tenant_id=TENANT,
+        target_type="git",
+        target_identity_digest=declared_target_identity_digest(
+            TENANT, "git", None, "main", mutable_reference
+        ),
+        target_reference=mutable_reference,
+        environment_identity_digest=environment.identity_digest,
+        environment_json=environment.to_dict(),
+        policy_version=manifest.manifest_id,
+        manifest_id=manifest.manifest_id,
+        manifest_digest=manifest.digest,
+        declared_source_commit="main",
+    )
+    mutable_target = TargetIdentity(
+        tenant_id=TENANT,
+        target_type="git",
+        canonical_ref=mutable_reference,
+        artifact_sha256=_digest("mutable-tree"),
+        source_commit="a" * 40,
+    )
+    with pytest.raises(ValueError, match="target_declared_artifact_commitment_missing"):
+        store.reconcile_declared_target(mutable_run, TENANT, mutable_target, environment)
+
+    exact_commit = "b" * 40
+    exact_reference = f"{repository}@{exact_commit}"
+    exact_run = "cert-git-reference-drift"
+    store.register_declared_run(
+        run_id=exact_run,
+        tenant_id=TENANT,
+        target_type="git",
+        target_identity_digest=declared_target_identity_digest(
+            TENANT, "git", None, exact_commit, exact_reference
+        ),
+        target_reference=exact_reference,
+        environment_identity_digest=environment.identity_digest,
+        environment_json=environment.to_dict(),
+        policy_version=manifest.manifest_id,
+        manifest_id=manifest.manifest_id,
+        manifest_digest=manifest.digest,
+        declared_source_commit=exact_commit,
+    )
+    drifted_target = TargetIdentity(
+        tenant_id=TENANT,
+        target_type="git",
+        canonical_ref=f"{repository}@{'c' * 40}",
+        artifact_sha256=_digest("different-tree"),
+        source_commit="c" * 40,
+    )
+    with pytest.raises(ValueError, match="target_declared_reference_mismatch"):
+        store.reconcile_declared_target(exact_run, TENANT, drifted_target, environment)
 
 
 def test_reconciliation_window_closes_at_acquisition(client, store, manifest, environment):
