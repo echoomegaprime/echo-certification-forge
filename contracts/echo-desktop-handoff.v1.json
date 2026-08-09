@@ -177,7 +177,7 @@
   },
   "independent_bootstrap": {
     "artifact": "artifacts/bootstrap_cert.json",
-    "sha256": "7f27085ac7dec6628cd8e156d725547621fc4849930fb6f429cf410d25d278b8",
+    "sha256": "0b3e54f2c76198ed0c9370d25229258ac99c95dc5c05de6a25e9e13b4ab3d7c1",
     "verdict": "CERTIFIED",
     "bootstrap_key_is_distinct_from_run_signer": true
   },
