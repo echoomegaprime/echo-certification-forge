@@ -19,6 +19,8 @@ ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
 TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
 DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
+RELEASE_DROPIN="/etc/systemd/system/$SERVICE.service.d/10-release.conf"
+DISPATCH_RELEASE_DROPIN="/etc/systemd/system/$DISPATCH_SERVICE.service.d/10-release.conf"
 ENV_FILE="${CERTFORGE_ENV_FILE:-/home/forge/.config/echo/certforge.env}"
 GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
 LOCK_FILE="${CERTFORGE_DEPLOY_LOCK:-/run/lock/echo-certforge-deploy.lock}"
@@ -266,8 +268,12 @@ PREV_DISPATCH_ENABLED="$(systemctl is-enabled "$DISPATCH_SERVICE.service" 2>/dev
 PREV_DISPATCH_ACTIVE="$(systemctl is-active "$DISPATCH_SERVICE.service" 2>/dev/null || true)"
 UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge.service.$RELEASE_ID"
 DISPATCH_UNIT_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-dispatcher.service.$RELEASE_ID"
+RELEASE_DROPIN_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-release-dropin.$RELEASE_ID"
+DISPATCH_RELEASE_DROPIN_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-dispatch-release-dropin.$RELEASE_ID"
 HAD_UNIT=0
 HAD_DISPATCH_UNIT=0
+HAD_RELEASE_DROPIN=0
+HAD_DISPATCH_RELEASE_DROPIN=0
 UNIT_KIND="missing"
 DISPATCH_UNIT_KIND="missing"
 UNIT_LINK_TARGET=""
@@ -289,6 +295,14 @@ elif sudo test -f "$DISPATCH_UNIT_PATH"; then
   DISPATCH_UNIT_KIND="file"
   sudo cat "$DISPATCH_UNIT_PATH" >"$DISPATCH_UNIT_BACKUP"
   HAD_DISPATCH_UNIT=1
+fi
+if sudo test -f "$RELEASE_DROPIN"; then
+  sudo cat "$RELEASE_DROPIN" >"$RELEASE_DROPIN_BACKUP"
+  HAD_RELEASE_DROPIN=1
+fi
+if sudo test -f "$DISPATCH_RELEASE_DROPIN"; then
+  sudo cat "$DISPATCH_RELEASE_DROPIN" >"$DISPATCH_RELEASE_DROPIN_BACKUP"
+  HAD_DISPATCH_RELEASE_DROPIN=1
 fi
 DB_PATH="$STATE_ROOT/certforge.sqlite3"
 DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
@@ -326,6 +340,19 @@ rollback_production() {
       mv -Tf "$ROLLBACK_LINK" "$CURRENT_LINK" || rollback_status=1
   else
     rm -f "$CURRENT_LINK" || rollback_status=1
+  fi
+  sudo install -d -m 0755 "$(dirname "$RELEASE_DROPIN")" || rollback_status=1
+  sudo install -d -m 0755 "$(dirname "$DISPATCH_RELEASE_DROPIN")" || rollback_status=1
+  if [ "$HAD_RELEASE_DROPIN" = 1 ]; then
+    sudo cp "$RELEASE_DROPIN_BACKUP" "$RELEASE_DROPIN" || rollback_status=1
+  else
+    sudo rm -f "$RELEASE_DROPIN" || rollback_status=1
+  fi
+  if [ "$HAD_DISPATCH_RELEASE_DROPIN" = 1 ]; then
+    sudo cp "$DISPATCH_RELEASE_DROPIN_BACKUP" "$DISPATCH_RELEASE_DROPIN" ||
+      rollback_status=1
+  else
+    sudo rm -f "$DISPATCH_RELEASE_DROPIN" || rollback_status=1
   fi
   if [ "$HAD_UNIT" = 1 ]; then
     sudo rm -f "$UNIT_PATH" || rollback_status=1
@@ -419,7 +446,8 @@ rollback_production() {
     sudo rm -f "$DISPATCH_UNIT_PATH" || rollback_status=1
     sudo systemctl daemon-reload || rollback_status=1
   fi
-  rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" "$DB_BACKUP"
+  rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" \
+    "$RELEASE_DROPIN_BACKUP" "$DISPATCH_RELEASE_DROPIN_BACKUP" "$DB_BACKUP"
   if [ "$rollback_status" = 0 ]; then
     echo "ROLLBACK COMPLETE - prior production state is healthy"
   else
@@ -497,6 +525,13 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
+sudo install -d -m 0755 "$(dirname "$RELEASE_DROPIN")"
+sudo tee "$RELEASE_DROPIN" >/dev/null <<UNIT
+# Managed by deploy/deploy_forge.sh - exact release binding.
+[Service]
+Environment=ECHO_CERTFORGE_SOURCE_COMMIT=$NEW_SHA
+Environment=ECHO_CERTFORGE_PRODUCT_READINESS_REPORT=$PRODUCT_READINESS_REPORT
+UNIT
 sudo rm -f "$DISPATCH_UNIT_PATH"
 sudo tee "$DISPATCH_UNIT_PATH" >/dev/null <<UNIT
 [Unit]
@@ -529,6 +564,13 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+UNIT
+sudo install -d -m 0755 "$(dirname "$DISPATCH_RELEASE_DROPIN")"
+sudo tee "$DISPATCH_RELEASE_DROPIN" >/dev/null <<UNIT
+# Managed by deploy/deploy_forge.sh - exact release binding.
+[Service]
+Environment=ECHO_CERTFORGE_SOURCE_COMMIT=$NEW_SHA
+Environment=ECHO_CERTFORGE_PRODUCT_READINESS_REPORT=$PRODUCT_READINESS_REPORT
 UNIT
 sudo systemctl daemon-reload
 sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
