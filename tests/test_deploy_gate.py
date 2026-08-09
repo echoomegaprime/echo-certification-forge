@@ -4,6 +4,9 @@ from pathlib import Path
 DEPLOY_SCRIPT = (
     Path(__file__).resolve().parents[1] / "deploy" / "deploy_forge.sh"
 ).read_text(encoding="utf-8")
+CI_WORKFLOW = (
+    Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+).read_text(encoding="utf-8")
 
 
 def test_deploy_gate_locks_before_fetching_or_building() -> None:
@@ -11,6 +14,10 @@ def test_deploy_gate_locks_before_fetching_or_building() -> None:
     fetch = DEPLOY_SCRIPT.index('git "${GITC[@]}" fetch')
     assert lock < fetch
     assert 'exec 9>"$LOCK_FILE"' in DEPLOY_SCRIPT
+
+
+def test_ci_uses_the_repo_scoped_certforge_runner() -> None:
+    assert "runs-on: [self-hosted, linux, x64, certforge-ci]" in CI_WORKFLOW
 
 
 def test_deploy_gate_can_pin_the_hosted_ci_approved_commit() -> None:
