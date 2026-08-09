@@ -1,12 +1,20 @@
 """Immutable domain models and public verdict vocabulary."""
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 from .canonical import require_identifier, require_sha256, sha256_json, to_utc_iso
+
+_EXACT_GIT_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
+
+
+def is_exact_git_commit(value: object) -> bool:
+    """Return whether *value* is a full SHA-1 or SHA-256 Git object id."""
+    return isinstance(value, str) and _EXACT_GIT_COMMIT_RE.fullmatch(value) is not None
 
 
 class RunOutcome(StrEnum):

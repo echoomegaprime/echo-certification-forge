@@ -61,18 +61,28 @@ class SubmitTarget(BaseModel):
                 spec = {"type": "git", "url": self.url}
                 if self.ref is not None:
                     spec["ref"] = self.ref
+                if self.artifact_sha256 is not None:
+                    spec["artifact_sha256"] = self.artifact_sha256
+                if self.source_commit is not None:
+                    spec["source_commit"] = self.source_commit
                 return spec
             reference = self.reference
             separator = reference.rfind("@")
             if separator > reference.rfind("/") and not (
                 reference.startswith("git@") and reference.count("@") == 1
             ):
-                return {
+                spec = {
                     "type": "git",
                     "url": reference[:separator],
                     "ref": reference[separator + 1 :],
                 }
-            return {"type": "git", "url": reference}
+            else:
+                spec = {"type": "git", "url": reference}
+            if self.artifact_sha256 is not None:
+                spec["artifact_sha256"] = self.artifact_sha256
+            if self.source_commit is not None:
+                spec["source_commit"] = self.source_commit
+            return spec
         if self.target_type == "package":
             if self.artifact_sha256 is None or self.source_commit is None:
                 raise ValueError("package target requires artifact_sha256 and source_commit")

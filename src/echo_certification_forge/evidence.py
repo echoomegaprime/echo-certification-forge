@@ -30,6 +30,7 @@ from .models import (
     VerdictLifecycleEvent,
     VerificationReport,
     declared_target_identity_digest,
+    is_exact_git_commit,
 )
 from .state_machine import validate_transition
 
@@ -413,19 +414,32 @@ class EvidenceStore:
         if target.tenant_id != tenant_id or target_data.get("tenant_id") != tenant_id:
             raise ValueError("target_reconciliation_tenant_mismatch")
         declared_artifact = target_data.get("declared_artifact_sha256")
-        if not isinstance(declared_artifact, str) or not declared_artifact:
-            raise ValueError("target_declared_artifact_commitment_missing")
-        if declared_artifact != target.artifact_sha256:
-            raise ValueError("target_declared_artifact_mismatch")
         declared_commit = target_data.get("declared_source_commit")
-        if declared_commit is not None and declared_commit != target.source_commit:
+        declared_type = str(target_data.get("target_type"))
+        declared_reference = str(target_data.get("reference"))
+        exact_git_commitment = (
+            declared_type == "git"
+            and is_exact_git_commit(declared_commit)
+            and target.target_type == "git"
+        )
+        if not isinstance(declared_artifact, str) or not declared_artifact:
+            if not exact_git_commitment:
+                raise ValueError("target_declared_artifact_commitment_missing")
+            if target.canonical_ref != declared_reference:
+                raise ValueError("target_declared_reference_mismatch")
+        elif declared_artifact != target.artifact_sha256:
+            raise ValueError("target_declared_artifact_mismatch")
+        if declared_commit is not None and (
+            target.source_commit is None
+            or str(declared_commit).lower() != target.source_commit.lower()
+        ):
             raise ValueError("target_declared_source_commit_mismatch")
         recomputed = declared_target_identity_digest(
             tenant_id,
-            str(target_data.get("target_type")),
+            declared_type,
             declared_artifact,
             declared_commit,
-            str(target_data.get("reference")),
+            declared_reference,
         )
         if recomputed != target_data.get("declared_identity_digest") or recomputed != str(
             row["target_identity_digest"]

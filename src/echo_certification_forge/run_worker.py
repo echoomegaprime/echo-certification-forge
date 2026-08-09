@@ -323,12 +323,13 @@ def run(
         if isinstance(raw_commit, str) and raw_commit:
             declared_commit = raw_commit
 
+    acquired_source_commit = getattr(acquired, "source_commit", None)
     target = TargetIdentity(
         tenant_id=tenant,
         target_type=acquired.target_type,
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
-        source_commit=declared_commit,
+        source_commit=acquired_source_commit or declared_commit,
     )
     adapter_digest = adapter_set_digest(adapter_records) if adapter_records is not None else None
     adapter_response_content = (
@@ -394,9 +395,16 @@ def run(
             }
 
     # Subscriber governance performs its own transactional exact-identity reconciliation
-    # immediately before execution. If an intake also carries the P6 artifact commitment,
-    # validate it first so both enforcement layers agree before authorization.
-    if subscribers is not None and target_data.get("declared_artifact_sha256") is not None:
+    # immediately before execution. A pre-acquisition target is admissible only when it
+    # commits either to an artifact digest or to an exact immutable Git object id.
+    needs_target_reconciliation = (
+        target_data.get("declared_artifact_sha256") is not None
+        or (
+            target_data.get("target_type") == "git"
+            and target_data.get("declared_source_commit") is not None
+        )
+    )
+    if subscribers is not None and needs_target_reconciliation:
         try:
             store.reconcile_declared_target(run_id, tenant, target, environment)
             if claim is None:
