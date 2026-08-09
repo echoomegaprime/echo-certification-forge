@@ -67,6 +67,16 @@ def test_deploy_gate_updates_and_rolls_back_release_binding_dropins() -> None:
     assert 'sudo rm -f "$DISPATCH_RELEASE_DROPIN"' in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_persists_adapter_acceptance_report_in_all_runtimes() -> None:
+    assert (
+        'ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT="$ADAPTER_ACCEPTANCE_REPORT" \\'
+        in DEPLOY_SCRIPT
+    )
+    assert DEPLOY_SCRIPT.count(
+        "Environment=ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT=$ADAPTER_ACCEPTANCE_REPORT"
+    ) == 2
+
+
 def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
     rollback_trap = DEPLOY_SCRIPT.index("trap rollback_production EXIT")
     quiesce = DEPLOY_SCRIPT.index(
