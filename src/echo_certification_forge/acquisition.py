@@ -40,6 +40,7 @@ class AcquiredTarget:
 
 
 _OCI_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_GIT_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
 _OCI_NAME_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$")
 _OCI_MANIFEST_ACCEPT = ", ".join(
     (
@@ -375,23 +376,48 @@ def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) ->
         if dest.exists():
             shutil.rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        cmd = [
+        git_base = [
             "git",
             "-c", "core.hooksPath=/dev/null",     # never run target-supplied hooks
             "-c", "protocol.file.allow=never",    # block file:// submodule/exfil tricks
             "-c", "advice.detachedHead=false",
-            "clone", "--depth", "1", "--no-tags", "--single-branch",
         ]
-        if ref:
-            cmd += ["--branch", ref]
-        cmd += ["--", url, str(dest)]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True,
-                                  timeout=clone_timeout_s, shell=False, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise AcquisitionError(f"git clone failed: {type(exc).__name__}") from exc
-        if proc.returncode != 0:
-            raise AcquisitionError(f"git clone exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
+
+        def run_git(arguments: list[str], operation: str) -> subprocess.CompletedProcess[str]:
+            try:
+                process = subprocess.run(
+                    [*git_base, *arguments], capture_output=True, text=True,
+                    timeout=clone_timeout_s, shell=False, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise AcquisitionError(f"git {operation} failed: {type(exc).__name__}") from exc
+            if process.returncode != 0:
+                detail = process.stderr.strip()[-300:]
+                raise AcquisitionError(f"git {operation} exited {process.returncode}: {detail}")
+            return process
+
+        if ref and _GIT_COMMIT_RE.fullmatch(ref):
+            # `git clone --branch <sha>` does not reliably accept raw commit IDs. Fetch the
+            # immutable object explicitly, detach at FETCH_HEAD, and then prove HEAD is exact.
+            run_git(["init", "--", str(dest)], "init")
+            run_git(["-C", str(dest), "remote", "add", "origin", url], "remote-add")
+            run_git(
+                ["-C", str(dest), "fetch", "--depth", "1", "--no-tags", "origin", ref],
+                "fetch-exact-commit",
+            )
+            run_git(["-C", str(dest), "checkout", "--detach", "FETCH_HEAD"], "checkout")
+            actual_ref = run_git(["-C", str(dest), "rev-parse", "HEAD"], "rev-parse").stdout.strip()
+            if actual_ref.lower() != ref.lower():
+                shutil.rmtree(dest, ignore_errors=True)
+                raise AcquisitionError(
+                    f"git revision mismatch: requested {ref.lower()}, acquired {actual_ref.lower()}"
+                )
+        else:
+            clone_args = ["clone", "--depth", "1", "--no-tags", "--single-branch"]
+            if ref:
+                clone_args += ["--branch", ref]
+            clone_args += ["--", url, str(dest)]
+            run_git(clone_args, "clone")
         # remove the .git dir so no repo metadata/hooks enter the scanned build context
         git_dir = dest / ".git"
         if git_dir.exists():

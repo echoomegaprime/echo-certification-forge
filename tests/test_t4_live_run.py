@@ -7,6 +7,7 @@ verdict. Real store, real Ed25519, real subprocess journey, real deploy-gate. No
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +45,52 @@ def test_acquire_rejects_unknown_type_and_bad_git(tmp_path):
     with pytest.raises(AcquisitionError):
         acquire_target({"type": "git", "url": "https://invalid.invalid/nope.git"},
                        tmp_path / "d", clone_timeout_s=15.0)
+
+
+def test_acquire_git_exact_commit_fetches_and_verifies_sha(tmp_path, monkeypatch):
+    """A commit SHA is fetched as an object, never misused as a clone --branch value."""
+    source_commit = "a" * 40
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        destination = tmp_path / "exact"
+        if "init" in command:
+            (destination / ".git").mkdir(parents=True)
+        if "checkout" in command:
+            (destination / "README.md").write_text("exact revision\n", encoding="utf-8")
+        stdout = f"{source_commit}\n" if "rev-parse" in command else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", fake_run)
+    acquired = acquire_target(
+        {"type": "git", "url": "https://github.com/example/project.git", "ref": source_commit},
+        tmp_path / "exact",
+    )
+
+    assert acquired.canonical_ref.endswith(f"@{source_commit}")
+    assert any("fetch" in command and source_commit in command for command in commands)
+    assert any("checkout" in command and "FETCH_HEAD" in command for command in commands)
+    assert any("rev-parse" in command and "HEAD" in command for command in commands)
+    assert not any("clone" in command and "--branch" in command for command in commands)
+
+
+def test_acquire_git_exact_commit_fails_closed_on_revision_mismatch(tmp_path, monkeypatch):
+    source_commit = "a" * 40
+
+    def fake_run(command, **_kwargs):
+        destination = tmp_path / "mismatch"
+        if "init" in command:
+            (destination / ".git").mkdir(parents=True)
+        stdout = f"{'b' * 40}\n" if "rev-parse" in command else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", fake_run)
+    with pytest.raises(AcquisitionError, match="revision mismatch"):
+        acquire_target(
+            {"type": "git", "url": "https://github.com/example/project.git", "ref": source_commit},
+            tmp_path / "mismatch",
+        )
 
 
 # --- run-worker --------------------------------------------------------------------------------
