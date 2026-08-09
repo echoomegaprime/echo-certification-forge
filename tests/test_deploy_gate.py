@@ -42,6 +42,31 @@ def test_deploy_gate_verifies_readiness_against_deployed_adapter_report() -> Non
     assert "adapter_report_path=Path(sys.argv[4])" in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_updates_and_rolls_back_release_binding_dropins() -> None:
+    assert (
+        'RELEASE_DROPIN="/etc/systemd/system/$SERVICE.service.d/10-release.conf"'
+        in DEPLOY_SCRIPT
+    )
+    assert (
+        'DISPATCH_RELEASE_DROPIN="/etc/systemd/system/$DISPATCH_SERVICE.service.d/'
+        '10-release.conf"'
+        in DEPLOY_SCRIPT
+    )
+    snapshot = DEPLOY_SCRIPT.index('sudo cat "$RELEASE_DROPIN" >"$RELEASE_DROPIN_BACKUP"')
+    promotion = DEPLOY_SCRIPT.index('sudo tee "$RELEASE_DROPIN" >/dev/null <<UNIT')
+    rollback = DEPLOY_SCRIPT.index(
+        'sudo cp "$RELEASE_DROPIN_BACKUP" "$RELEASE_DROPIN"'
+    )
+    assert snapshot < promotion
+    assert rollback < promotion
+    assert DEPLOY_SCRIPT.count("Environment=ECHO_CERTFORGE_SOURCE_COMMIT=$NEW_SHA") >= 3
+    assert DEPLOY_SCRIPT.count(
+        "Environment=ECHO_CERTFORGE_PRODUCT_READINESS_REPORT=$PRODUCT_READINESS_REPORT"
+    ) >= 2
+    assert 'sudo rm -f "$RELEASE_DROPIN"' in DEPLOY_SCRIPT
+    assert 'sudo rm -f "$DISPATCH_RELEASE_DROPIN"' in DEPLOY_SCRIPT
+
+
 def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
     rollback_trap = DEPLOY_SCRIPT.index("trap rollback_production EXIT")
     quiesce = DEPLOY_SCRIPT.index(
