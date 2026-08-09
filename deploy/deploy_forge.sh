@@ -92,12 +92,14 @@ ADAPTER_RESPONSE=""
 ADAPTER_POLICY=""
 ADAPTER_REGISTRY=""
 ADAPTER_SIGNING_KEY=""
+ADAPTER_ACCEPTANCE_REPORT=""
 DISPATCH_COMPAT_FLAG="--non-production-compat"
 if [ "$ADAPTER_MODE" = required ]; then
   ADAPTER_RESPONSE="$ADAPTER_DIR/adapter-bundle-response.json"
   ADAPTER_POLICY="$ADAPTER_DIR/adapter-policy.json"
   ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
   ADAPTER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
+  ADAPTER_ACCEPTANCE_REPORT="${ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT:-${ADAPTER_RESPONSE%/*}/adapter-acceptance-report.json}"
   for required_adapter_input in \
     "$ADAPTER_RESPONSE" "$ADAPTER_POLICY" "$ADAPTER_REGISTRY" "$ADAPTER_SIGNING_KEY"; do
     test -f "$required_adapter_input" || {
@@ -105,6 +107,10 @@ if [ "$ADAPTER_MODE" = required ]; then
       exit 1
     }
   done
+  test -f "$ADAPTER_ACCEPTANCE_REPORT" || {
+    echo "!! required adapter acceptance report missing: $ADAPTER_ACCEPTANCE_REPORT"
+    exit 1
+  }
   DISPATCH_COMPAT_FLAG=""
 else
   echo "   adapter qualification pending: dispatcher remains fail-closed"
@@ -128,7 +134,8 @@ test -f "$PRODUCT_READINESS_REPORT" || {
   exit 1
 }
 "$RELEASE_DIR/.venv/bin/python" - "$PRODUCT_READINESS_REPORT" \
-  "$STATE_ROOT/trusted-public-keys" "$NEW_SHA" <<'PY'
+  "$STATE_ROOT/trusted-public-keys" "$NEW_SHA" \
+  "$ADAPTER_ACCEPTANCE_REPORT" <<'PY'
 from pathlib import Path
 import sys
 
@@ -139,6 +146,7 @@ status = verify_product_readiness(
     Path(sys.argv[1]),
     TrustedPublicKeyRegistry.from_directory(Path(sys.argv[2])),
     expected_source_commit=sys.argv[3],
+    adapter_report_path=Path(sys.argv[4]),
 )
 if not status.ready:
     raise SystemExit(f"product readiness verification failed: {status.reason}")
