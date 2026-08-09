@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose an evidence-backed improvement
+title: "feature: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and operator impact
+      description: Describe the current limitation without prescribing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+      description: List executable journeys and negative paths that would prove completion.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Security and compatibility boundaries
+      description: Identify signing, evidence, tenant, API, deployment, or migration implications.
+    validations:
+      required: true

@@ -1,5 +1,12 @@
 # Echo Certification Forge
 
+[![CI](https://github.com/echoomegaprime/echo-certification-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/echoomegaprime/echo-certification-forge/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12%2B-4b8bbe)
+![Release gate](https://img.shields.io/badge/release%20gate-fail--closed-caa85e)
+![License](https://img.shields.io/badge/license-proprietary-59636e)
+
+[Architecture](docs/ARCHITECTURE.md) · [Operations](docs/OPERATIONS.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
 Echo Certification Forge is a deterministic, evidence-backed release authority for EchoForge. Every run begins at `NOT_READY`. Exact target, environment, policy, evidence, anchor, key, and lifecycle identities must verify before any signed verdict can be trusted.
 
 ## Release state
