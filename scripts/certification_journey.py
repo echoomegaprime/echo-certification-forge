@@ -8,10 +8,10 @@ only the checked-out source revision and a disposable output directory.
 """
 from __future__ import annotations
 
-import compileall
 import json
 import sys
 import tempfile
+import tokenize
 from pathlib import Path
 
 
@@ -46,7 +46,11 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> int:
     require(__version__ == "1.1.0", "package version is not synchronized")
-    require(compileall.compile_dir(SRC, quiet=1), "source compilation failed")
+    python_files = sorted(SRC.rglob("*.py"))
+    require(bool(python_files), "source tree contains no Python modules")
+    for path in python_files:
+        with tokenize.open(path) as handle:
+            compile(handle.read(), path.as_posix(), "exec")
 
     apps = json.loads((ROOT / ".echo" / "apps.json").read_text(encoding="utf-8"))
     enabled = {
@@ -101,7 +105,7 @@ def main() -> int:
         "apps": "8/8",
         "capabilities": len(capabilities),
         "certificate_renderer": "PASS",
-        "compile": "PASS",
+        "compiled_modules": len(python_files),
         "version": __version__,
     }, sort_keys=True))
     return 0
