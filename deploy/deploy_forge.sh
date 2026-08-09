@@ -15,6 +15,7 @@ RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-rel
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
+ADAPTER_ACCEPTANCE_REPORT="$ADAPTER_DIR/adapter-acceptance-report.json"
 ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
 TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
@@ -99,7 +100,8 @@ if [ "$ADAPTER_MODE" = required ]; then
   ADAPTER_REGISTRY="$ADAPTER_DIR/trusted-adapter-registry.json"
   ADAPTER_SIGNING_KEY="$ADAPTER_DIR/adapter-runner-signing-key.pem"
   for required_adapter_input in \
-    "$ADAPTER_RESPONSE" "$ADAPTER_POLICY" "$ADAPTER_REGISTRY" "$ADAPTER_SIGNING_KEY"; do
+    "$ADAPTER_RESPONSE" "$ADAPTER_POLICY" "$ADAPTER_REGISTRY" \
+    "$ADAPTER_SIGNING_KEY" "$ADAPTER_ACCEPTANCE_REPORT"; do
     test -f "$required_adapter_input" || {
       echo "!! required adapter input missing: $(basename "$required_adapter_input")"
       exit 1
@@ -128,7 +130,8 @@ test -f "$PRODUCT_READINESS_REPORT" || {
   exit 1
 }
 "$RELEASE_DIR/.venv/bin/python" - "$PRODUCT_READINESS_REPORT" \
-  "$STATE_ROOT/trusted-public-keys" "$NEW_SHA" <<'PY'
+  "$STATE_ROOT/trusted-public-keys" "$NEW_SHA" \
+  "$ADAPTER_ACCEPTANCE_REPORT" <<'PY'
 from pathlib import Path
 import sys
 
@@ -139,6 +142,7 @@ status = verify_product_readiness(
     Path(sys.argv[1]),
     TrustedPublicKeyRegistry.from_directory(Path(sys.argv[2])),
     expected_source_commit=sys.argv[3],
+    adapter_report_path=Path(sys.argv[4]),
 )
 if not status.ready:
     raise SystemExit(f"product readiness verification failed: {status.reason}")
@@ -200,6 +204,7 @@ ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_REGISTRY" \
 ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY="$ADAPTER_SIGNING_KEY" \
 ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256="$TRUSTED_MANIFEST_SHA256" \
 ECHO_CERTFORGE_PRODUCT_READINESS_REPORT="$PRODUCT_READINESS_REPORT" \
+ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT="$ADAPTER_ACCEPTANCE_REPORT" \
 ECHO_CERTFORGE_SOURCE_COMMIT="$NEW_SHA" \
 ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
 ECHO_CERTFORGE_SUBSCRIBERS_ENABLED=1 \
@@ -479,6 +484,7 @@ Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
 Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
 Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
 Environment=ECHO_CERTFORGE_PRODUCT_READINESS_REPORT=$PRODUCT_READINESS_REPORT
+Environment=ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT=$ADAPTER_ACCEPTANCE_REPORT
 Environment=ECHO_CERTFORGE_SOURCE_COMMIT=$NEW_SHA
 Environment=ECHO_CERTFORGE_TRANSPORT_KEYS=$STATE_ROOT/trusted-transport-keys
 EnvironmentFile=$ENV_FILE

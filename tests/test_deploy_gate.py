@@ -31,6 +31,24 @@ def test_deploy_gate_loads_readiness_trust_roots_from_directory() -> None:
     assert "TrustedPublicKeyRegistry(Path(sys.argv[2]))" not in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_binds_adapter_acceptance_to_readiness_and_runtime() -> None:
+    """The exact adapter gate evidence must survive verification and promotion."""
+    assert (
+        'ADAPTER_ACCEPTANCE_REPORT="$ADAPTER_DIR/adapter-acceptance-report.json"'
+        in DEPLOY_SCRIPT
+    )
+    assert '"$ADAPTER_ACCEPTANCE_REPORT"' in DEPLOY_SCRIPT
+    assert "adapter_report_path=Path(sys.argv[4])" in DEPLOY_SCRIPT
+    assert (
+        'ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT="$ADAPTER_ACCEPTANCE_REPORT"'
+        in DEPLOY_SCRIPT
+    )
+    assert (
+        "Environment=ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT="
+        "$ADAPTER_ACCEPTANCE_REPORT"
+    ) in DEPLOY_SCRIPT
+
+
 def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
     rollback_trap = DEPLOY_SCRIPT.index("trap rollback_production EXIT")
     quiesce = DEPLOY_SCRIPT.index(
