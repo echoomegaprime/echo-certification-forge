@@ -556,6 +556,8 @@ def create_app(context: ServiceContext) -> FastAPI:
         auth: tuple[str, SubscriberPrincipal | None] = Depends(require_run_create),
     ) -> dict[str, object]:
         tenant_id, principal = auth
+        if request.tenant_id != tenant_id:
+            raise HTTPException(status_code=403, detail="tenant_mismatch")
         reservation = None
         run_id = request.run_id(context.manifest.digest)
         manifest_request_digest = sha256_json(
