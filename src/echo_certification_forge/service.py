@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -252,15 +252,17 @@ def create_app(context: ServiceContext) -> FastAPI:
                 except (UnicodeDecodeError, json.JSONDecodeError):
                     payload = None
                 if isinstance(payload, dict) and "command" in payload:
-                    command = payload.pop("command")
-                    if not isinstance(command, str) or not 1 <= len(command) <= 64:
-                        return JSONResponse(
-                            status_code=422,
-                            content={"detail": "invalid_sdk_command"},
-                        )
-                    request._body = json.dumps(  # noqa: SLF001
-                        payload, separators=(",", ":")
-                    ).encode("utf-8")
+                    command = payload["command"]
+                    # Strip a well-formed SDK selector so it never enters domain
+                    # hashes. Do not diagnose an invalid selector here: this
+                    # middleware runs before FastAPI dependencies, and a 422
+                    # would be a schema oracle for anonymous callers.
+                    if isinstance(command, str) and 1 <= len(command) <= 64:
+                        payload = dict(payload)
+                        payload.pop("command")
+                        request._body = json.dumps(  # noqa: SLF001
+                            payload, separators=(",", ":")
+                        ).encode("utf-8")
 
         return await call_next(request)
 
@@ -423,6 +425,58 @@ def create_app(context: ServiceContext) -> FastAPI:
             raise HTTPException(status_code=503, detail="subscriber_governance_unavailable") from exc
         return principal.organization_id, principal
 
+    def require_authorized(permission: Permission, action: str):
+        """Header credential check as a FastAPI dependency, not a handler line.
+
+        Body-parameter endpoints must not call ``authorize`` themselves.
+        FastAPI validates the body before it invokes the endpoint, so an
+        in-handler check never runs on a malformed body and an anonymous
+        caller gets 422 instead of 401. That status split is a schema oracle.
+        Dependencies are solved before accumulated body-validation errors are
+        raised, so anonymous callers get an identical 401 either way.
+        """
+
+        def dependency(
+            x_tenant_id: str | None = Header(default=None),
+            authorization: str | None = Header(default=None),
+        ) -> tuple[str, SubscriberPrincipal | None]:
+            return authorize(x_tenant_id, authorization, permission, action)
+
+        dependency.__name__ = f"require_{action.replace('.', '_')}"
+        return dependency
+
+    def require_subscriber_actor(permission: Permission, action: str):
+        """Same auth-before-validation rule for subscriber-governed mutations."""
+
+        def dependency(
+            x_tenant_id: str | None = Header(default=None),
+            authorization: str | None = Header(default=None),
+        ) -> SubscriberPrincipal:
+            return subscriber_principal(x_tenant_id, authorization, permission, action)
+
+        dependency.__name__ = f"require_subscriber_{action.replace('.', '_')}"
+        return dependency
+
+    def require_run_create(
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> tuple[str, SubscriberPrincipal | None]:
+        """Credential check for submit, as a dependency rather than a first line.
+
+        This must NOT be called from inside the endpoint. ``submit_certification``
+        takes a ``SubmitRequest`` body, and FastAPI validates body parameters before
+        it invokes the endpoint -- so an in-handler check never runs on a malformed
+        body and the caller gets 422 instead of 401. That difference is a schema
+        oracle: an anonymous caller can brute-force the request shape by watching
+        which bodies stop returning 422.
+
+        As a dependency it is solved and invoked *before* accumulated body-validation
+        errors are raised, so anonymous callers get an identical 401 either way.
+        """
+        return authorize(
+            x_tenant_id, authorization, Permission.RUN_CREATE, "certifications.submit"
+        )
+
     def subscriber_principal(
         tenant_header: str | None,
         authorization: str | None,
@@ -499,12 +553,11 @@ def create_app(context: ServiceContext) -> FastAPI:
     def submit_certification(
         request: SubmitRequest,
         response: Response,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        auth: tuple[str, SubscriberPrincipal | None] = Depends(require_run_create),
     ) -> dict[str, object]:
-        tenant_id, principal = authorize(
-            x_tenant_id, authorization, Permission.RUN_CREATE, "certifications.submit"
-        )
+        tenant_id, principal = auth
+        if request.tenant_id != tenant_id:
+            raise HTTPException(status_code=403, detail="tenant_mismatch")
         reservation = None
         run_id = request.run_id(context.manifest.digest)
         manifest_request_digest = sha256_json(
@@ -815,12 +868,11 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/release-gates/evaluate")
     def evaluate_gate(
         request: DeployGateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        auth: tuple[str, SubscriberPrincipal | None] = Depends(
+            require_authorized(Permission.RELEASE_GATE, "release_gate.evaluate")
+        ),
     ) -> dict[str, object]:
-        tenant_id, principal = authorize(
-            x_tenant_id, authorization, Permission.RELEASE_GATE, "release_gate.evaluate"
-        )
+        tenant_id, principal = auth
         try:
             if context.subscribers is not None:
                 if principal is None:
@@ -844,16 +896,11 @@ def create_app(context: ServiceContext) -> FastAPI:
         run_id: str,
         request: RerunRequest,
         response: Response,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.RUN_CREATE, "certifications.rerun")
+        ),
     ) -> dict[str, object]:
         """Create a governed queued run with immutable lineage to a terminal source."""
-        principal = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.RUN_CREATE,
-            "certifications.rerun",
-        )
         reservation = None
         try:
             source = context.store.get_run(run_id, principal.organization_id)
@@ -964,15 +1011,10 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/legal-holds", status_code=201)
     def create_legal_hold(
         request: LegalHoldRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.GOVERNANCE_MANAGE, "legal_holds.create")
+        ),
     ) -> dict[str, Any]:
-        principal = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.GOVERNANCE_MANAGE,
-            "legal_holds.create",
-        )
         try:
             if request.run_id is not None:
                 context.store.get_run(request.run_id, principal.organization_id)
@@ -1008,15 +1050,12 @@ def create_app(context: ServiceContext) -> FastAPI:
     def append_lifecycle(
         run_id: str,
         request: LifecycleRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.GOVERNANCE_MANAGE, "certifications.lifecycle"
+            )
+        ),
     ) -> dict[str, Any]:
-        principal = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.GOVERNANCE_MANAGE,
-            "certifications.lifecycle",
-        )
         try:
             context.store.get_run(run_id, principal.organization_id)
             if request.event_type is VerdictLifecycleEvent.SUPERSEDED:
@@ -1146,12 +1185,10 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/projects", status_code=201)
     def create_project(
         request: ProjectCreateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.PROJECT_MANAGE, "projects.create")
+        ),
     ) -> dict[str, Any]:
-        principal = subscriber_principal(
-            x_tenant_id, authorization, Permission.PROJECT_MANAGE, "projects.create"
-        )
         try:
             return context.subscribers.create_project(
                 principal,
@@ -1192,12 +1229,10 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/api-keys", status_code=201)
     def create_api_key(
         request: ApiKeyCreateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.API_KEY_MANAGE, "api_keys.create")
+        ),
     ) -> dict[str, object]:
-        principal = subscriber_principal(
-            x_tenant_id, authorization, Permission.API_KEY_MANAGE, "api_keys.create"
-        )
         try:
             token = context.subscribers.create_api_key(
                 principal,
@@ -1241,12 +1276,10 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/members", status_code=201)
     def invite_member(
         request: MemberInviteRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.MEMBER_MANAGE, "members.invite")
+        ),
     ) -> dict[str, str]:
-        principal = subscriber_principal(
-            x_tenant_id, authorization, Permission.MEMBER_MANAGE, "members.invite"
-        )
         try:
             user_id = context.subscribers.invite_member(
                 principal,
@@ -1284,12 +1317,10 @@ def create_app(context: ServiceContext) -> FastAPI:
     def update_member_role(
         user_id: str,
         request: MemberRoleUpdateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.MEMBER_MANAGE, "members.role_update")
+        ),
     ) -> Response:
-        principal = subscriber_principal(
-            x_tenant_id, authorization, Permission.MEMBER_MANAGE, "members.role_update"
-        )
         context.subscribers.update_member_role(principal, user_id, request.role)
         return Response(status_code=204)
 
@@ -1347,12 +1378,10 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.put("/v1/subscriber/governance")
     def update_governance(
         request: GovernanceUpdateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(Permission.GOVERNANCE_MANAGE, "governance.update")
+        ),
     ) -> dict[str, Any]:
-        principal = subscriber_principal(
-            x_tenant_id, authorization, Permission.GOVERNANCE_MANAGE, "governance.update"
-        )
         try:
             return context.subscribers.update_governance(
                 principal,
@@ -1365,12 +1394,12 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/policy-packs", status_code=201)
     def create_policy_pack(
         request: PolicyPackCreateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.POLICY_PACK_MANAGE, "policy_packs.create"
+            )
+        ),
     ) -> dict[str, Any]:
-        principal = subscriber_principal(
-            x_tenant_id, authorization, Permission.POLICY_PACK_MANAGE, "policy_packs.create"
-        )
         try:
             return context.subscribers.create_policy_pack(
                 principal,
@@ -1397,15 +1426,12 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/private-workers", status_code=201)
     def create_private_worker(
         request: PrivateWorkerCreateRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        principal: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.PRIVATE_WORKER_MANAGE, "private_workers.create"
+            )
+        ),
     ) -> dict[str, Any]:
-        principal = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.PRIVATE_WORKER_MANAGE,
-            "private_workers.create",
-        )
         try:
             return context.subscribers.register_private_worker(
                 principal,
@@ -1583,15 +1609,12 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/operational-quarantines")
     def quarantine_operational_subject(
         request: OperationalQuarantineRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        actor: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.GOVERNANCE_MANAGE, "operations.quarantine"
+            )
+        ),
     ) -> dict[str, Any]:
-        actor = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.GOVERNANCE_MANAGE,
-            "operations.quarantine",
-        )
         try:
             result = context.operational_registry.quarantine(
                 actor.organization_id,
@@ -1623,15 +1646,12 @@ def create_app(context: ServiceContext) -> FastAPI:
         subject_type: Literal["runner", "adapter"],
         subject_id: str,
         request: OperationalQuarantineReleaseRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        actor: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.GOVERNANCE_MANAGE, "operations.quarantine.release"
+            )
+        ),
     ) -> dict[str, Any]:
-        actor = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.GOVERNANCE_MANAGE,
-            "operations.quarantine.release",
-        )
         try:
             result = context.operational_registry.release_quarantine(
                 actor.organization_id,
@@ -1677,15 +1697,12 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/operational-key-rotations")
     def begin_operational_key_rotation(
         request: OperationalKeyRotationStartRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        actor: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.GOVERNANCE_MANAGE, "operations.key_rotation.begin"
+            )
+        ),
     ) -> dict[str, Any]:
-        actor = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.GOVERNANCE_MANAGE,
-            "operations.key_rotation.begin",
-        )
         try:
             result = context.operational_registry.begin_key_rotation(
                 actor.organization_id,
@@ -1753,15 +1770,13 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/runner-enrollments")
     def enroll_operational_runner(
         request: RunnerEnrollmentRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        actor: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.PRIVATE_WORKER_MANAGE,
+                "operations.runner_enrollment.activate",
+            )
+        ),
     ) -> dict[str, Any]:
-        actor = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.PRIVATE_WORKER_MANAGE,
-            "operations.runner_enrollment.activate",
-        )
         try:
             result = context.operational_registry.enroll_runner(
                 actor.organization_id,
@@ -1789,15 +1804,13 @@ def create_app(context: ServiceContext) -> FastAPI:
     def revoke_operational_runner_enrollment(
         runner_id: str,
         request: OperationalReasonRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        actor: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.PRIVATE_WORKER_MANAGE,
+                "operations.runner_enrollment.revoke",
+            )
+        ),
     ) -> dict[str, Any]:
-        actor = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.PRIVATE_WORKER_MANAGE,
-            "operations.runner_enrollment.revoke",
-        )
         try:
             result = context.operational_registry.revoke_runner_enrollment(
                 actor.organization_id,
@@ -1821,15 +1834,12 @@ def create_app(context: ServiceContext) -> FastAPI:
     @app.post("/v1/subscriber/adapter-maturity/remediate")
     def remediate_operational_adapter_maturity(
         request: OperationalReasonRequest,
-        x_tenant_id: str | None = Header(default=None),
-        authorization: str | None = Header(default=None),
+        actor: SubscriberPrincipal = Depends(
+            require_subscriber_actor(
+                Permission.GOVERNANCE_MANAGE, "operations.adapter_maturity.remediate"
+            )
+        ),
     ) -> dict[str, Any]:
-        actor = subscriber_principal(
-            x_tenant_id,
-            authorization,
-            Permission.GOVERNANCE_MANAGE,
-            "operations.adapter_maturity.remediate",
-        )
         try:
             result = context.operational_registry.remediate_adapter_maturity(
                 actor.organization_id,
