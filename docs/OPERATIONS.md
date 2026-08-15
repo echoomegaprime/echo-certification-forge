@@ -10,13 +10,28 @@
 
 ## Verification sequence
 
-1. Confirm hosted CI succeeded for the exact source SHA.
+1. Confirm the exact source SHA with local deterministic gates
+   (`python -m pytest -q` and `python scripts/p1_acceptance.py`). GitHub Actions
+   is disabled account-wide (support ticket #4663295); do not treat hosted CI as
+   green and do not try to re-enable account Actions from this repository.
 2. Execute the declared production-shaped journey with the pinned runner image.
 3. Verify evidence custody, receipt chains, signatures, expiry, and revocation state.
 4. Generate exact-source product readiness and verify it with the public trust root.
 5. Boot staging from that same SHA and run live smoke and negative paths.
 6. Promote atomically, health-check production, and roll back on any mismatch.
 7. Publish immutable machine certificates and the repository certificate graphic.
+
+## Secret scan
+
+Run a redacted full-history scan before promoting a SHA:
+
+```powershell
+python scripts/full_history_secret_scan.py
+```
+
+The report is `artifacts/full_history_secret_scan.json`. It never stores secret
+material. Blocking detectors are private-key blocks, GitHub tokens, and AWS
+access keys. Hosted CI is not a substitute for this local gate.
 
 ## Incident triage
 
