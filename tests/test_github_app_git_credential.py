@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import urllib.error
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -135,6 +136,44 @@ def test_issuer_verifies_owner_id_and_requests_one_repo_read_only_token() -> Non
         "permissions": {"contents": "read"},
     }
     assert "short-lived-installation-token" not in json.dumps(calls)
+
+
+def test_github_api_request_retries_transient_transport_failure(monkeypatch) -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"id":152387231}'
+
+    attempts = 0
+
+    def urlopen(_request, *, timeout):
+        nonlocal attempts
+        attempts += 1
+        assert timeout == 20
+        if attempts < 3:
+            raise urllib.error.URLError("temporary")
+        return Response()
+
+    monkeypatch.setattr(
+        "echo_certification_forge.github_app_git_credential.urllib.request.urlopen",
+        urlopen,
+    )
+    monkeypatch.setattr(
+        "echo_certification_forge.github_app_git_credential.time.sleep",
+        lambda _seconds: None,
+    )
+    issuer = GitHubAppCredentialIssuer(
+        app_id=4535414,
+        private_key_pem=_private_key(),
+    )
+
+    assert issuer._request_json("GET", "/app", "jwt", None) == {"id": 152387231}
+    assert attempts == 3
 
 
 def test_issuer_rejects_account_id_mismatch_before_token_minting() -> None:

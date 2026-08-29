@@ -163,18 +163,26 @@ class GitHubAppCredentialIssuer:
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
-        try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                return json.loads(response.read())
-        except (
-            urllib.error.HTTPError,
-            urllib.error.URLError,
-            TimeoutError,
-            json.JSONDecodeError,
-        ) as exc:
-            raise GitHubCredentialError(
-                f"GitHub API request failed for {method} {path}"
-            ) from exc
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    return json.loads(response.read())
+            except urllib.error.HTTPError as exc:
+                if attempt == 2 or exc.code not in {429, 500, 502, 503, 504}:
+                    raise GitHubCredentialError(
+                        f"GitHub API request failed for {method} {path}"
+                    ) from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                if attempt == 2:
+                    raise GitHubCredentialError(
+                        f"GitHub API request failed for {method} {path}"
+                    ) from exc
+            except json.JSONDecodeError as exc:
+                raise GitHubCredentialError(
+                    f"GitHub API request failed for {method} {path}"
+                ) from exc
+            time.sleep(0.25 * (2**attempt))
+        raise AssertionError("unreachable")
 
     def issue(self, request: Mapping[str, str]) -> tuple[str, str, str]:
         owner, expected_account_id, repository = repository_identity(request)
