@@ -634,7 +634,12 @@ def test_workspace_owner_marker_and_symlink_detection(tmp_path: Path) -> None:
         )
     target = tmp_path / "outside.txt"
     target.write_text("outside")
-    os.symlink(target, workspace / "link")
+    try:
+        os.symlink(target, workspace / "link")
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable on this host")
+        raise
     with pytest.raises(IsolationFailure, match="symlink_not_allowed"):
         assert_no_symlinks(workspace)
 
