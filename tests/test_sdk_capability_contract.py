@@ -32,7 +32,7 @@ def test_generated_sdk_contract_is_current() -> None:
 def test_every_certforge_capability_has_command_and_output_schema() -> None:
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     capabilities = contract["capabilities"]
-    assert contract["capability_count"] == 60 == len(capabilities)
+    assert contract["capability_count"] == 61 == len(capabilities)
     for capability, item in capabilities.items():
         input_schema = item["input_schema"]
         output_schema = item["output_schema"]
@@ -69,3 +69,19 @@ def test_registry_sync_is_transactional_and_drift_blocking() -> None:
     assert "output_schema_json = c.output_schema_json" in sql
     assert "Certification Forge SDK surface drift" in sql
     assert "? 'command'" in sql
+
+
+def test_publication_alias_is_narrow_and_preserves_admin_publication() -> None:
+    registration = (ROOT / "scripts" / "register_certforge_caps.sql").read_text(
+        encoding="utf-8"
+    )
+    public_alias = registration.split("('echo.certforge.publish',", 1)[1].split(
+        "('echo.certforge.admin.quarantine',", 1
+    )[0]
+    admin_alias = registration.split("('echo.certforge.admin.publish',", 1)[1].split(
+        "('echo.certforge.publish',", 1
+    )[0]
+
+    assert "'certforge.read', 1" in public_alias
+    assert "cannot change evidence, policy, verdicts, or lifecycle state" in public_alias
+    assert "'certforge.admin.mutate', 2" in admin_alias

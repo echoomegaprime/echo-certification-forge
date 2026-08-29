@@ -9,7 +9,7 @@
 | P5 adapter breadth and service modes | IN_PROGRESS / BLOCKED | Live ANVIL R5 routing controls PASS for GS343 and R2D2, but the signed acceptance report `artifacts/p5-adapter-bundle-20260723/adapter-acceptance-report.json` **blocks both adapters**: `adapter_gate=BLOCK`, `adapter_gate_eligible=false`, `accepted_adapters=[]`, `policy.required_maturity=STABLE` while GS343 is `EXPERIMENTAL` at 7/11 cases and R2D2 is `EXPERIMENTAL` at 1/3 cases, `release_verdict=NOT_READY`. Routing proof is not an adapter gate. | NOT_READY |
 | P6 deployment enforcement and platform integration | COMPLETE | `artifacts/p6_acceptance.summary.json`: 12/12 executable checks pass, including staging-first promotion, rollback, ledger enforcement, and exact-image isolation. | GATE COMPLETE |
 | P7 subscriber productization and governance | COMPLETE | `artifacts/p7_acceptance_report.json`: all tenant, billing, lease, quota, audit, and dispatch scenarios pass fail-closed. | GATE COMPLETE |
-| SDK final contract | COMPLETE | `contracts/certforge-sdk-capabilities.v1.json`: exactly 60 unique closed-schema Certification Forge capabilities. | GATE COMPLETE |
+| SDK final contract | COMPLETE | `contracts/certforge-sdk-capabilities.v1.json`: exactly 61 unique closed-schema Certification Forge capabilities. | GATE COMPLETE |
 | Master whole-product acceptance | SIGNED EXACT-SOURCE GATE | `scripts/master_acceptance.py` + `acceptance/master-imperfect-app/`: real Docker journey, classified defects, ephemeral generated harness, signed target refusal, evidence-chain verification, exact-source CI binding, and signed product-readiness attestation. | Runtime attestation decides |
 
 ## Task 4 — Certification Forge service + `echo.certforge.*` caps (sub-track)
