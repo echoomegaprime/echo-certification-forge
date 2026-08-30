@@ -88,6 +88,15 @@ class DeterministicVerdictEngine:
             reasons.append("production_e2e_identity_unavailable")
         elif e2e_result is None:
             reasons.append("production_e2e_attestation_missing")
+        elif (
+            not e2e_result.passed
+            and e2e_result.details.get("validation")
+            == "production_e2e_attestation_missing"
+        ):
+            # The executor records a fail-closed rule row even when no attestation was supplied.
+            # Preserve that explicit cause instead of re-validating the diagnostic placeholder as
+            # though it were a malformed attestation payload.
+            reasons.append("production_e2e_attestation_missing")
         else:
             e2e_valid, e2e_reason = validate_production_e2e(
                 e2e_result.details,

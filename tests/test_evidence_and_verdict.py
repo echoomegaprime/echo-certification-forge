@@ -135,6 +135,48 @@ def test_source_and_rule_rows_without_production_e2e_never_get_ready(
     assert "production_e2e_attestation_missing" in decision.reasons
 
 
+def test_failed_executor_rule_preserves_missing_attestation_reason(
+    store, manifest, target, environment
+):
+    run_id = register(store, manifest, target, environment)
+    for index, rule in enumerate(manifest.rules, start=1):
+        artifact_id = f"executor-evidence-{index:02d}"
+        store.append_artifact(
+            run_id,
+            target.tenant_id,
+            artifact_id,
+            json.dumps({"rule": rule.id}, sort_keys=True).encode(),
+            "application/json",
+            "executor-regression",
+            RedactionStatus.COMPLETE,
+        )
+        is_production_e2e = rule.id == "production_e2e"
+        store.record_rule_result(
+            run_id,
+            target.tenant_id,
+            RuleResult(
+                rule.id,
+                not is_production_e2e,
+                (artifact_id,),
+                (
+                    {"validation": "production_e2e_attestation_missing"}
+                    if is_production_e2e
+                    else {"source": "executor-regression"}
+                ),
+            ),
+        )
+    store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
+
+    signer = Ed25519VerdictSigner.generate()
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
+
+    assert decision.release_verdict is ReleaseVerdict.NOT_READY
+    assert "production_e2e_attestation_missing" in decision.reasons
+    assert "production_e2e_schema_invalid" not in decision.reasons
+
+
 def test_bare_database_rows_cannot_manufacture_ready(store, manifest, target, environment):
     run_id = register(store, manifest, target, environment)
     now = "2026-07-16T00:00:00Z"
