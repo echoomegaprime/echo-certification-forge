@@ -173,6 +173,7 @@ set -a
 set +a
 PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
 STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
+PROD_DB_PATH="${ECHO_CERTFORGE_DB:-$STATE_ROOT/certforge.sqlite3}"
 test "${#PROD_PEPPER}" -ge 32 || {
   echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"
   exit 1
@@ -305,7 +306,7 @@ if sudo test -f "$DISPATCH_RELEASE_DROPIN"; then
   sudo cat "$DISPATCH_RELEASE_DROPIN" >"$DISPATCH_RELEASE_DROPIN_BACKUP"
   HAD_DISPATCH_RELEASE_DROPIN=1
 fi
-DB_PATH="$STATE_ROOT/certforge.sqlite3"
+DB_PATH="$PROD_DB_PATH"
 DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
 HAD_DB=0
 DB_SNAPSHOT_READY=0
@@ -503,7 +504,7 @@ Type=simple
 User=forge
 WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_DB=$DB_PATH
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
@@ -546,7 +547,7 @@ Type=simple
 User=forge
 WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_DB=$DB_PATH
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
@@ -593,7 +594,7 @@ for _ in $(seq 1 40); do
   }
   sleep 0.5
 done
-if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$DB_PATH" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
     ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
     ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
@@ -621,7 +622,7 @@ if [ "$dispatcher_ready" != 1 ]; then
   exit 1
 fi
 if [ "$ADAPTER_MODE" = required ]; then
-  ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+  ECHO_CERTFORGE_DB="$DB_PATH" \
   ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
   ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
   "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_dispatch.py" \

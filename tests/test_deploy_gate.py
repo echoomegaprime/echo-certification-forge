@@ -96,6 +96,17 @@ def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
     assert 'DB_SNAPSHOT_READY=1' in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_uses_the_effective_production_database_everywhere() -> None:
+    assert (
+        'PROD_DB_PATH="${ECHO_CERTFORGE_DB:-$STATE_ROOT/certforge.sqlite3}"'
+        in DEPLOY_SCRIPT
+    )
+    assert 'DB_PATH="$PROD_DB_PATH"' in DEPLOY_SCRIPT
+    assert DEPLOY_SCRIPT.count("Environment=ECHO_CERTFORGE_DB=$DB_PATH") == 2
+    assert DEPLOY_SCRIPT.count('ECHO_CERTFORGE_DB="$DB_PATH" \\') == 2
+    assert 'ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3"' not in DEPLOY_SCRIPT
+
+
 def test_deploy_gate_restores_prior_service_lifecycle() -> None:
     assert (
         'PREV_ENABLED="$(systemctl is-enabled "$SERVICE.service"'
