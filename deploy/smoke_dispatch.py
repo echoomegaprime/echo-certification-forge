@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Production subscriber-to-dispatcher certification smoke.
+"""Production subscriber-to-dispatcher fail-closed certification smoke.
 
 This test runs only after the real API and dispatcher are active. It submits an exact-identity
-local target through the customer HTTP contract, waits for the durable dispatcher, and verifies
-the signed PRODUCTION_READY verdict and append-only evidence through the public API.
+local target through the customer HTTP contract without a trusted production-E2E attestation,
+waits for the durable dispatcher, and verifies that the service signs ``NOT_READY`` while keeping
+the append-only evidence and public signature-verification paths healthy. A deploy smoke must not
+manufacture the external evidence that the production gate is intended to require.
 """
 from __future__ import annotations
 
@@ -63,6 +65,22 @@ def _require(condition: bool, message: str, detail: object | None = None) -> Non
         suffix = "" if detail is None else f": {detail}"
         raise RuntimeError(message + suffix)
     print(f"  [ok ] {message}")
+
+
+def _require_attestation_gate_closed(terminal: dict) -> None:
+    """Prove an unattested run cannot be promoted by the production dispatcher."""
+
+    _require(
+        terminal.get("release_verdict") == "NOT_READY",
+        "unattested customer run is NOT_READY",
+        terminal.get("release_verdict"),
+    )
+    production_e2e = terminal.get("production_e2e")
+    _require(
+        isinstance(production_e2e, dict) and production_e2e.get("verified") is False,
+        "unattested customer run has no verified production E2E",
+        production_e2e,
+    )
 
 
 def main() -> int:
@@ -177,11 +195,7 @@ def main() -> int:
             time.sleep(1)
         _require(terminal.get("state") == "COMPLETE", "dispatcher completed the customer run", terminal)
         _require(terminal.get("run_outcome") == "COMPLETE", "customer run outcome is COMPLETE")
-        _require(
-            terminal.get("release_verdict") == "PRODUCTION_READY",
-            "customer received PRODUCTION_READY",
-            terminal.get("release_verdict"),
-        )
+        _require_attestation_gate_closed(terminal)
         _require(
             terminal.get("environment_identity_digest") == environment_digest,
             "verdict retained the published environment identity",
@@ -198,7 +212,12 @@ def main() -> int:
         )
         _require(verdict_status == 200, "signed verdict is retrievable", verdict_status)
         payload = verdict.get("payload", {})
-        _require(payload.get("release_verdict") == "PRODUCTION_READY", "signed verdict is PRODUCTION_READY")
+        _require(payload.get("release_verdict") == "NOT_READY", "signed verdict is NOT_READY")
+        _require(
+            "production_e2e_attestation_missing" in payload.get("reasons", []),
+            "signed verdict records the missing production E2E attestation",
+            payload.get("reasons"),
+        )
         _require(payload.get("environment_identity_digest") == environment_digest, "signed verdict binds environment")
 
         verify_status, verified = _request(
@@ -209,7 +228,7 @@ def main() -> int:
             "public verdict verification succeeds",
             verified,
         )
-        print(f"PRODUCTION DISPATCH SMOKE GREEN - run_id={run_id}")
+        print(f"PRODUCTION DISPATCH FAIL-CLOSED SMOKE GREEN - run_id={run_id}")
         return 0
     finally:
         shutil.rmtree(target_root, ignore_errors=True)

@@ -3,7 +3,7 @@
   "$id": "https://cert.echoforge.com/contracts/certification-run.v1.json",
   "title": "CertificationRunV1",
   "type": "object",
-  "required": ["run_id", "tenant_id", "state", "run_outcome", "release_verdict", "target_identity_digest", "environment_identity_digest", "policy_version"],
+  "required": ["run_id", "tenant_id", "state", "run_outcome", "release_verdict", "target_identity_digest", "environment_identity_digest", "policy_version", "production_e2e"],
   "properties": {
     "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -14,6 +14,25 @@
     "environment_identity_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "policy_version": {"type": "string", "minLength": 1, "maxLength": 128},
     "evidence_merkle_root": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "production_e2e": {
+      "type": "object",
+      "required": ["verified", "profile", "attestation_id", "source_commit", "deployment_sha", "target_identity_digest", "environment_identity_digest", "canonical_target", "tool_count", "signature_verified", "collector_key_id", "attestation_envelope_sha256"],
+      "properties": {
+        "verified": {"type": "boolean"},
+        "profile": {"type": ["string", "null"]},
+        "attestation_id": {"type": ["string", "null"]},
+        "source_commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$"},
+        "deployment_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$"},
+        "target_identity_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "environment_identity_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "canonical_target": {"type": ["string", "null"]},
+        "tool_count": {"type": ["integer", "null"], "minimum": 0},
+        "signature_verified": {"type": "boolean"},
+        "collector_key_id": {"type": ["string", "null"], "pattern": "^ed25519:[0-9a-f]{32}$"},
+        "attestation_envelope_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"}
   },
