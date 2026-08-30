@@ -45,7 +45,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    require(__version__ == "1.1.0", "package version is not synchronized")
+    require(__version__ == "1.2.0", "package version is not synchronized")
     python_files = sorted(SRC.rglob("*.py"))
     require(bool(python_files), "source tree contains no Python modules")
     for path in python_files:

@@ -15,6 +15,7 @@ from echo_certification_forge.sandbox import (
     DEFAULT_IMAGE, DockerSandbox, SandboxError, sandboxed_journey_runner,
 )
 from echo_certification_forge.signing import Ed25519VerdictSigner
+from production_e2e_support import trusted_generic_production_e2e
 
 
 def test_build_command_has_all_hardening_flags(tmp_path):
@@ -72,6 +73,7 @@ def test_executor_uses_injected_journey_runner(store, manifest, target, environm
         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
         journey=["python3", "hello.py"], journey_runner=fake_runner,
         control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+        production_e2e_attestation=trusted_generic_production_e2e(target, environment),
     )
     assert calls and calls[0][0] == ["python3", "hello.py"]   # the injected runner was used
     assert result.release_verdict == "PRODUCTION_READY"

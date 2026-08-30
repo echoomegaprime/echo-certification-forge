@@ -26,12 +26,13 @@ def store(tmp_path: Path) -> EvidenceStore:
 
 @pytest.fixture
 def target() -> TargetIdentity:
+    source_commit = "a" * 40
     return TargetIdentity(
         tenant_id="tenant-alpha",
         target_type="git",
-        canonical_ref="https://github.com/example/project@abc123",
+        canonical_ref=f"https://github.com/example/project@{source_commit}",
         artifact_sha256=digest("artifact"),
-        source_commit="abc123",
+        source_commit=source_commit,
         dependency_sha256=digest("dependencies"),
         configuration_sha256=digest("configuration"),
     )
