@@ -173,7 +173,28 @@ set -a
 set +a
 PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
 STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
-PROD_DB_PATH="${ECHO_CERTFORGE_DB:-$STATE_ROOT/certforge.sqlite3}"
+PROD_DB_PATH="${ECHO_CERTFORGE_DB:-}"
+if [ -z "$PROD_DB_PATH" ]; then
+  CURRENT_SERVICE_PID="$(systemctl show "$SERVICE.service" --property MainPID --value 2>/dev/null || true)"
+  if [ "${CURRENT_SERVICE_PID:-0}" -gt 1 ] 2>/dev/null && \
+      [ -r "/proc/$CURRENT_SERVICE_PID/environ" ]; then
+    PROD_DB_PATH="$(python3 - "$CURRENT_SERVICE_PID" <<'PY'
+from pathlib import Path
+import sys
+
+for entry in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
+    if entry.startswith(b"ECHO_CERTFORGE_DB="):
+        print(entry.split(b"=", 1)[1].decode("utf-8"))
+        break
+PY
+)"
+  fi
+fi
+PROD_DB_PATH="${PROD_DB_PATH:-$STATE_ROOT/certforge.sqlite3}"
+case "$(realpath -m "$PROD_DB_PATH")" in
+  "$STATE_ROOT"/*|/mnt/documentation/echo/certforge/*) ;;
+  *) echo "!! effective production database is outside an approved state root"; exit 1 ;;
+esac
 test "${#PROD_PEPPER}" -ge 32 || {
   echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"
   exit 1

@@ -97,10 +97,12 @@ def test_deploy_gate_snapshots_and_restores_persistent_database() -> None:
 
 
 def test_deploy_gate_uses_the_effective_production_database_everywhere() -> None:
-    assert (
-        'PROD_DB_PATH="${ECHO_CERTFORGE_DB:-$STATE_ROOT/certforge.sqlite3}"'
-        in DEPLOY_SCRIPT
-    )
+    assert 'PROD_DB_PATH="${ECHO_CERTFORGE_DB:-}"' in DEPLOY_SCRIPT
+    assert 'systemctl show "$SERVICE.service" --property MainPID --value' in DEPLOY_SCRIPT
+    assert 'Path(f"/proc/{sys.argv[1]}/environ")' in DEPLOY_SCRIPT
+    assert 'entry.startswith(b"ECHO_CERTFORGE_DB=")' in DEPLOY_SCRIPT
+    assert 'PROD_DB_PATH="${PROD_DB_PATH:-$STATE_ROOT/certforge.sqlite3}"' in DEPLOY_SCRIPT
+    assert '/mnt/documentation/echo/certforge/*' in DEPLOY_SCRIPT
     assert 'DB_PATH="$PROD_DB_PATH"' in DEPLOY_SCRIPT
     assert DEPLOY_SCRIPT.count("Environment=ECHO_CERTFORGE_DB=$DB_PATH") == 2
     assert DEPLOY_SCRIPT.count('ECHO_CERTFORGE_DB="$DB_PATH" \\') == 2
