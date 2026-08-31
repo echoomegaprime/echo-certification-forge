@@ -18,6 +18,7 @@ target code — only the journey runs, and only inside the sandbox.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -26,10 +27,30 @@ from typing import Callable
 
 # Pinned minimal Python base (same digest the P4 supply-chain pipeline pins). Override per policy.
 DEFAULT_IMAGE = "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+DEFAULT_MEMORY = "512m"
+MIN_MEMORY_MIB = 128
+MAX_MEMORY_MIB = 4096
+_MEMORY_LIMIT = re.compile(r"^([1-9][0-9]*)([mMgG])$")
+_PINNED_IMAGE = re.compile(r"(?:^|@)sha256:([0-9a-f]{64})$")
 
 
 class SandboxError(RuntimeError):
     """The sandbox runtime is unavailable or failed to launch (distinct from a target-code failure)."""
+
+
+def normalize_memory_limit(value: str) -> str:
+    """Validate and normalize a bounded Docker memory limit."""
+    match = _MEMORY_LIMIT.fullmatch(value.strip())
+    if match is None:
+        raise ValueError("sandbox memory must be a whole number followed by m or g")
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    memory_mib = amount if unit == "m" else amount * 1024
+    if not MIN_MEMORY_MIB <= memory_mib <= MAX_MEMORY_MIB:
+        raise ValueError(
+            f"sandbox memory must be between {MIN_MEMORY_MIB}m and {MAX_MEMORY_MIB // 1024}g"
+        )
+    return f"{amount}{unit}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +64,7 @@ class SandboxResult:
 @dataclass(frozen=True, slots=True)
 class DockerSandbox:
     image: str = DEFAULT_IMAGE
-    memory: str = "512m"
+    memory: str = DEFAULT_MEMORY
     cpus: str = "1.0"
     pids_limit: int = 128
     tmpfs_size: str = "64m"
@@ -52,15 +73,35 @@ class DockerSandbox:
     docker: tuple[str, ...] = ("docker",)
     extra_env: dict[str, str] = field(default_factory=dict)
 
+    def image_sha256(self) -> str:
+        match = _PINNED_IMAGE.search(self.image)
+        if match is None:
+            raise SandboxError("sandbox image must be pinned by sha256 digest")
+        return match.group(1)
+
+    def resource_limits(self) -> dict[str, str | int]:
+        try:
+            memory = normalize_memory_limit(self.memory)
+        except ValueError as exc:
+            raise SandboxError(str(exc)) from exc
+        return {
+            "memory": memory,
+            "cpus": self.cpus,
+            "pids": self.pids_limit,
+            "tmpfs": self.tmpfs_size,
+        }
+
     def build_command(self, argv: list[str], workdir: Path) -> list[str]:
         """Construct the fully-hardened `docker run` argv. Pure — no side effects, unit-testable."""
         if not argv:
             raise SandboxError("empty journey argv")
+        self.image_sha256()
+        memory = str(self.resource_limits()["memory"])
         cmd: list[str] = [
             *self.docker, "run", "--rm",
             "--network", "none",
-            "--memory", self.memory,
-            "--memory-swap", self.memory,          # no swap escape past the memory cap
+            "--memory", memory,
+            "--memory-swap", memory,               # no swap escape past the memory cap
             "--cpus", self.cpus,
             "--pids-limit", str(self.pids_limit),
             "--read-only",
@@ -139,6 +180,7 @@ def sandboxed_journey_runner(
             return False, {"executed": True, "isolation": "docker", "error": f"sandbox_unavailable:{exc}"}
         return result.returncode == 0, {
             "executed": True, "isolation": "docker", "image": sandbox.image,
+            "resource_limits": sandbox.resource_limits(),
             "argv": argv, "returncode": result.returncode, "timed_out": result.timed_out,
             "stdout_tail": result.stdout[-2000:], "stderr_tail": result.stderr[-2000:],
         }
