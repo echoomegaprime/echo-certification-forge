@@ -3,6 +3,13 @@
 All notable changes to Echo Certification Forge are documented here. Versions follow Semantic
 Versioning; dates use ISO 8601.
 
+## [Unreleased]
+
+### Changed
+
+- Allow operators to select a validated 128 MiB to 4 GiB journey cgroup while preserving no-swap
+  containment, and record the effective memory, CPU, PID, and scratch limits in journey evidence.
+
 ## [1.1.0] - 2026-08-09
 
 ### Added
