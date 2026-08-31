@@ -41,7 +41,13 @@ from .models import EnvironmentIdentity, RunOutcome, RunState, TargetIdentity
 from .policy import RuleManifest
 from .production_e2e import VerifiedProductionE2E, load_signed_attestation
 from .runner import RunnerResponse
-from .sandbox import DEFAULT_IMAGE, DockerSandbox, sandboxed_journey_runner
+from .sandbox import (
+    DEFAULT_IMAGE,
+    DEFAULT_MEMORY,
+    DockerSandbox,
+    normalize_memory_limit,
+    sandboxed_journey_runner,
+)
 from .signing import Ed25519VerdictSigner
 from .subscriber import SubscriberError, SubscriberGovernance, SubscriberPolicy
 
@@ -750,6 +756,12 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
     )
     parser.add_argument(
+        "--sandbox-memory",
+        type=normalize_memory_limit,
+        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_MEMORY", DEFAULT_MEMORY),
+        help="bounded container memory limit (128m through 4g)",
+    )
+    parser.add_argument(
         "--sandbox-docker",
         default=os.environ.get("ECHO_CERTFORGE_SANDBOX_DOCKER", "docker"),
     )
@@ -921,6 +933,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.sandbox:
         sandbox = DockerSandbox(
             image=args.sandbox_image,
+            memory=args.sandbox_memory,
             docker=tuple(args.sandbox_docker.split()),
         )
 
