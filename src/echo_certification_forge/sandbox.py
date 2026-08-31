@@ -31,6 +31,7 @@ DEFAULT_MEMORY = "512m"
 MIN_MEMORY_MIB = 128
 MAX_MEMORY_MIB = 4096
 _MEMORY_LIMIT = re.compile(r"^([1-9][0-9]*)([mMgG])$")
+_PINNED_IMAGE = re.compile(r"(?:^|@)sha256:([0-9a-f]{64})$")
 
 
 class SandboxError(RuntimeError):
@@ -72,14 +73,30 @@ class DockerSandbox:
     docker: tuple[str, ...] = ("docker",)
     extra_env: dict[str, str] = field(default_factory=dict)
 
-    def build_command(self, argv: list[str], workdir: Path) -> list[str]:
-        """Construct the fully-hardened `docker run` argv. Pure — no side effects, unit-testable."""
-        if not argv:
-            raise SandboxError("empty journey argv")
+    def image_sha256(self) -> str:
+        match = _PINNED_IMAGE.search(self.image)
+        if match is None:
+            raise SandboxError("sandbox image must be pinned by sha256 digest")
+        return match.group(1)
+
+    def resource_limits(self) -> dict[str, str | int]:
         try:
             memory = normalize_memory_limit(self.memory)
         except ValueError as exc:
             raise SandboxError(str(exc)) from exc
+        return {
+            "memory": memory,
+            "cpus": self.cpus,
+            "pids": self.pids_limit,
+            "tmpfs": self.tmpfs_size,
+        }
+
+    def build_command(self, argv: list[str], workdir: Path) -> list[str]:
+        """Construct the fully-hardened `docker run` argv. Pure — no side effects, unit-testable."""
+        if not argv:
+            raise SandboxError("empty journey argv")
+        self.image_sha256()
+        memory = str(self.resource_limits()["memory"])
         cmd: list[str] = [
             *self.docker, "run", "--rm",
             "--network", "none",
@@ -163,12 +180,7 @@ def sandboxed_journey_runner(
             return False, {"executed": True, "isolation": "docker", "error": f"sandbox_unavailable:{exc}"}
         return result.returncode == 0, {
             "executed": True, "isolation": "docker", "image": sandbox.image,
-            "resource_limits": {
-                "memory": normalize_memory_limit(sandbox.memory),
-                "cpus": sandbox.cpus,
-                "pids": sandbox.pids_limit,
-                "tmpfs": sandbox.tmpfs_size,
-            },
+            "resource_limits": sandbox.resource_limits(),
             "argv": argv, "returncode": result.returncode, "timed_out": result.timed_out,
             "stdout_tail": result.stdout[-2000:], "stderr_tail": result.stderr[-2000:],
         }

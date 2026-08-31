@@ -105,18 +105,28 @@ def _env_digest(component: str) -> str:
 def _worker_environment(
     adapter_set_sha256: str | None = None,
     adapter_execution_profile_sha256: str | None = None,
+    sandbox: DockerSandbox | None = None,
 ) -> EnvironmentIdentity:
     """Declared certification environment.
 
     The legacy v1 path retains its historical environment commitment. P5/v2 callers pass the exact
     digest derived from the verified signed adapter execution records.
     """
+    runner_image_sha256 = sandbox.image_sha256() if sandbox is not None else _env_digest("runner-image")
+    harness_sha256 = _env_digest("harness")
+    if sandbox is not None:
+        harness_sha256 = sha256_json(
+            {
+                "base_harness_sha256": harness_sha256,
+                "sandbox_resource_limits": sandbox.resource_limits(),
+            }
+        )
     return EnvironmentIdentity(
-        runner_image_sha256=_env_digest("runner-image"),
+        runner_image_sha256=runner_image_sha256,
         adapter_set_sha256=adapter_set_sha256 or _env_digest("adapter-set"),
         test_plan_sha256=_env_digest("test-plan"),
         policy_sha256=_env_digest("policy"),
-        harness_sha256=_env_digest("harness"),
+        harness_sha256=harness_sha256,
         prompt_set_sha256=_env_digest("prompt-set"),
         model_route_sha256=(
             sha256_json(
@@ -353,7 +363,11 @@ def run(
         if adapter_bundle_response is not None
         else None
     )
-    environment = _worker_environment(adapter_digest, adapter_execution_profile_sha256)
+    environment = _worker_environment(
+        adapter_digest,
+        adapter_execution_profile_sha256,
+        sandbox_effective,
+    )
     if subscribers is not None:
         if existing is None or existing["state"] != RunState.QUEUED.value:
             if claim is not None:
