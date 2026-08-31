@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
+from echo_certification_forge.run_worker import _worker_environment
 from echo_certification_forge.sandbox import (
     DEFAULT_IMAGE,
     DockerSandbox,
@@ -68,6 +69,26 @@ def test_custom_memory_limit_stays_cgroup_bounded(tmp_path):
     assert "--memory-swap 1g" in joined
 
 
+def test_environment_identity_binds_pinned_image_and_resource_profile():
+    image_a = "example.invalid/runtime@sha256:" + ("a" * 64)
+    image_b = "example.invalid/runtime@sha256:" + ("b" * 64)
+    baseline = _worker_environment(sandbox=DockerSandbox(image=image_a, memory="1g"))
+    different_image = _worker_environment(
+        sandbox=DockerSandbox(image=image_b, memory="1g")
+    )
+    different_memory = _worker_environment(
+        sandbox=DockerSandbox(image=image_a, memory="2g")
+    )
+    assert baseline.runner_image_sha256 == "a" * 64
+    assert baseline.identity_digest != different_image.identity_digest
+    assert baseline.identity_digest != different_memory.identity_digest
+
+
+def test_unpinned_image_is_rejected_before_execution(tmp_path):
+    with pytest.raises(SandboxError, match="pinned by sha256"):
+        DockerSandbox(image="python:latest").build_command(["python3", "hello.py"], tmp_path)
+
+
 def test_effective_resource_limits_are_recorded_in_journey_evidence(tmp_path):
     class StubSandbox:
         image = "example.invalid/runtime@sha256:" + ("a" * 64)
@@ -79,6 +100,10 @@ def test_effective_resource_limits_are_recorded_in_journey_evidence(tmp_path):
         @staticmethod
         def run(argv, workdir, execution_guard=None):
             return SandboxResult(0, "ok", "", False)
+
+        @staticmethod
+        def resource_limits():
+            return {"memory": "1g", "cpus": "1.5", "pids": 96, "tmpfs": "80m"}
 
     passed, detail = sandboxed_journey_runner(StubSandbox())(
         ["python3", "hello.py"],

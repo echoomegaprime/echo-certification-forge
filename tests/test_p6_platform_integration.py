@@ -1836,6 +1836,7 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
     try:
         manifest_digest = _push_test_image(registry)
         repo = f"http://127.0.0.1:{registry.port}/testapp"
+        exact_image = f"127.0.0.1:{registry.port}/testapp@{manifest_digest}"
         event = {
             "event_id": "evt-oci-0001",
             "event_type": "registry.image.pushed",
@@ -1844,7 +1845,9 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
             "image_repository": repo,
             "source_commit": SOURCE_COMMIT,
             # the platform declares the WORKER's environment commitment for the run
-            "environment_identity_digest": run_worker._worker_environment().identity_digest,
+            "environment_identity_digest": run_worker._worker_environment(
+                sandbox=DockerSandbox(image=exact_image)
+            ).identity_digest,
             "policy_version": manifest.manifest_id,
         }
         body = json.dumps(event).encode("utf-8")

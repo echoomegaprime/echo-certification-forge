@@ -16,6 +16,7 @@ Versioning; dates use ISO 8601.
 
 - Allow operators to select a validated 128 MiB to 4 GiB journey cgroup while preserving no-swap
   containment, and record the effective memory, CPU, PID, and scratch limits in journey evidence.
+- Bind the exact sandbox image digest and resource profile into the certification environment identity.
 
 ## [1.1.0] - 2026-08-09
 
