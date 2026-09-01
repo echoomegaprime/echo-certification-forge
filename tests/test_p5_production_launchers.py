@@ -21,6 +21,9 @@ def test_production_dispatcher_requires_v2_and_all_adapter_inputs() -> None:
     assert "--adapter-runner-signing-key" in launch
     assert "--adapter-runner-signing-key" in dispatcher
     assert "production_adapter_inputs_unavailable" in dispatcher
+    assert "--production-e2e-attestation-dir" in dispatcher
+    assert "--trusted-production-e2e-keys" in dispatcher
+    assert "DirectoryProductionE2EProvider" in dispatcher
 
 
 def test_production_deploy_requires_v2_adapter_artifacts() -> None:
@@ -51,6 +54,14 @@ def test_deploy_clears_stale_systemd_start_limits_before_start_and_rollback() ->
     dispatcher_reset = 'systemctl reset-failed "$DISPATCH_SERVICE.service"'
     dispatcher_restart = 'systemctl restart "$DISPATCH_SERVICE.service"'
     assert promotion.index(dispatcher_reset) < promotion.index(dispatcher_restart)
+
+
+def test_deploy_binds_dispatcher_to_root_owned_production_e2e_trust_roots() -> None:
+    text = (ROOT / "deploy" / "deploy_forge.sh").read_text(encoding="utf-8")
+    assert "ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR" in text
+    assert "ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS" in text
+    assert 'sudo install -d -o root -g root -m 0755 "$PRODUCTION_E2E_ATTESTATION_DIR"' in text
+    assert 'sudo install -d -o root -g root -m 0755 "$PRODUCTION_E2E_TRUSTED_KEYS"' in text
 
 
 def test_deploy_streams_private_sdk_sql_into_one_postgres_transaction() -> None:

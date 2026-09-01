@@ -7,6 +7,7 @@ import pytest
 
 from echo_certification_forge.models import EnvironmentIdentity, TargetIdentity
 from echo_certification_forge.production_e2e import (
+    DirectoryProductionE2EProvider,
     ECHO_CLIENTS,
     ECHO_GITHUB_ACCOUNTS,
     ECHO_GITHUB_AUTONOMY_CANONICAL_MCP,
@@ -235,3 +236,66 @@ def test_self_selected_public_key_cannot_replace_the_pinned_collector(tmp_path) 
     (trusted / "collector.pem").write_text(trusted_signer.public_key_pem, encoding="ascii")
     with pytest.raises(ValueError, match="untrusted_signing_key"):
         load_signed_attestation(envelope_path, trusted)
+
+
+def test_directory_provider_resolves_only_the_exact_target_and_environment(tmp_path) -> None:
+    signer = Ed25519VerdictSigner.generate()
+    payload = _payload(signing_key_id=signer.key_id)
+    envelope = signer.sign_payload(payload)
+    attestations = tmp_path / "attestations"
+    trusted = tmp_path / "trusted"
+    attestations.mkdir()
+    trusted.mkdir()
+    (trusted / "collector.pem").write_text(signer.public_key_pem, encoding="ascii")
+    expected_path = attestations / (
+        f"{_target().identity_digest}.{_environment().identity_digest}.json"
+    )
+    expected_path.write_text(
+        json.dumps(
+            {
+                "payload": envelope.payload,
+                "signature_b64": envelope.signature_b64,
+                "key_id": envelope.key_id,
+                "public_key_pem": envelope.public_key_pem,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    provider = DirectoryProductionE2EProvider(attestations, trusted)
+    verified = provider(_target(), _environment())
+    assert verified is not None
+    assert verified.payload == payload
+
+
+def test_directory_provider_fails_closed_for_missing_or_untrusted_envelopes(tmp_path) -> None:
+    trusted_signer = Ed25519VerdictSigner.generate()
+    attacker = Ed25519VerdictSigner.generate()
+    attestations = tmp_path / "attestations"
+    trusted = tmp_path / "trusted"
+    attestations.mkdir()
+    trusted.mkdir()
+    (trusted / "collector.pem").write_text(
+        trusted_signer.public_key_pem,
+        encoding="ascii",
+    )
+    provider = DirectoryProductionE2EProvider(attestations, trusted)
+    assert provider(_target(), _environment()) is None
+
+    payload = _payload(signing_key_id=attacker.key_id)
+    envelope = attacker.sign_payload(payload)
+    expected_path = attestations / (
+        f"{_target().identity_digest}.{_environment().identity_digest}.json"
+    )
+    expected_path.write_text(
+        json.dumps(
+            {
+                "payload": envelope.payload,
+                "signature_b64": envelope.signature_b64,
+                "key_id": envelope.key_id,
+                "public_key_pem": envelope.public_key_pem,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert provider(_target(), _environment()) is None

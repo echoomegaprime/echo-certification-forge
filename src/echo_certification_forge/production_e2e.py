@@ -348,3 +348,54 @@ def load_signed_attestation(path: Path, trusted_key_directory: Path) -> Verified
         raise ValueError("production E2E attestation envelope is invalid") from exc
     registry = TrustedPublicKeyRegistry.from_directory(trusted_key_directory)
     return verify_signed_attestation(envelope, registry)
+
+
+@dataclass(frozen=True, slots=True)
+class DirectoryProductionE2EProvider:
+    """Resolve a signed attestation for one exact target/environment pair.
+
+    The directory and trust roots are selected by the control plane. Target code
+    can neither choose an arbitrary file nor supply a public key. Missing or
+    untrusted envelopes are treated as absent so the deterministic verdict stays
+    ``NOT_READY``; a successfully verified envelope is still identity- and
+    freshness-checked by the executor.
+    """
+
+    attestation_directory: Path
+    trusted_key_directory: Path
+
+    def __post_init__(self) -> None:
+        try:
+            attestation_root = self.attestation_directory.resolve(strict=True)
+            trust_root = self.trusted_key_directory.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("production E2E trust root is unavailable") from exc
+        if not attestation_root.is_dir() or not trust_root.is_dir():
+            raise ValueError("production E2E trust root is not a directory")
+        object.__setattr__(self, "attestation_directory", attestation_root)
+        object.__setattr__(self, "trusted_key_directory", trust_root)
+
+    def __call__(
+        self,
+        target: TargetIdentity,
+        environment: EnvironmentIdentity,
+    ) -> VerifiedProductionE2E | None:
+        target_digest = target.identity_digest
+        environment_digest = environment.identity_digest
+        if not _SHA256.fullmatch(target_digest) or not _SHA256.fullmatch(environment_digest):
+            return None
+        candidate = self.attestation_directory / (
+            f"{target_digest}.{environment_digest}.json"
+        )
+        try:
+            if candidate.is_symlink() or not candidate.is_file():
+                return None
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            return None
+        if resolved.parent != self.attestation_directory:
+            return None
+        try:
+            return load_signed_attestation(resolved, self.trusted_key_directory)
+        except (OSError, TypeError, ValueError):
+            return None

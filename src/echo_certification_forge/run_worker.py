@@ -164,7 +164,11 @@ def run(
     adapter_bundle_response: RunnerResponse | None = None,
     production_e2e_attestation: VerifiedProductionE2E | None = None,
     production_e2e_provider: (
-        Callable[[TargetIdentity, EnvironmentIdentity], VerifiedProductionE2E] | None
+        Callable[
+            [TargetIdentity, EnvironmentIdentity],
+            VerifiedProductionE2E | None,
+        ]
+        | None
     ) = None,
     worker_id: str | None = None,
     worker_attestation_sha256: str | None = None,

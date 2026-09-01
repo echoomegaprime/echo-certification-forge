@@ -18,6 +18,18 @@ pinned collector public keys through `--trusted-production-e2e-keys` (or
 be present on the worker. Absence, signature failure, expiration, or any exact
 identity/E2E mismatch is a normal `NOT_READY` result, never a bypass.
 
+The durable subscriber dispatcher resolves attestations from
+`ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR`. Each envelope is named
+`<target_identity_digest>.<environment_identity_digest>.json`; both values are
+the exact 64-character digests published for the queued run. The matching
+collector public key is pinned independently under
+`ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS`. Both directories are root-owned
+and readable by the dispatcher but are not writable by its `forge` service
+identity. Install a collector envelope atomically (temporary file followed by
+rename), never place a private key in either directory, and never accept a
+target-selected path or target-supplied public key. Missing, untrusted, stale,
+or identity-mismatched envelopes remain `NOT_READY`.
+
 1. Confirm hosted CI succeeded for the exact source SHA.
 2. Execute the declared production-shaped journey with the pinned runner image.
 3. Verify evidence custody, receipt chains, signatures, expiry, and revocation state.
