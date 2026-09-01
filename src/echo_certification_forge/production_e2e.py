@@ -22,7 +22,7 @@ from .signing import TrustedPublicKeyRegistry
 RULE_ID = "production_e2e"
 SCHEMA_VERSION = "certforge.production-e2e.v1"
 GENERIC_PROFILE = "generic-production-v1"
-ECHO_GITHUB_AUTONOMY_PROFILE = "echo-github-autonomy-remote-mcp-v1"
+ECHO_GITHUB_AUTONOMY_PROFILE = "echo-github-autonomy-remote-mcp-v2"
 ECHO_GITHUB_AUTONOMY_REPOSITORY = "echoomegaprime/echo-github-autonomy"
 ECHO_GITHUB_AUTONOMY_CANONICAL_MCP = "https://echo-ghub.grok.me/api/plugin/mcp"
 
@@ -44,7 +44,7 @@ ECHO_GITHUB_AUTONOMY_CHECKS = BASE_CHECKS | frozenset(
         "tool_schema",
         "repeated_tool_invocation",
         "registry_persistence",
-        "four_account_reconciliation",
+        "three_account_reconciliation",
         "private_public_visibility",
         "read_write_certify",
         "cross_client_consistency",
@@ -53,7 +53,6 @@ ECHO_GITHUB_AUTONOMY_CHECKS = BASE_CHECKS | frozenset(
 ECHO_GITHUB_ACCOUNTS = {
     "echoomegaprime": 314902331,
     "ECHO-OMEGA-PRIME": 264607697,
-    "Bmcbob76": 203470412,
     "bobmcwilliams4": 235318155,
 }
 ECHO_CLIENTS = frozenset({"chatgpt", "claude", "codex", "grok"})
