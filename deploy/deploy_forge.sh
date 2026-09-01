@@ -16,7 +16,7 @@ CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-cur
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
 ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
-TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4}"
+TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-965106b00917268d556b325719f26f5096e6c3746551658ffecb9fd4a95ec342}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
 DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
 RELEASE_DROPIN="/etc/systemd/system/$SERVICE.service.d/10-release.conf"
@@ -173,6 +173,28 @@ set -a
 set +a
 PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
 STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
+PROD_DB_PATH="${ECHO_CERTFORGE_DB:-}"
+if [ -z "$PROD_DB_PATH" ]; then
+  CURRENT_SERVICE_PID="$(systemctl show "$SERVICE.service" --property MainPID --value 2>/dev/null || true)"
+  if [ "${CURRENT_SERVICE_PID:-0}" -gt 1 ] 2>/dev/null && \
+      [ -r "/proc/$CURRENT_SERVICE_PID/environ" ]; then
+    PROD_DB_PATH="$(python3 - "$CURRENT_SERVICE_PID" <<'PY'
+from pathlib import Path
+import sys
+
+for entry in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
+    if entry.startswith(b"ECHO_CERTFORGE_DB="):
+        print(entry.split(b"=", 1)[1].decode("utf-8"))
+        break
+PY
+)"
+  fi
+fi
+PROD_DB_PATH="${PROD_DB_PATH:-$STATE_ROOT/certforge.sqlite3}"
+case "$(realpath -m "$PROD_DB_PATH")" in
+  "$STATE_ROOT"/*|/mnt/documentation/echo/certforge/*) ;;
+  *) echo "!! effective production database is outside an approved state root"; exit 1 ;;
+esac
 test "${#PROD_PEPPER}" -ge 32 || {
   echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"
   exit 1
@@ -305,7 +327,7 @@ if sudo test -f "$DISPATCH_RELEASE_DROPIN"; then
   sudo cat "$DISPATCH_RELEASE_DROPIN" >"$DISPATCH_RELEASE_DROPIN_BACKUP"
   HAD_DISPATCH_RELEASE_DROPIN=1
 fi
-DB_PATH="$STATE_ROOT/certforge.sqlite3"
+DB_PATH="$PROD_DB_PATH"
 DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
 HAD_DB=0
 DB_SNAPSHOT_READY=0
@@ -503,7 +525,7 @@ Type=simple
 User=forge
 WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_DB=$DB_PATH
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
@@ -546,7 +568,7 @@ Type=simple
 User=forge
 WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_DB=$DB_PATH
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
@@ -593,7 +615,7 @@ for _ in $(seq 1 40); do
   }
   sleep 0.5
 done
-if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$DB_PATH" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
     ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
     ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
@@ -621,7 +643,7 @@ if [ "$dispatcher_ready" != 1 ]; then
   exit 1
 fi
 if [ "$ADAPTER_MODE" = required ]; then
-  ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+  ECHO_CERTFORGE_DB="$DB_PATH" \
   ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
   ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
   "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_dispatch.py" \

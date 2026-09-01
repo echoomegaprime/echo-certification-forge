@@ -136,6 +136,12 @@ VALUES
    '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
    'certforge.admin.mutate', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
 
+  ('echo.certforge.publish',
+   'Certification Forge: publish public-only verification material for one already-current, signed, production-ready run. The service re-evaluates the deployment gate; this capability cannot change evidence, policy, verdicts, or lifecycle state.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/certifications/{run_id}/publish', 'POST', 'path', 'forge',
+   '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}'::jsonb,
+   'certforge.read', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
    ('echo.certforge.admin.quarantine',
     'Certification Forge administration: quarantine one authenticated runner or adapter, removing it from eligible capacity/execution without deleting telemetry. Tier-2 HMAC and Desktop reauthentication are required.',
     'http', 'http://127.0.0.1:8309/v1/subscriber/operational-quarantines', 'POST', 'json_body', 'forge',

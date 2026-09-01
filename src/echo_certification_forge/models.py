@@ -182,6 +182,11 @@ class VerdictDecision:
     rule_manifest_id: str
     rule_manifest_digest: str
     evidence_merkle_root: str
+    production_e2e_attestation_id: str | None
+    production_e2e_profile: str | None
+    production_e2e_envelope_sha256: str | None
+    public_target_identity_sha256: str | None
+    production_e2e_identity_sha256: str | None
     signing_key_id: str
     issued_at: datetime
     expires_at: datetime
@@ -199,6 +204,11 @@ class VerdictDecision:
             "rule_manifest_id": self.rule_manifest_id,
             "rule_manifest_digest": self.rule_manifest_digest,
             "evidence_merkle_root": self.evidence_merkle_root,
+            "production_e2e_attestation_id": self.production_e2e_attestation_id,
+            "production_e2e_profile": self.production_e2e_profile,
+            "production_e2e_envelope_sha256": self.production_e2e_envelope_sha256,
+            "public_target_identity_sha256": self.public_target_identity_sha256,
+            "production_e2e_identity_sha256": self.production_e2e_identity_sha256,
             "signing_key_id": self.signing_key_id,
             "issued_at": to_utc_iso(self.issued_at),
             "expires_at": to_utc_iso(self.expires_at),

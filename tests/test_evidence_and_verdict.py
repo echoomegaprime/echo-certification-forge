@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -13,20 +14,59 @@ from echo_certification_forge.models import (
     ReleaseVerdict,
     RuleResult,
     RunOutcome,
+    EnvironmentIdentity,
     TargetIdentity,
     VerdictLifecycleEvent,
 )
-from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from echo_certification_forge.signing import (
+    Ed25519VerdictSigner,
+    TrustedPublicKeyRegistry,
+)
+from echo_certification_forge.canonical import to_utc_iso, utc_now
+from echo_certification_forge.production_e2e import (
+    BASE_CHECKS,
+    GENERIC_PROFILE,
+    SCHEMA_VERSION,
+)
 from echo_certification_forge.verdict import DeterministicVerdictEngine
 
 
 def register(store, manifest, target, environment, run_id="cert-001"):
-    store.register_run(run_id, target, environment, manifest.manifest_id, manifest.digest)
+    store.register_run(
+        run_id, target, environment, manifest.manifest_id, manifest.digest
+    )
     return run_id
 
 
-def satisfy_all_rules(store, manifest, run_id, tenant_id):
+def satisfy_all_rules(
+    store, manifest, run_id, tenant_id, *, include_production_e2e=True
+):
+    run = store.get_run(run_id, tenant_id)
+    target = TargetIdentity(**json.loads(run["target_identity_json"]))
+    environment = EnvironmentIdentity(**json.loads(run["environment_identity_json"]))
+    observed_at = utc_now()
+    production_e2e = {
+        "schema_version": SCHEMA_VERSION,
+        "attestation_id": f"e2e-{run_id}",
+        "profile": GENERIC_PROFILE,
+        "target_identity_digest": target.identity_digest,
+        "environment_identity_digest": environment.identity_digest,
+        "source_commit": target.source_commit,
+        "deployment_sha": target.source_commit,
+        "canonical_target": "https://api.github.com/runtime",
+        "required_checks": sorted(BASE_CHECKS),
+        "checks": {name: True for name in sorted(BASE_CHECKS)},
+        "stability_probe_count": 3,
+        "observed_at": to_utc_iso(observed_at),
+        "expires_at": to_utc_iso(observed_at + timedelta(minutes=30)),
+        "signing_key_id": "ed25519:" + "a" * 32,
+        "signature_verified": True,
+        "collector_key_id": "ed25519:" + "a" * 32,
+        "attestation_envelope_sha256": "f" * 64,
+    }
     for index, rule in enumerate(manifest.rules, start=1):
+        if rule.id == "production_e2e" and not include_production_e2e:
+            continue
         artifact_id = f"evidence-{index:02d}"
         store.append_artifact(
             run_id,
@@ -40,7 +80,14 @@ def satisfy_all_rules(store, manifest, run_id, tenant_id):
         store.record_rule_result(
             run_id,
             tenant_id,
-            RuleResult(rule.id, True, (artifact_id,), {"source": "acceptance"}),
+            RuleResult(
+                rule.id,
+                True,
+                (artifact_id,),
+                production_e2e
+                if rule.id == "production_e2e"
+                else {"source": "acceptance"},
+            ),
         )
 
 
@@ -53,10 +100,14 @@ def test_run_defaults_to_not_ready(store, manifest, target, environment):
     assert decision.run_outcome is RunOutcome.INCONCLUSIVE
     assert decision.release_verdict is ReleaseVerdict.NOT_READY
     assert "evidence_integrity_failed" in decision.reasons
-    assert any(reason.startswith("mandatory_rule_missing:") for reason in decision.reasons)
+    assert any(
+        reason.startswith("mandatory_rule_missing:") for reason in decision.reasons
+    )
 
 
-def test_complete_run_with_verified_evidence_gets_signed_ready(store, manifest, target, environment):
+def test_complete_run_with_verified_evidence_gets_signed_ready(
+    store, manifest, target, environment
+):
     run_id = register(store, manifest, target, environment)
     satisfy_all_rules(store, manifest, run_id, target.tenant_id)
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
@@ -81,7 +132,71 @@ def test_complete_run_with_verified_evidence_gets_signed_ready(store, manifest, 
     assert gate.allowed
 
 
-def test_bare_database_rows_cannot_manufacture_ready(store, manifest, target, environment):
+def test_source_and_rule_rows_without_production_e2e_never_get_ready(
+    store, manifest, target, environment
+):
+    run_id = register(store, manifest, target, environment)
+    satisfy_all_rules(
+        store,
+        manifest,
+        run_id,
+        target.tenant_id,
+        include_production_e2e=False,
+    )
+    store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
+    signer = Ed25519VerdictSigner.generate()
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
+    assert decision.release_verdict is ReleaseVerdict.NOT_READY
+    assert "production_e2e_attestation_missing" in decision.reasons
+
+
+def test_failed_executor_rule_preserves_missing_attestation_reason(
+    store, manifest, target, environment
+):
+    run_id = register(store, manifest, target, environment)
+    for index, rule in enumerate(manifest.rules, start=1):
+        artifact_id = f"executor-evidence-{index:02d}"
+        store.append_artifact(
+            run_id,
+            target.tenant_id,
+            artifact_id,
+            json.dumps({"rule": rule.id}, sort_keys=True).encode(),
+            "application/json",
+            "executor-regression",
+            RedactionStatus.COMPLETE,
+        )
+        is_production_e2e = rule.id == "production_e2e"
+        store.record_rule_result(
+            run_id,
+            target.tenant_id,
+            RuleResult(
+                rule.id,
+                not is_production_e2e,
+                (artifact_id,),
+                (
+                    {"validation": "production_e2e_attestation_missing"}
+                    if is_production_e2e
+                    else {"source": "executor-regression"}
+                ),
+            ),
+        )
+    store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
+
+    signer = Ed25519VerdictSigner.generate()
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
+
+    assert decision.release_verdict is ReleaseVerdict.NOT_READY
+    assert "production_e2e_attestation_missing" in decision.reasons
+    assert "production_e2e_schema_invalid" not in decision.reasons
+
+
+def test_bare_database_rows_cannot_manufacture_ready(
+    store, manifest, target, environment
+):
     run_id = register(store, manifest, target, environment)
     now = "2026-07-16T00:00:00Z"
     with closing(sqlite3.connect(store.db_path)) as connection:
@@ -103,15 +218,27 @@ def test_bare_database_rows_cannot_manufacture_ready(store, manifest, target, en
                 }
                 from echo_certification_forge.canonical import sha256_json
                 from echo_certification_forge.evidence import _ZERO_HASH
+
                 record_hash = sha256_json(descriptor)
                 previous = _ZERO_HASH if index == 1 else "1" * 64
                 chain_hash = "1" * 64
                 connection.execute(
                     "INSERT INTO evidence_artifacts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        artifact_id, run_id, target.tenant_id, descriptor["relative_path"], "0" * 64, 1,
-                        "application/json", "forged-row", "COMPLETE", index, now,
-                        record_hash, previous, chain_hash,
+                        artifact_id,
+                        run_id,
+                        target.tenant_id,
+                        descriptor["relative_path"],
+                        "0" * 64,
+                        1,
+                        "application/json",
+                        "forged-row",
+                        "COMPLETE",
+                        index,
+                        now,
+                        record_hash,
+                        previous,
+                        chain_hash,
                     ),
                 )
                 connection.execute(
@@ -127,7 +254,9 @@ def test_bare_database_rows_cannot_manufacture_ready(store, manifest, target, en
     )
     assert decision.release_verdict is ReleaseVerdict.NOT_READY
     assert "evidence_integrity_failed" in decision.reasons
-    assert any(reason.startswith("invalid_rule_evidence:") for reason in decision.reasons)
+    assert any(
+        reason.startswith("invalid_rule_evidence:") for reason in decision.reasons
+    )
 
 
 def test_altered_artifact_forces_not_ready(store, manifest, target, environment):
@@ -136,7 +265,13 @@ def test_altered_artifact_forces_not_ready(store, manifest, target, environment)
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
     row = store.verify_evidence(run_id, target.tenant_id)
     assert row.valid
-    artifact = store.evidence_root / target.tenant_id / run_id / "artifacts" / "evidence-01.bin"
+    artifact = (
+        store.evidence_root
+        / target.tenant_id
+        / run_id
+        / "artifacts"
+        / "evidence-01.bin"
+    )
     artifact.write_bytes(b"tampered")
     signer = Ed25519VerdictSigner.generate()
     decision = DeterministicVerdictEngine().evaluate(
@@ -150,7 +285,13 @@ def test_missing_artifact_forces_not_ready(store, manifest, target, environment)
     run_id = register(store, manifest, target, environment)
     satisfy_all_rules(store, manifest, run_id, target.tenant_id)
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
-    artifact = store.evidence_root / target.tenant_id / run_id / "artifacts" / "evidence-02.bin"
+    artifact = (
+        store.evidence_root
+        / target.tenant_id
+        / run_id
+        / "artifacts"
+        / "evidence-02.bin"
+    )
     artifact.unlink()
     signer = Ed25519VerdictSigner.generate()
     decision = DeterministicVerdictEngine().evaluate(
@@ -164,7 +305,9 @@ def test_digest_mismatch_blocks_deployment(store, manifest, target, environment)
     satisfy_all_rules(store, manifest, run_id, target.tenant_id)
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
     signer = Ed25519VerdictSigner.generate()
-    decision = DeterministicVerdictEngine().evaluate(store, run_id, target.tenant_id, manifest, signer.key_id)
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
     envelope = signer.sign(decision)
     store.save_signed_verdict(run_id, target.tenant_id, envelope)
     trusted = TrustedPublicKeyRegistry.empty()
@@ -176,34 +319,54 @@ def test_digest_mismatch_blocks_deployment(store, manifest, target, environment)
     assert "target_identity_mismatch" in gate.reasons
 
 
-def test_untrusted_self_signed_verdict_is_rejected(store, manifest, target, environment):
+def test_untrusted_self_signed_verdict_is_rejected(
+    store, manifest, target, environment
+):
     run_id = register(store, manifest, target, environment)
     satisfy_all_rules(store, manifest, run_id, target.tenant_id)
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
     attacker = Ed25519VerdictSigner.generate()
-    decision = DeterministicVerdictEngine().evaluate(store, run_id, target.tenant_id, manifest, attacker.key_id)
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, attacker.key_id
+    )
     store.save_signed_verdict(run_id, target.tenant_id, attacker.sign(decision))
     gate = DeployGate(store, TrustedPublicKeyRegistry.empty()).evaluate(
-        target.tenant_id, run_id, target.identity_digest, environment.identity_digest, manifest.digest
+        target.tenant_id,
+        run_id,
+        target.identity_digest,
+        environment.identity_digest,
+        manifest.digest,
     )
     assert not gate.allowed
     assert "untrusted_signing_key" in gate.reasons
 
 
-def test_revocation_blocks_previously_valid_verdict(store, manifest, target, environment):
+def test_revocation_blocks_previously_valid_verdict(
+    store, manifest, target, environment
+):
     run_id = register(store, manifest, target, environment)
     satisfy_all_rules(store, manifest, run_id, target.tenant_id)
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
     signer = Ed25519VerdictSigner.generate()
-    decision = DeterministicVerdictEngine().evaluate(store, run_id, target.tenant_id, manifest, signer.key_id)
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
     store.save_signed_verdict(run_id, target.tenant_id, signer.sign(decision))
     trusted = TrustedPublicKeyRegistry.empty()
     trusted.add_pem(signer.public_key_pem)
     store.append_lifecycle_event(
-        run_id, target.tenant_id, VerdictLifecycleEvent.REVOKED, "release-authority", "security advisory"
+        run_id,
+        target.tenant_id,
+        VerdictLifecycleEvent.REVOKED,
+        "release-authority",
+        "security advisory",
     )
     gate = DeployGate(store, trusted).evaluate(
-        target.tenant_id, run_id, target.identity_digest, environment.identity_digest, manifest.digest
+        target.tenant_id,
+        run_id,
+        target.identity_digest,
+        environment.identity_digest,
+        manifest.digest,
     )
     assert not gate.allowed
     assert "verdict_revoked" in gate.reasons
@@ -212,7 +375,12 @@ def test_revocation_blocks_previously_valid_verdict(store, manifest, target, env
 def test_evidence_rows_are_append_only(store, manifest, target, environment):
     run_id = register(store, manifest, target, environment)
     store.append_artifact(
-        run_id, target.tenant_id, "immutable-evidence", b"proof", "text/plain", "unit-test"
+        run_id,
+        target.tenant_id,
+        "immutable-evidence",
+        b"proof",
+        "text/plain",
+        "unit-test",
     )
     with closing(sqlite3.connect(store.db_path)) as connection:
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):

@@ -10,6 +10,14 @@
 
 ## Verification sequence
 
+Before a worker may issue `PRODUCTION_READY`, mount a collector envelope through
+`--production-e2e-attestation` (or
+`ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION`) and a directory containing only the
+pinned collector public keys through `--trusted-production-e2e-keys` (or
+`ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS`). The private collector key must not
+be present on the worker. Absence, signature failure, expiration, or any exact
+identity/E2E mismatch is a normal `NOT_READY` result, never a bypass.
+
 1. Confirm hosted CI succeeded for the exact source SHA.
 2. Execute the declared production-shaped journey with the pinned runner image.
 3. Verify evidence custody, receipt chains, signatures, expiry, and revocation state.
@@ -17,6 +25,13 @@
 5. Boot staging from that same SHA and run live smoke and negative paths.
 6. Promote atomically, health-check production, and roll back on any mismatch.
 7. Publish immutable machine certificates and the repository certificate graphic.
+
+The execution cgroup remains mandatory. `ECHO_CERTFORGE_SANDBOX_MEMORY` (or
+`--sandbox-memory`) may select a whole-MiB/GiB limit from `128m` through `4g`; the default is
+`512m`. CertForge rejects malformed, lower, higher, or unbounded values, applies the same value to
+memory and memory-swap, and records the effective resource profile in critical-journey evidence.
+The pinned sandbox image digest and resource profile are also incorporated into the authoritative
+certification environment identity; changing either invalidates reuse of the prior environment digest.
 
 ## Incident triage
 

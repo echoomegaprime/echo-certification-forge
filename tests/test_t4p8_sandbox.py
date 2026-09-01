@@ -11,10 +11,17 @@ from pathlib import Path
 import pytest
 
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
+from echo_certification_forge.run_worker import _worker_environment
 from echo_certification_forge.sandbox import (
-    DEFAULT_IMAGE, DockerSandbox, SandboxError, sandboxed_journey_runner,
+    DEFAULT_IMAGE,
+    DockerSandbox,
+    SandboxError,
+    SandboxResult,
+    normalize_memory_limit,
+    sandboxed_journey_runner,
 )
 from echo_certification_forge.signing import Ed25519VerdictSigner
+from production_e2e_support import trusted_generic_production_e2e
 
 
 def test_build_command_has_all_hardening_flags(tmp_path):
@@ -39,6 +46,76 @@ def test_build_command_has_all_hardening_flags(tmp_path):
 def test_empty_argv_rejected(tmp_path):
     with pytest.raises(SandboxError, match="empty journey argv"):
         DockerSandbox().build_command([], tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("raw", "normalized"),
+    (("128m", "128m"), ("1024M", "1024m"), ("1G", "1g"), ("4g", "4g")),
+)
+def test_memory_limit_is_bounded_and_normalized(raw, normalized):
+    assert normalize_memory_limit(raw) == normalized
+
+
+@pytest.mark.parametrize("raw", ("", "0m", "127m", "5g", "512", "1.5g", "unlimited"))
+def test_memory_limit_rejects_unbounded_or_malformed_values(raw):
+    with pytest.raises(ValueError, match="sandbox memory"):
+        normalize_memory_limit(raw)
+
+
+def test_custom_memory_limit_stays_cgroup_bounded(tmp_path):
+    cmd = DockerSandbox(memory="1G").build_command(["python3", "hello.py"], tmp_path)
+    joined = " ".join(cmd)
+    assert "--memory 1g" in joined
+    assert "--memory-swap 1g" in joined
+
+
+def test_environment_identity_binds_pinned_image_and_resource_profile():
+    image_a = "example.invalid/runtime@sha256:" + ("a" * 64)
+    image_b = "example.invalid/runtime@sha256:" + ("b" * 64)
+    baseline = _worker_environment(sandbox=DockerSandbox(image=image_a, memory="1g"))
+    different_image = _worker_environment(
+        sandbox=DockerSandbox(image=image_b, memory="1g")
+    )
+    different_memory = _worker_environment(
+        sandbox=DockerSandbox(image=image_a, memory="2g")
+    )
+    assert baseline.runner_image_sha256 == "a" * 64
+    assert baseline.identity_digest != different_image.identity_digest
+    assert baseline.identity_digest != different_memory.identity_digest
+
+
+def test_unpinned_image_is_rejected_before_execution(tmp_path):
+    with pytest.raises(SandboxError, match="pinned by sha256"):
+        DockerSandbox(image="python:latest").build_command(["python3", "hello.py"], tmp_path)
+
+
+def test_effective_resource_limits_are_recorded_in_journey_evidence(tmp_path):
+    class StubSandbox:
+        image = "example.invalid/runtime@sha256:" + ("a" * 64)
+        memory = "1G"
+        cpus = "1.5"
+        pids_limit = 96
+        tmpfs_size = "80m"
+
+        @staticmethod
+        def run(argv, workdir, execution_guard=None):
+            return SandboxResult(0, "ok", "", False)
+
+        @staticmethod
+        def resource_limits():
+            return {"memory": "1g", "cpus": "1.5", "pids": 96, "tmpfs": "80m"}
+
+    passed, detail = sandboxed_journey_runner(StubSandbox())(
+        ["python3", "hello.py"],
+        tmp_path,
+    )
+    assert passed is True
+    assert detail["resource_limits"] == {
+        "memory": "1g",
+        "cpus": "1.5",
+        "pids": 96,
+        "tmpfs": "80m",
+    }
 
 
 def test_unavailable_runtime_is_a_harness_failure_not_a_pass(tmp_path):
@@ -72,6 +149,7 @@ def test_executor_uses_injected_journey_runner(store, manifest, target, environm
         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
         journey=["python3", "hello.py"], journey_runner=fake_runner,
         control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+        production_e2e_attestation=trusted_generic_production_e2e(target, environment),
     )
     assert calls and calls[0][0] == ["python3", "hello.py"]   # the injected runner was used
     assert result.release_verdict == "PRODUCTION_READY"

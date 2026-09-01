@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import tarfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -61,6 +62,26 @@ _OCI_INDEX_MEDIA_TYPES = frozenset(
         "application/vnd.docker.distribution.manifest.list.v2+json",
     )
 )
+
+
+def _validate_secret_safe_git_url(url: str) -> None:
+    """Reject remote references that could persist credentials in run identity or errors."""
+
+    if any(character in url for character in ("\r", "\n", "\x00")):
+        raise AcquisitionError("git target URL contains an invalid control character")
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme.casefold() in {"http", "https"}:
+        if parsed.username is not None or parsed.password is not None:
+            raise AcquisitionError("git target URL must not contain embedded credentials")
+        if parsed.query or parsed.fragment:
+            raise AcquisitionError("git target URL must not contain query or fragment credentials")
+        return
+    if "://" not in url:
+        authority = url.split(":", 1)[0]
+        if "@" in authority and authority.split("@", 1)[0] != "git":
+            raise AcquisitionError(
+                "git SCP-style target URL must use the non-secret 'git' SSH account"
+            )
 
 
 def _tree_digest(root: Path) -> str:
@@ -372,6 +393,7 @@ def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) ->
         url = str(spec.get("url", "")).strip()
         if not url:
             raise AcquisitionError("git target requires 'url'")
+        _validate_secret_safe_git_url(url)
         ref = str(spec.get("ref", "")).strip()
         dest = dest.resolve(strict=False)
         if dest.exists():

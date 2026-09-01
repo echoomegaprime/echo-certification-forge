@@ -91,6 +91,14 @@
       "conditional_allowed": false,
       "minimum_evidence": 1,
       "description": "Deployment authorization checks the exact certified digest, policy, environment, and lifecycle."
+    },
+    {
+      "id": "production_e2e",
+      "severity": "BLOCKER",
+      "mandatory": true,
+      "conditional_allowed": false,
+      "minimum_evidence": 1,
+      "description": "A trusted independent collector proves the exact deployed identity, real critical journeys, negative controls, stability, and external client acceptance end to end."
     }
   ]
 }

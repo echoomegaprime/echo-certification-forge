@@ -12,9 +12,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .canonical import sha256_json
+from .canonical import sha256_json, utc_now
 from .evidence import EvidenceStore
-from .models import ReleaseVerdict, RunState, declared_target_identity_digest
+from .models import (
+    EnvironmentIdentity,
+    ReleaseVerdict,
+    RunState,
+    TargetIdentity,
+    declared_target_identity_digest,
+)
+from .production_e2e import RULE_ID as PRODUCTION_E2E_RULE_ID
+from .production_e2e import validate_production_e2e
 from .policy import RuleManifest
 
 # Internal fine-grained RunState -> coarse public state (contracts/schemas/certification-run.v1.json).
@@ -152,6 +160,59 @@ def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
         payload = json.loads(verdict_row["payload_json"])
         release_verdict = payload.get("release_verdict", release_verdict)
         evidence_merkle_root = payload.get("evidence_merkle_root")
+    production_e2e = {
+        "verified": False,
+        "profile": None,
+        "attestation_id": None,
+        "source_commit": None,
+        "deployment_sha": None,
+        "target_identity_digest": None,
+        "environment_identity_digest": None,
+        "canonical_target": None,
+        "tool_count": None,
+        "signature_verified": False,
+        "collector_key_id": None,
+        "attestation_envelope_sha256": None,
+    }
+    result = store.list_rule_results(run_id, tenant_id).get(PRODUCTION_E2E_RULE_ID)
+    if result is not None:
+        try:
+            target = TargetIdentity(**json.loads(row["target_identity_json"]))
+            environment = EnvironmentIdentity(**json.loads(row["environment_identity_json"]))
+            verified, _reason = validate_production_e2e(
+                result.details,
+                target,
+                environment,
+                now=utc_now(),
+            )
+            production_e2e = {
+                "verified": verified,
+                "profile": result.details.get("profile") if verified else None,
+                "attestation_id": result.details.get("attestation_id") if verified else None,
+                "source_commit": result.details.get("source_commit") if verified else None,
+                "deployment_sha": result.details.get("deployment_sha") if verified else None,
+                "target_identity_digest": (
+                    result.details.get("target_identity_digest") if verified else None
+                ),
+                "environment_identity_digest": (
+                    result.details.get("environment_identity_digest") if verified else None
+                ),
+                "canonical_target": (
+                    result.details.get("canonical_target") if verified else None
+                ),
+                "tool_count": result.details.get("tool_count") if verified else None,
+                "signature_verified": (
+                    result.details.get("signature_verified") is True if verified else False
+                ),
+                "collector_key_id": (
+                    result.details.get("collector_key_id") if verified else None
+                ),
+                "attestation_envelope_sha256": (
+                    result.details.get("attestation_envelope_sha256") if verified else None
+                ),
+            }
+        except (TypeError, ValueError):
+            pass
     projected = {
         "run_id": run_id,
         "tenant_id": tenant_id,
@@ -162,6 +223,7 @@ def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
         "environment_identity_digest": row["environment_identity_digest"],
         "policy_version": row["policy_version"] or row["rule_manifest_id"],
         "evidence_merkle_root": evidence_merkle_root,
+        "production_e2e": production_e2e,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
