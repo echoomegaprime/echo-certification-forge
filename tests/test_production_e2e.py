@@ -118,7 +118,9 @@ def test_echo_github_autonomy_requires_complete_exact_cross_client_e2e() -> None
         (lambda value: value.__setitem__("deployment_sha", "6" * 40), "production_e2e_deployment_sha_mismatch"),
         (lambda value: value.__setitem__("tool_count", 27), "production_e2e_tool_count_mismatch"),
         (
-            lambda value: value["accounts"]["Bmcbob76"].__setitem__("private_count", 0),
+            lambda value: value["accounts"]["bobmcwilliams4"].__setitem__(
+                "private_count", 0
+            ),
             "production_e2e_account_reconciliation_failed",
         ),
         (
@@ -126,19 +128,19 @@ def test_echo_github_autonomy_requires_complete_exact_cross_client_e2e() -> None
             "production_e2e_client_not_accepted",
         ),
         (
-            lambda value: value["accounts"]["Bmcbob76"].__setitem__(
+            lambda value: value["accounts"]["bobmcwilliams4"].__setitem__(
                 "credential_source", "model_config_pat"
             ),
             "production_e2e_credential_source_invalid",
         ),
         (
-            lambda value: value["accounts"]["Bmcbob76"].__setitem__(
+            lambda value: value["accounts"]["bobmcwilliams4"].__setitem__(
                 "secret_exposed", True
             ),
             "production_e2e_secret_boundary_failed",
         ),
         (
-            lambda value: value["sample_private_repositories"]["Bmcbob76"].__setitem__(
+            lambda value: value["sample_private_repositories"]["bobmcwilliams4"].__setitem__(
                 "repository_id", True
             ),
             "production_e2e_sample_repository_id_invalid",
@@ -161,6 +163,27 @@ def test_stale_e2e_attestation_fails_closed() -> None:
     )
     assert not valid
     assert reason == "production_e2e_attestation_not_current"
+
+
+def test_retired_account_and_v1_profile_are_rejected() -> None:
+    retired_account = _payload()
+    retired_account["accounts"]["Bmcbob76"] = {
+        **retired_account["accounts"]["bobmcwilliams4"],
+        "account_id": 203470412,
+    }
+    valid, reason = validate_production_e2e(
+        retired_account, _target(), _environment(), now=NOW + timedelta(minutes=1)
+    )
+    assert not valid
+    assert reason == "production_e2e_accounts_incomplete"
+
+    retired_profile = _payload()
+    retired_profile["profile"] = "echo-github-autonomy-remote-mcp-v1"
+    valid, reason = validate_production_e2e(
+        retired_profile, _target(), _environment(), now=NOW + timedelta(minutes=1)
+    )
+    assert not valid
+    assert reason == "production_e2e_profile_mismatch"
 
 
 def test_attestation_loader_requires_a_pinned_collector_key(tmp_path) -> None:

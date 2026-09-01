@@ -52,8 +52,11 @@ acceptance. Source checks, local journeys, HTTP 200, unsigned status fields, and
 target-authored evidence cannot satisfy this gate. Missing, expired, untrusted,
 partially passing, or identity-mismatched attestations remain `NOT_READY`.
 
-For Echo GitHub Autonomy the target-specific profile additionally requires the
-canonical MCP and OAuth surface, 30-tool schema, repeated discovery plus
-invocation without registry loss, reconciled public/private inventory and
-read/write/certify authority for all four exact GitHub account IDs, and matching
-private-repository fingerprints from ChatGPT, Claude, Codex, and Grok.
+For Echo GitHub Autonomy, target-specific profile
+`echo-github-autonomy-remote-mcp-v2` additionally requires the canonical MCP
+and OAuth surface, 30-tool schema, repeated discovery plus invocation without
+registry loss, reconciled public/private inventory and read/write/certify
+authority for exactly the three governed GitHub account IDs (`echoomegaprime`,
+`ECHO-OMEGA-PRIME`, and `bobmcwilliams4`), and matching private-repository
+fingerprints from ChatGPT, Claude, Codex, and Grok. The retired `Bmcbob76`
+identity is invalid evidence for this profile.

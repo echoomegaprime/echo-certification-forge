@@ -26,6 +26,10 @@ identity/E2E mismatch is a normal `NOT_READY` result, never a bypass.
 6. Promote atomically, health-check production, and roll back on any mismatch.
 7. Publish immutable machine certificates and the repository certificate graphic.
 
+The Echo GitHub Autonomy production collector must use profile
+`echo-github-autonomy-remote-mcp-v2` and exactly the three governed accounts.
+Profile v1 and evidence containing the retired `Bmcbob76` identity fail closed.
+
 ## Incident triage
 
 Capture the run ID, target SHA, environment digest, policy version, service health, dispatcher state,
