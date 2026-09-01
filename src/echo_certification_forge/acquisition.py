@@ -13,6 +13,7 @@ any journey execution, and OCI journeys run only inside a sandbox pinned to the 
 """
 from __future__ import annotations
 
+import base64
 import io
 import json
 import math
@@ -21,10 +22,15 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from .canonical import sha256_bytes
 from .models import is_exact_git_commit
@@ -38,6 +44,14 @@ _GIT_ACQUISITION_TIMEOUT_ENV = "ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS"
 _DEFAULT_GIT_ACQUISITION_TIMEOUT_SECONDS = 300.0
 _MIN_GIT_ACQUISITION_TIMEOUT_SECONDS = 30.0
 _MAX_GIT_ACQUISITION_TIMEOUT_SECONDS = 1800.0
+_GITHUB_APP_ID_ENV = "ECHO_CERTFORGE_GITHUB_APP_ID"
+_GITHUB_PRIVATE_KEY_FILE_ENV = "ECHO_CERTFORGE_GITHUB_PRIVATE_KEY_FILE"
+_GITHUB_API = "https://api.github.com"
+_GITHUB_REPOSITORY_URL = re.compile(
+    r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/"
+    r"(?P<repository>[A-Za-z0-9_.-]+?)(?:\.git)?$"
+)
+_GITHUB_RESPONSE_LIMIT = 1024 * 1024
 
 
 def configured_git_acquisition_timeout_seconds() -> float:
@@ -58,6 +72,142 @@ def configured_git_acquisition_timeout_seconds() -> float:
     ):
         raise AcquisitionError("git acquisition timeout configuration is out of bounds")
     return value
+
+
+def _base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _github_app_jwt(app_id: int, private_key: bytes) -> str:
+    now = int(time.time())
+    header = _base64url(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _base64url(
+        json.dumps(
+            {"iat": now - 30, "exp": now + 540, "iss": str(app_id)},
+            separators=(",", ":"),
+        ).encode()
+    )
+    signing_input = f"{header}.{payload}".encode("ascii")
+    try:
+        loaded = serialization.load_pem_private_key(private_key, password=None)
+    except (TypeError, ValueError) as exc:
+        raise AcquisitionError("GitHub App private key is invalid") from exc
+    if not isinstance(loaded, rsa.RSAPrivateKey):
+        raise AcquisitionError("GitHub App private key must be RSA")
+    signature = loaded.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    return f"{header}.{payload}.{_base64url(signature)}"
+
+
+def _github_json(
+    method: str,
+    path: str,
+    token: str,
+    *,
+    body: dict | None = None,
+) -> dict:
+    encoded = None if body is None else json.dumps(body, separators=(",", ":")).encode()
+    request = urllib.request.Request(
+        f"{_GITHUB_API}{path}",
+        data=encoded,
+        method=method,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "echo-certification-forge/1.2",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+            raw = response.read(_GITHUB_RESPONSE_LIMIT + 1)
+    except urllib.error.HTTPError as exc:
+        raise AcquisitionError(
+            f"GitHub App credential request failed: {method} HTTP {exc.code}"
+        ) from None
+    except (OSError, TimeoutError, urllib.error.URLError) as exc:
+        raise AcquisitionError(
+            f"GitHub App credential request failed: {method} {type(exc).__name__}"
+        ) from None
+    if len(raw) > _GITHUB_RESPONSE_LIMIT:
+        raise AcquisitionError("GitHub App credential response exceeded size limit")
+    try:
+        document = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise AcquisitionError("GitHub App credential response was not JSON") from None
+    if not isinstance(document, dict):
+        raise AcquisitionError("GitHub App credential response was not an object")
+    return document
+
+
+def _github_app_installation_token(url: str) -> str | None:
+    """Resolve a short-lived, repository-scoped token for a canonical GitHub URL.
+
+    The token is used only through ``GIT_ASKPASS`` and is never placed in the URL,
+    command line, target specification, evidence, or exception text.
+    """
+
+    match = _GITHUB_REPOSITORY_URL.fullmatch(url)
+    if match is None:
+        return None
+    raw_app_id = os.getenv(_GITHUB_APP_ID_ENV, "").strip()
+    raw_key_file = os.getenv(_GITHUB_PRIVATE_KEY_FILE_ENV, "").strip()
+    if not raw_app_id and not raw_key_file:
+        return None
+    if not raw_app_id or not raw_key_file:
+        raise AcquisitionError("GitHub App acquisition credential configuration is incomplete")
+    try:
+        app_id = int(raw_app_id)
+    except ValueError as exc:
+        raise AcquisitionError("GitHub App id is invalid") from exc
+    if app_id <= 0:
+        raise AcquisitionError("GitHub App id is invalid")
+    key_file = Path(raw_key_file).resolve(strict=False)
+    try:
+        private_key = key_file.read_bytes()
+    except OSError as exc:
+        raise AcquisitionError("GitHub App private key file is unavailable") from exc
+    app_jwt = _github_app_jwt(app_id, private_key)
+    owner = match.group("owner")
+    repository = match.group("repository")
+    encoded_owner = urllib.parse.quote(owner, safe="")
+    encoded_repository = urllib.parse.quote(repository, safe="")
+    installation = _github_json(
+        "GET",
+        f"/repos/{encoded_owner}/{encoded_repository}/installation",
+        app_jwt,
+    )
+    installation_id = installation.get("id")
+    if not isinstance(installation_id, int) or installation_id <= 0:
+        raise AcquisitionError("GitHub App repository installation is unavailable")
+    credential = _github_json(
+        "POST",
+        f"/app/installations/{installation_id}/access_tokens",
+        app_jwt,
+        body={
+            "repositories": [repository],
+            "permissions": {"contents": "read"},
+        },
+    )
+    token = credential.get("token")
+    if not isinstance(token, str) or not token:
+        raise AcquisitionError("GitHub App installation token was not returned")
+    return token
+
+
+def _write_git_askpass(parent: Path) -> Path:
+    path = parent / ".certforge-git-askpass"
+    path.write_text(
+        "#!/bin/sh\n"
+        "case \"$1\" in\n"
+        "  *Username*) printf '%s\\n' 'x-access-token' ;;\n"
+        "  *Password*) printf '%s\\n' \"$ECHO_CERTFORGE_GIT_TOKEN\" ;;\n"
+        "  *) exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o700)
+    return path
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,6 +562,18 @@ def acquire_target(
         if dest.exists():
             shutil.rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
+        installation_token = _github_app_installation_token(url)
+        askpass_path: Path | None = None
+        git_environment = os.environ.copy()
+        if installation_token is not None:
+            askpass_path = _write_git_askpass(dest.parent)
+            git_environment.update(
+                {
+                    "ECHO_CERTFORGE_GIT_TOKEN": installation_token,
+                    "GIT_ASKPASS": str(askpass_path),
+                    "GIT_TERMINAL_PROMPT": "0",
+                }
+            )
         git_base = [
             "git",
             "-c", "core.hooksPath=/dev/null",     # never run target-supplied hooks
@@ -424,40 +586,50 @@ def acquire_target(
                 process = subprocess.run(
                     [*git_base, *arguments], capture_output=True, text=True,
                     timeout=clone_timeout_s, shell=False, check=False,
+                    env=git_environment,
                 )
             except (OSError, subprocess.TimeoutExpired) as exc:
                 raise AcquisitionError(f"git {operation} failed: {type(exc).__name__}") from exc
             if process.returncode != 0:
                 detail = process.stderr.strip()[-300:]
+                if installation_token is not None:
+                    detail = detail.replace(installation_token, "[REDACTED]")
                 raise AcquisitionError(f"git {operation} exited {process.returncode}: {detail}")
             return process
 
         actual_ref: str | None = None
-        if ref and is_exact_git_commit(ref):
-            # `git clone --branch <sha>` does not reliably accept raw commit IDs. Fetch the
-            # immutable object explicitly, detach at FETCH_HEAD, and then prove HEAD is exact.
-            run_git(["init", "--", str(dest)], "init")
-            run_git(["-C", str(dest), "remote", "add", "origin", url], "remote-add")
-            run_git(
-                ["-C", str(dest), "fetch", "--depth", "1", "--no-tags", "origin", ref],
-                "fetch-exact-commit",
-            )
-            run_git(["-C", str(dest), "checkout", "--detach", "FETCH_HEAD"], "checkout")
-            actual_ref = run_git(["-C", str(dest), "rev-parse", "HEAD"], "rev-parse").stdout.strip()
-            if actual_ref.lower() != ref.lower():
-                shutil.rmtree(dest, ignore_errors=True)
-                raise AcquisitionError(
-                    f"git revision mismatch: requested {ref.lower()}, acquired {actual_ref.lower()}"
+        try:
+            if ref and is_exact_git_commit(ref):
+                # `git clone --branch <sha>` does not reliably accept raw commit IDs. Fetch the
+                # immutable object explicitly, detach at FETCH_HEAD, and then prove HEAD is exact.
+                run_git(["init", "--", str(dest)], "init")
+                run_git(["-C", str(dest), "remote", "add", "origin", url], "remote-add")
+                run_git(
+                    ["-C", str(dest), "fetch", "--depth", "1", "--no-tags", "origin", ref],
+                    "fetch-exact-commit",
                 )
-        else:
-            clone_args = ["clone", "--depth", "1", "--no-tags", "--single-branch"]
-            if ref:
-                clone_args += ["--branch", ref]
-            clone_args += ["--", url, str(dest)]
-            run_git(clone_args, "clone")
-            actual_ref = run_git(
-                ["-C", str(dest), "rev-parse", "HEAD"], "rev-parse"
-            ).stdout.strip()
+                run_git(["-C", str(dest), "checkout", "--detach", "FETCH_HEAD"], "checkout")
+                actual_ref = run_git(
+                    ["-C", str(dest), "rev-parse", "HEAD"], "rev-parse"
+                ).stdout.strip()
+                if actual_ref.lower() != ref.lower():
+                    shutil.rmtree(dest, ignore_errors=True)
+                    raise AcquisitionError(
+                        f"git revision mismatch: requested {ref.lower()}, acquired {actual_ref.lower()}"
+                    )
+            else:
+                clone_args = ["clone", "--depth", "1", "--no-tags", "--single-branch"]
+                if ref:
+                    clone_args += ["--branch", ref]
+                clone_args += ["--", url, str(dest)]
+                run_git(clone_args, "clone")
+                actual_ref = run_git(
+                    ["-C", str(dest), "rev-parse", "HEAD"], "rev-parse"
+                ).stdout.strip()
+        finally:
+            git_environment.pop("ECHO_CERTFORGE_GIT_TOKEN", None)
+            if askpass_path is not None:
+                askpass_path.unlink(missing_ok=True)
         # remove the .git dir so no repo metadata/hooks enter the scanned build context
         git_dir = dest / ".git"
         if git_dir.exists():

@@ -77,6 +77,88 @@ def test_acquire_git_exact_commit_fetches_and_verifies_sha(tmp_path, monkeypatch
     assert not any("clone" in command and "--branch" in command for command in commands)
 
 
+def test_acquire_private_github_uses_ephemeral_askpass_without_secret_in_command(
+    tmp_path, monkeypatch
+):
+    source_commit = "a" * 40
+    installation_token = "installation-token-must-not-leak"
+    commands: list[list[str]] = []
+    observed_environments: list[dict[str, str]] = []
+    askpass_bodies: list[str] = []
+
+    monkeypatch.setattr(
+        "echo_certification_forge.acquisition._github_app_installation_token",
+        lambda _url: installation_token,
+    )
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        environment = kwargs["env"]
+        observed_environments.append(dict(environment))
+        askpass = Path(environment["GIT_ASKPASS"])
+        askpass_bodies.append(askpass.read_text(encoding="utf-8"))
+        destination = tmp_path / "private"
+        if "init" in command:
+            (destination / ".git").mkdir(parents=True)
+        if "checkout" in command:
+            (destination / "README.md").write_text("private exact revision\n", encoding="utf-8")
+        stdout = f"{source_commit}\n" if "rev-parse" in command else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", fake_run)
+    acquired = acquire_target(
+        {
+            "type": "git",
+            "url": "https://github.com/echoomegaprime/private-project.git",
+            "ref": source_commit,
+        },
+        tmp_path / "private",
+    )
+
+    assert acquired.source_commit == source_commit
+    assert observed_environments
+    assert all(item["ECHO_CERTFORGE_GIT_TOKEN"] == installation_token for item in observed_environments)
+    assert all(item["GIT_TERMINAL_PROMPT"] == "0" for item in observed_environments)
+    assert installation_token not in json.dumps(commands)
+    assert all(installation_token not in body for body in askpass_bodies)
+    assert not (tmp_path / ".certforge-git-askpass").exists()
+
+
+def test_acquire_private_github_redacts_token_from_git_failure(tmp_path, monkeypatch):
+    installation_token = "installation-token-must-not-leak"
+    monkeypatch.setattr(
+        "echo_certification_forge.acquisition._github_app_installation_token",
+        lambda _url: installation_token,
+    )
+
+    def fake_run(command, **_kwargs):
+        if "fetch" in command:
+            return subprocess.CompletedProcess(
+                command,
+                128,
+                stdout="",
+                stderr=f"fatal: rejected {installation_token}",
+            )
+        destination = tmp_path / "private-failure"
+        if "init" in command:
+            (destination / ".git").mkdir(parents=True)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", fake_run)
+    with pytest.raises(AcquisitionError) as error:
+        acquire_target(
+            {
+                "type": "git",
+                "url": "https://github.com/echoomegaprime/private-project.git",
+                "ref": "a" * 40,
+            },
+            tmp_path / "private-failure",
+        )
+    assert installation_token not in str(error.value)
+    assert "[REDACTED]" in str(error.value)
+    assert not (tmp_path / ".certforge-git-askpass").exists()
+
+
 def test_acquire_git_uses_bounded_configured_timeout(tmp_path, monkeypatch):
     source_commit = "a" * 40
     observed_timeouts: list[float] = []
