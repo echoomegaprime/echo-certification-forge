@@ -37,6 +37,18 @@ allowing large repositories to materialize under normal disk contention. An
 invalid value fails the acquisition before creating the target destination;
 never remove the timeout to make a run pass.
 
+Private GitHub targets use the dispatcher-owned GitHub App identity configured by
+`ECHO_CERTFORGE_GITHUB_APP_ID` and
+`ECHO_CERTFORGE_GITHUB_PRIVATE_KEY_FILE`. The worker mints a short-lived
+installation token restricted to the requested repository and `contents:read`.
+Git receives that token only through an ephemeral `GIT_ASKPASS` process
+environment; the token is never placed in the repository URL, command line,
+target record, evidence, or exception text. The askpass helper is removed after
+acquisition on both success and failure. A partially configured App identity,
+missing installation, invalid key, or token-mint failure blocks acquisition.
+Do not replace this path with a PAT-bearing URL or a persistent credential
+helper.
+
 1. Confirm hosted CI succeeded for the exact source SHA.
 2. Execute the declared production-shaped journey with the pinned runner image.
 3. Verify evidence custody, receipt chains, signatures, expiry, and revocation state.
@@ -54,6 +66,12 @@ Profile v1 and evidence containing the retired `Bmcbob76` identity fail closed.
 Capture the run ID, target SHA, environment digest, policy version, service health, dispatcher state,
 and sanitized logs. A failed gate is not repaired by changing a verdict field; repair the failing
 evidence-producing control, rerun from a new idempotency key, and retain the failed run for audit.
+
+For `acquisition_failed` with GitHub reporting `Repository not found`, first
+confirm that both GitHub App settings are present, their files are readable by
+the dispatcher, and that the App is installed on the named repository. Never
+print the private key, minted token, process environment, or credential-helper
+output while diagnosing the failure.
 
 ## Recovery
 
