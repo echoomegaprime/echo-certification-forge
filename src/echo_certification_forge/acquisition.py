@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import io
 import json
+import math
+import os
 import re
 import shutil
 import subprocess
@@ -30,6 +32,32 @@ from .models import is_exact_git_commit
 
 class AcquisitionError(RuntimeError):
     """Fail-closed acquisition failure."""
+
+
+_GIT_ACQUISITION_TIMEOUT_ENV = "ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS"
+_DEFAULT_GIT_ACQUISITION_TIMEOUT_SECONDS = 300.0
+_MIN_GIT_ACQUISITION_TIMEOUT_SECONDS = 30.0
+_MAX_GIT_ACQUISITION_TIMEOUT_SECONDS = 1800.0
+
+
+def configured_git_acquisition_timeout_seconds() -> float:
+    """Return the bounded operator-controlled Git acquisition timeout."""
+
+    raw = os.getenv(
+        _GIT_ACQUISITION_TIMEOUT_ENV,
+        str(_DEFAULT_GIT_ACQUISITION_TIMEOUT_SECONDS),
+    ).strip()
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise AcquisitionError("git acquisition timeout configuration is invalid") from exc
+    if (
+        not math.isfinite(value)
+        or value < _MIN_GIT_ACQUISITION_TIMEOUT_SECONDS
+        or value > _MAX_GIT_ACQUISITION_TIMEOUT_SECONDS
+    ):
+        raise AcquisitionError("git acquisition timeout configuration is out of bounds")
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,7 +376,12 @@ def _acquire_oci(spec: dict, dest: Path, timeout_s: float) -> AcquiredTarget:
     return AcquiredTarget(rootfs, "oci", canonical, raw_digest.split(":", 1)[1])
 
 
-def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) -> AcquiredTarget:
+def acquire_target(
+    spec: dict,
+    dest: Path,
+    *,
+    clone_timeout_s: float | None = None,
+) -> AcquiredTarget:
     """Acquire a target into (or referencing) an isolated tree and compute its immutable identity.
 
     spec:
@@ -369,6 +402,8 @@ def acquire_target(spec: dict, dest: Path, *, clone_timeout_s: float = 120.0) ->
         return AcquiredTarget(root, "local", root.as_posix(), _tree_digest(root))
 
     if target_type == "git":
+        if clone_timeout_s is None:
+            clone_timeout_s = configured_git_acquisition_timeout_seconds()
         url = str(spec.get("url", "")).strip()
         if not url:
             raise AcquisitionError("git target requires 'url'")

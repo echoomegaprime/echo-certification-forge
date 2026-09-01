@@ -77,6 +77,43 @@ def test_acquire_git_exact_commit_fetches_and_verifies_sha(tmp_path, monkeypatch
     assert not any("clone" in command and "--branch" in command for command in commands)
 
 
+def test_acquire_git_uses_bounded_configured_timeout(tmp_path, monkeypatch):
+    source_commit = "a" * 40
+    observed_timeouts: list[float] = []
+
+    def fake_run(command, **kwargs):
+        observed_timeouts.append(kwargs["timeout"])
+        destination = tmp_path / "configured-timeout"
+        if "init" in command:
+            (destination / ".git").mkdir(parents=True)
+        if "checkout" in command:
+            (destination / "README.md").write_text("exact revision\n", encoding="utf-8")
+        stdout = f"{source_commit}\n" if "rev-parse" in command else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setenv("ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS", "321")
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", fake_run)
+    acquired = acquire_target(
+        {"type": "git", "url": "https://github.com/example/project.git", "ref": source_commit},
+        tmp_path / "configured-timeout",
+    )
+
+    assert acquired.source_commit == source_commit
+    assert observed_timeouts
+    assert set(observed_timeouts) == {321.0}
+
+
+@pytest.mark.parametrize("configured", ["invalid", "29", "1801", "nan", "inf"])
+def test_acquire_git_rejects_invalid_configured_timeout(tmp_path, monkeypatch, configured):
+    monkeypatch.setenv("ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS", configured)
+    with pytest.raises(AcquisitionError, match="timeout configuration"):
+        acquire_target(
+            {"type": "git", "url": "https://github.com/example/project.git", "ref": "a" * 40},
+            tmp_path / "invalid-timeout",
+        )
+    assert not (tmp_path / "invalid-timeout").exists()
+
+
 def test_acquire_git_exact_commit_fails_closed_on_revision_mismatch(tmp_path, monkeypatch):
     source_commit = "a" * 40
 

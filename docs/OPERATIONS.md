@@ -30,6 +30,13 @@ rename), never place a private key in either directory, and never accept a
 target-selected path or target-supplied public key. Missing, untrusted, stale,
 or identity-mismatched envelopes remain `NOT_READY`.
 
+Exact Git acquisition uses the bounded dispatcher setting
+`ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS` (production default: 300;
+allowed range: 30–1800 seconds). This bounds network and checkout stalls while
+allowing large repositories to materialize under normal disk contention. An
+invalid value fails the acquisition before creating the target destination;
+never remove the timeout to make a run pass.
+
 1. Confirm hosted CI succeeded for the exact source SHA.
 2. Execute the declared production-shaped journey with the pinned runner image.
 3. Verify evidence custody, receipt chains, signatures, expiry, and revocation state.
