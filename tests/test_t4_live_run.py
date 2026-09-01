@@ -48,6 +48,31 @@ def test_acquire_rejects_unknown_type_and_bad_git(tmp_path):
                        tmp_path / "d", clone_timeout_s=15.0)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@github.com/example/project.git",
+        "https://token@github.com/example/project.git",
+        "https://github.com/example/project.git?access_token=secret",
+        "token@github.com:example/project.git",
+    ],
+)
+def test_acquire_git_rejects_credential_bearing_urls_before_execution(
+    tmp_path, monkeypatch, url
+):
+    called = False
+
+    def unexpected_run(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("git must not execute for a credential-bearing URL")
+
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", unexpected_run)
+    with pytest.raises(AcquisitionError, match="credentials|non-secret"):
+        acquire_target({"type": "git", "url": url}, tmp_path / "credential-target")
+    assert called is False
+
+
 def test_acquire_git_exact_commit_fetches_and_verifies_sha(tmp_path, monkeypatch):
     """A commit SHA is fetched as an object, never misused as a clone --branch value."""
     source_commit = "a" * 40

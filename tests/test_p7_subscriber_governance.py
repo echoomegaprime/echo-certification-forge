@@ -20,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from echo_certification_forge.acquisition import AcquiredTarget, acquire_target
-from echo_certification_forge.canonical import parse_utc_iso
+from echo_certification_forge.canonical import parse_utc_iso, sha256_json
 from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.intake import SubmitRequest
@@ -3603,6 +3603,79 @@ def test_legal_hold_lifecycle_and_public_verification_use_hardened_subscriber_au
     public = client.get(published.json()["verification_url"])
     assert public.status_code == 200 and public.json()["valid"] is True
     assert public.json()["payload"]["run_id"] == run_id
+    assert str(source) not in json.dumps(public.json())
+    assert "canonical_ref" not in public.json()["target_identity"]
+    stored_target = json.loads(
+        store.get_run(run_id, owner.organization_id)["target_identity_json"]
+    )
+    assert public.json()["target_identity"]["source_commit"] == stored_target["source_commit"]
+    assert sha256_json(public.json()["target_identity"]) == public.json()["payload"][
+        "public_target_identity_sha256"
+    ]
+    assert sha256_json(public.json()["environment_identity"]) == public.json()["payload"][
+        "environment_identity_digest"
+    ]
+    assert sha256_json(public.json()["production_e2e"]) == public.json()["payload"][
+        "production_e2e_identity_sha256"
+    ]
+    public_e2e_text = json.dumps(public.json()["production_e2e"], sort_keys=True)
+    for private_field in (
+        "accounts",
+        "sample_private_repositories",
+        "clients",
+        "credential_source",
+        "repository_fingerprints",
+        "tool_schema_sha256",
+    ):
+        assert private_field not in public_e2e_text
+
+    original_target_json = store.get_run(run_id, owner.organization_id)[
+        "target_identity_json"
+    ]
+    with store._connection() as connection:
+        connection.execute(
+            "UPDATE runs SET target_identity_json = ? WHERE run_id = ? AND tenant_id = ?",
+            (
+                json.dumps(stored_target | {"source_commit": "0" * 40}, sort_keys=True),
+                run_id,
+                owner.organization_id,
+            ),
+        )
+    tampered = client.get(published.json()["verification_url"])
+    assert tampered.status_code == 200 and tampered.json()["valid"] is False
+    assert "public_target_identity_digest_mismatch" in tampered.json()["reasons"]
+    with store._connection() as connection:
+        connection.execute(
+            "UPDATE runs SET target_identity_json = ? WHERE run_id = ? AND tenant_id = ?",
+            (original_target_json, run_id, owner.organization_id),
+        )
+
+    original_environment_json = store.get_run(run_id, owner.organization_id)[
+        "environment_identity_json"
+    ]
+    altered_environment = json.loads(original_environment_json)
+    altered_environment["runner_image_sha256"] = "0" * 64
+    with store._connection() as connection:
+        connection.execute(
+            "UPDATE runs SET environment_identity_json = ? WHERE run_id = ? AND tenant_id = ?",
+            (
+                json.dumps(altered_environment, sort_keys=True),
+                run_id,
+                owner.organization_id,
+            ),
+        )
+    tampered_environment = client.get(published.json()["verification_url"])
+    assert tampered_environment.status_code == 200
+    assert tampered_environment.json()["valid"] is False
+    assert (
+        "environment_identity_serialization_mismatch"
+        in tampered_environment.json()["reasons"]
+    )
+    with store._connection() as connection:
+        connection.execute(
+            "UPDATE runs SET environment_identity_json = ? WHERE run_id = ? AND tenant_id = ?",
+            (original_environment_json, run_id, owner.organization_id),
+        )
 
     lifecycle = client.post(
         f"/v1/subscriber/certifications/{run_id}/lifecycle",

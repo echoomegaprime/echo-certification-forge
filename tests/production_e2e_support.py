@@ -13,7 +13,10 @@ from echo_certification_forge.production_e2e import (
     VerifiedProductionE2E,
     verify_signed_attestation,
 )
-from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from echo_certification_forge.signing import (
+    Ed25519VerdictSigner,
+    TrustedPublicKeyRegistry,
+)
 
 
 def trusted_generic_production_e2e(
@@ -32,7 +35,7 @@ def trusted_generic_production_e2e(
         "environment_identity_digest": environment.identity_digest,
         "source_commit": target.source_commit,
         "deployment_sha": target.source_commit,
-        "canonical_target": target.canonical_ref,
+        "canonical_target": f"https://api.github.com/certforge/{target.identity_digest}",
         "required_checks": sorted(BASE_CHECKS),
         "checks": {name: True for name in sorted(BASE_CHECKS)},
         "stability_probe_count": 3,

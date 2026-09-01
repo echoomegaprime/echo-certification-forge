@@ -5,8 +5,10 @@ evidence.  This contract is evaluated by the deterministic verdict authority
 after a trusted collector has signed the attestation.  Target-controlled code
 cannot manufacture the attestation or select its trust key.
 """
+
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from collections.abc import Mapping
@@ -14,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from .canonical import sha256_json
 from .models import EnvironmentIdentity, SignedVerdictEnvelope, TargetIdentity
@@ -22,9 +25,27 @@ from .signing import TrustedPublicKeyRegistry
 RULE_ID = "production_e2e"
 SCHEMA_VERSION = "certforge.production-e2e.v1"
 GENERIC_PROFILE = "generic-production-v1"
-ECHO_GITHUB_AUTONOMY_PROFILE = "echo-github-autonomy-remote-mcp-v1"
+ECHO_GITHUB_AUTONOMY_PROFILE = "echo-github-autonomy-remote-mcp-v2"
 ECHO_GITHUB_AUTONOMY_REPOSITORY = "echoomegaprime/echo-github-autonomy"
 ECHO_GITHUB_AUTONOMY_CANONICAL_MCP = "https://echo-ghub.grok.me/api/plugin/mcp"
+ECHO_CONTINUITY_PROFILE = "echo-continuity-fabric-remote-mcp-v1"
+ECHO_CONTINUITY_REPOSITORY = "echoomegaprime/echo-continuity-fabric"
+ECHO_CONTINUITY_CANONICAL_MCP = "https://ecf.echo-op.com/mcp"
+_NONPUBLIC_HOST_SUFFIXES = (
+    "alt",
+    "arpa",
+    "example",
+    "example.com",
+    "example.net",
+    "example.org",
+    "invalid",
+    "local",
+    "localhost",
+    "onion",
+    "test",
+)
+_NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
+_NAT64_LOCAL_USE = ipaddress.IPv6Network("64:ff9b:1::/48")
 
 BASE_CHECKS = frozenset(
     {
@@ -44,7 +65,7 @@ ECHO_GITHUB_AUTONOMY_CHECKS = BASE_CHECKS | frozenset(
         "tool_schema",
         "repeated_tool_invocation",
         "registry_persistence",
-        "four_account_reconciliation",
+        "three_account_reconciliation",
         "private_public_visibility",
         "read_write_certify",
         "cross_client_consistency",
@@ -53,10 +74,24 @@ ECHO_GITHUB_AUTONOMY_CHECKS = BASE_CHECKS | frozenset(
 ECHO_GITHUB_ACCOUNTS = {
     "echoomegaprime": 314902331,
     "ECHO-OMEGA-PRIME": 264607697,
-    "Bmcbob76": 203470412,
     "bobmcwilliams4": 235318155,
 }
 ECHO_CLIENTS = frozenset({"chatgpt", "claude", "codex", "grok"})
+ECHO_CONTINUITY_CHECKS = BASE_CHECKS | frozenset(
+    {
+        "canonical_mcp_health",
+        "oauth_discovery",
+        "mcp_initialize",
+        "tool_schema",
+        "repeated_tool_invocation",
+        "registry_persistence",
+        "ledger_integrity",
+        "sharing",
+        "import",
+        "read_write_continuity",
+        "cross_client_consistency",
+    }
+)
 
 _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -90,7 +125,9 @@ class VerifiedProductionE2E:
 
     def __post_init__(self) -> None:
         if self._marker is not _VERIFIED_MARKER:
-            raise ValueError("VerifiedProductionE2E must come from signature verification")
+            raise ValueError(
+                "VerifiedProductionE2E must come from signature verification"
+            )
 
     def result_details(self) -> dict[str, Any]:
         return {
@@ -105,7 +142,7 @@ def _parse_time(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
     return parsed.astimezone(UTC) if parsed.tzinfo is not None else None
@@ -117,7 +154,8 @@ def _contains_restricted_value(value: Any, *, key_name: str = "") -> bool:
         return True
     if isinstance(value, Mapping):
         return any(
-            _contains_restricted_value(item, key_name=str(key)) for key, item in value.items()
+            _contains_restricted_value(item, key_name=str(key))
+            for key, item in value.items()
         )
     if isinstance(value, (list, tuple, set)):
         return any(_contains_restricted_value(item) for item in value)
@@ -130,9 +168,96 @@ def _source_repository(target: TargetIdentity) -> str | None:
     if marker not in reference:
         return None
     suffix = reference.split(marker, 1)[1].split("@", 1)[0]
-    if suffix.endswith(".git"):
-        suffix = suffix[:-4]
-    return suffix
+    return suffix.removesuffix(".git")
+
+
+def canonical_public_https_target(value: object) -> str | None:
+    """Return a normalized public HTTPS target or fail closed with ``None``."""
+
+    if not isinstance(value, str) or not value or len(value) > 2048:
+        return None
+    if any(
+        character.isspace() or ord(character) < 0x20 or ord(character) == 0x7F
+        for character in value
+    ):
+        return None
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except (ValueError, UnicodeError):
+        return None
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.netloc.endswith(":")
+        or port == 0
+    ):
+        return None
+    hostname = hostname.rstrip(".").casefold()
+    if not hostname:
+        return None
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        try:
+            ascii_hostname = hostname.encode("idna").decode("ascii")
+        except UnicodeError:
+            return None
+        if any(
+            ascii_hostname == suffix or ascii_hostname.endswith(f".{suffix}")
+            for suffix in _NONPUBLIC_HOST_SUFFIXES
+        ):
+            return None
+        labels = ascii_hostname.split(".")
+        if (
+            len(ascii_hostname) > 253
+            or len(labels) < 2
+            or any(label.startswith("xn--") for label in labels)
+            or not re.fullmatch(r"[a-z]{2,63}", labels[-1])
+            or all(re.fullmatch(r"(?:0x[0-9a-f]*|[0-9]+)", label) for label in labels)
+            or any(
+                not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+                for label in labels
+            )
+        ):
+            return None
+        normalized_host = ascii_hostname
+    else:
+        if isinstance(address, ipaddress.IPv6Address):
+            if address in _NAT64_LOCAL_USE:
+                return None
+            embedded_ipv4: list[ipaddress.IPv4Address] = []
+            if address in _NAT64_WELL_KNOWN:
+                embedded_ipv4.append(ipaddress.IPv4Address(int(address) & 0xFFFFFFFF))
+            if address.ipv4_mapped is not None:
+                embedded_ipv4.append(address.ipv4_mapped)
+            if address.sixtofour is not None:
+                embedded_ipv4.append(address.sixtofour)
+            if address.teredo is not None:
+                embedded_ipv4.extend(address.teredo)
+            if any(not item.is_global or item.is_multicast for item in embedded_ipv4):
+                return None
+        if (
+            not address.is_global
+            or address.is_multicast
+            or getattr(address, "is_site_local", False)
+            or getattr(address, "scope_id", None) is not None
+        ):
+            return None
+        normalized_host = (
+            f"[{address.compressed}]" if address.version == 6 else address.compressed
+        )
+    normalized_netloc = normalized_host if port is None else f"{normalized_host}:{port}"
+    return urlunsplit(("https", normalized_netloc, parsed.path, "", ""))
+
+
+def _safe_canonical_https_target(value: object) -> bool:
+    return canonical_public_https_target(value) is not None
 
 
 def _validate_common(
@@ -184,11 +309,16 @@ def _validate_common(
     if len(required_checks) != len(set(required_checks)):
         return "production_e2e_checks_duplicated"
     check_set = frozenset(required_checks)
-    if set(checks) != set(check_set) or any(checks.get(name) is not True for name in check_set):
+    if set(checks) != set(check_set) or any(
+        checks.get(name) is not True for name in check_set
+    ):
         return "production_e2e_checks_incomplete"
     if not BASE_CHECKS <= check_set:
         return "production_e2e_baseline_checks_missing"
-    if not isinstance(payload.get("stability_probe_count"), int) or payload["stability_probe_count"] < 3:
+    if (
+        not isinstance(payload.get("stability_probe_count"), int)
+        or payload["stability_probe_count"] < 3
+    ):
         return "production_e2e_stability_probe_count_insufficient"
     return None
 
@@ -202,7 +332,9 @@ def _validate_echo_github_autonomy(payload: Mapping[str, Any]) -> str | None:
         return "production_e2e_tool_count_mismatch"
 
     repositories = payload.get("sample_private_repositories")
-    if not isinstance(repositories, Mapping) or set(repositories) != set(ECHO_GITHUB_ACCOUNTS):
+    if not isinstance(repositories, Mapping) or set(repositories) != set(
+        ECHO_GITHUB_ACCOUNTS
+    ):
         return "production_e2e_sample_repositories_incomplete"
     sample_digests: dict[str, str] = {}
     for login, sample in repositories.items():
@@ -238,7 +370,10 @@ def _validate_echo_github_autonomy(payload: Mapping[str, Any]) -> str | None:
             account.get("public_count"),
             account.get("private_count"),
         )
-        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts):
+        if any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in counts
+        ):
             return "production_e2e_account_counts_invalid"
         if counts[0] != counts[1] or counts[2] <= 0 or counts[3] <= 0:
             return "production_e2e_account_reconciliation_failed"
@@ -259,8 +394,34 @@ def _validate_echo_github_autonomy(payload: Mapping[str, Any]) -> str | None:
         if not isinstance(client, Mapping) or client.get("accepted") is not True:
             return "production_e2e_client_not_accepted"
         fingerprints = client.get("repository_fingerprints")
-        if not isinstance(fingerprints, Mapping) or dict(fingerprints) != sample_digests:
+        if (
+            not isinstance(fingerprints, Mapping)
+            or dict(fingerprints) != sample_digests
+        ):
             return "production_e2e_cross_client_repository_mismatch"
+    return None
+
+
+def _validate_echo_continuity(payload: Mapping[str, Any]) -> str | None:
+    if payload.get("canonical_target") != ECHO_CONTINUITY_CANONICAL_MCP:
+        return "production_e2e_canonical_mcp_mismatch"
+    if frozenset(payload.get("required_checks") or ()) != ECHO_CONTINUITY_CHECKS:
+        return "production_e2e_continuity_checks_incomplete"
+    if payload.get("tool_count") != 26:
+        return "production_e2e_tool_count_mismatch"
+    clients = payload.get("clients")
+    if not isinstance(clients, Mapping) or set(clients) != set(ECHO_CLIENTS):
+        return "production_e2e_clients_incomplete"
+    schema_digests: set[str] = set()
+    for client in clients.values():
+        if not isinstance(client, Mapping) or client.get("accepted") is not True:
+            return "production_e2e_client_not_accepted"
+        digest = str(client.get("tool_schema_sha256") or "")
+        if not _SHA256.fullmatch(digest):
+            return "production_e2e_client_schema_digest_invalid"
+        schema_digests.add(digest)
+    if len(schema_digests) != 1:
+        return "production_e2e_cross_client_schema_mismatch"
     return None
 
 
@@ -285,8 +446,15 @@ def validate_production_e2e(
             return False, "production_e2e_profile_mismatch"
         error = _validate_echo_github_autonomy(payload)
         return (error is None, error or "production_e2e_verified")
+    if repository == ECHO_CONTINUITY_REPOSITORY:
+        if profile != ECHO_CONTINUITY_PROFILE:
+            return False, "production_e2e_profile_mismatch"
+        error = _validate_echo_continuity(payload)
+        return (error is None, error or "production_e2e_verified")
     if profile != GENERIC_PROFILE:
         return False, "production_e2e_profile_mismatch"
+    if not _safe_canonical_https_target(payload.get("canonical_target")):
+        return False, "production_e2e_canonical_target_invalid"
     if frozenset(payload.get("required_checks") or ()) != BASE_CHECKS:
         return False, "production_e2e_generic_checks_incomplete"
     return True, "production_e2e_verified"
@@ -334,7 +502,9 @@ def verify_signed_attestation(
     )
 
 
-def load_signed_attestation(path: Path, trusted_key_directory: Path) -> VerifiedProductionE2E:
+def load_signed_attestation(
+    path: Path, trusted_key_directory: Path
+) -> VerifiedProductionE2E:
     """Load and independently verify a collector envelope using pinned public keys."""
 
     try:

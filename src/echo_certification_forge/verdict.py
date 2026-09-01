@@ -12,6 +12,10 @@ from .policy import RuleManifest
 from .production_e2e import RULE_ID as PRODUCTION_E2E_RULE_ID
 from .production_e2e import validate_attestation_trust_metadata
 from .production_e2e import validate_production_e2e
+from .public_verification import (
+    public_production_e2e_identity,
+    public_target_identity,
+)
 
 
 class DeterministicVerdictEngine:
@@ -148,6 +152,16 @@ class DeterministicVerdictEngine:
             ),
             production_e2e_envelope_sha256=(
                 str(verified_e2e["attestation_envelope_sha256"])
+                if verified_e2e is not None
+                else None
+            ),
+            public_target_identity_sha256=(
+                sha256_json(public_target_identity(target_data))
+                if target is not None
+                else None
+            ),
+            production_e2e_identity_sha256=(
+                sha256_json(public_production_e2e_identity(verified_e2e))
                 if verified_e2e is not None
                 else None
             ),
