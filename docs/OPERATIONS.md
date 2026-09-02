@@ -31,11 +31,16 @@ target-selected path or target-supplied public key. Missing, untrusted, stale,
 or identity-mismatched envelopes remain `NOT_READY`.
 
 Exact Git acquisition uses the bounded dispatcher setting
-`ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS` (production default: 300;
+`ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS` (production default: 900;
 allowed range: 30–1800 seconds). This bounds network and checkout stalls while
 allowing large repositories to materialize under normal disk contention. An
 invalid value fails the acquisition before creating the target destination;
 never remove the timeout to make a run pass.
+
+The 900-second default is sized for the governed Echo monorepo (approximately
+1 GiB and more than 23,000 files). The previous 300-second ceiling produced a
+reproducible false infrastructure failure during exact-SHA checkout while the
+disk remained healthy and the checkout continued making I/O progress.
 
 Private GitHub targets use the dispatcher-owned GitHub App identity configured by
 `ECHO_CERTFORGE_GITHUB_APP_ID` and

@@ -7,7 +7,10 @@ set -euo pipefail
 SOURCE_REPO="${CERTFORGE_SOURCE_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
-GIT_ACQUISITION_TIMEOUT_SECONDS="${ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS:-300}"
+# The governed Echo monorepo is roughly 1 GiB and can require more than five
+# minutes to materialize under normal FORGE disk contention. Keep a finite,
+# supported ceiling while avoiding false infrastructure failures at 300 seconds.
+GIT_ACQUISITION_TIMEOUT_SECONDS="${ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS:-900}"
 SERVICE="echo-certforge"
 DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-main}"

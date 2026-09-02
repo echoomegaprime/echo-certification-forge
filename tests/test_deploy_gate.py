@@ -109,6 +109,20 @@ def test_deploy_gate_uses_the_effective_production_database_everywhere() -> None
     assert 'ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3"' not in DEPLOY_SCRIPT
 
 
+def test_deploy_gate_allows_large_exact_sha_checkout_without_removing_bound() -> None:
+    assert (
+        'GIT_ACQUISITION_TIMEOUT_SECONDS="${ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS:-900}"'
+        in DEPLOY_SCRIPT
+    )
+    assert "GIT_ACQUISITION_TIMEOUT_SECONDS < 30" in DEPLOY_SCRIPT
+    assert "GIT_ACQUISITION_TIMEOUT_SECONDS > 1800" in DEPLOY_SCRIPT
+    assert (
+        "Environment=ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS="
+        "$GIT_ACQUISITION_TIMEOUT_SECONDS"
+        in DEPLOY_SCRIPT
+    )
+
+
 def test_deploy_gate_restores_prior_service_lifecycle() -> None:
     assert (
         'PREV_ENABLED="$(systemctl is-enabled "$SERVICE.service"'
