@@ -22,13 +22,19 @@ PRODUCTION_E2E_ATTESTATION_DIR="${ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR:
 PRODUCTION_E2E_TRUSTED_KEYS="${ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS:-$STATE_ROOT/production-e2e/trusted-public-keys}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
 ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
-TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-965106b00917268d556b325719f26f5096e6c3746551658ffecb9fd4a95ec342}"
+# Canonical-JSON digest of policies/mandatory-rules.v2.json (== run_worker._PRODUCTION_MANIFEST_SHA256).
+# The old default (965106b0...) was the raw file-bytes digest, which run_worker rejects.
+TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-08ba068ceb3e14bfed2690337edbb94c546e3e0a1a89b1321f7657653d8eea43}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
 DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
 RELEASE_DROPIN="/etc/systemd/system/$SERVICE.service.d/10-release.conf"
 DISPATCH_RELEASE_DROPIN="/etc/systemd/system/$DISPATCH_SERVICE.service.d/10-release.conf"
 ENV_FILE="${CERTFORGE_ENV_FILE:-/home/forge/.config/echo/certforge.env}"
-GITC=(-c credential.helper= -c credential.helper="store --file=/home/forge/.config/echo/omega_git_creds")
+# Source fetch credentials. Default: the FORGE credential store. Repositories on the
+# echoomegaprime account are fetched with a repo-scoped GitHub App helper instead
+# (CERTFORGE_GIT_CREDENTIAL_HELPER), because that store cannot see them.
+GIT_CREDENTIAL_HELPER="${CERTFORGE_GIT_CREDENTIAL_HELPER:-store --file=/home/forge/.config/echo/omega_git_creds}"
+GITC=(-c credential.helper= -c credential.helper="$GIT_CREDENTIAL_HELPER")
 LOCK_FILE="${CERTFORGE_DEPLOY_LOCK:-/run/lock/echo-certforge-deploy.lock}"
 
 exec 9>"$LOCK_FILE"
@@ -577,7 +583,9 @@ sudo tee "$DISPATCH_UNIT_PATH" >/dev/null <<UNIT
 [Unit]
 Description=echo-certification-forge - durable subscriber run dispatcher
 After=network.target $SERVICE.service
-Requires=$SERVICE.service
+# Wants= (not Requires=): an API restart or crash must not cascade into the dispatcher
+# and push it into start-limit-hit (incident #39297, issue #22).
+Wants=$SERVICE.service
 
 [Service]
 Type=simple
