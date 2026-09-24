@@ -1394,6 +1394,10 @@ def service_health_probe(image: str, role: ImageRole, ownership_token: str, work
                 "ECHO_CERTFORGE_DB": "/workspace/state/certforge.sqlite3",
                 "ECHO_CERTFORGE_EVIDENCE_ROOT": "/workspace/state/evidence",
                 "ECHO_CERTFORGE_TRUSTED_KEYS": "/workspace/state/trusted-public-keys",
+                # The worker app opens its P6 deployment ledger at import time. The default
+                # (<package root>/var/deployments.sqlite3) is on the read-only image root, so
+                # the ledger joins the other state paths on the writable workspace.
+                "ECHO_CERTFORGE_DEPLOYMENT_LEDGER": "/workspace/state/deployments.sqlite3",
             }
         )
         command = ["-lc", "mkdir -p /workspace/state/trusted-public-keys /workspace/state/evidence && exec uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port 8080 --no-access-log"]
