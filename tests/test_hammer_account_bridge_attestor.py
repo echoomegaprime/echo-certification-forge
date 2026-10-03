@@ -14,12 +14,25 @@ SPEC = importlib.util.spec_from_file_location(
     "acb_attestor", Path(__file__).resolve().parents[1] / "scripts/hammer_account_bridge_attestor.py")
 collector = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(collector)
-SOURCE = "def1828001c354bcf89f7d32bc987d6eba520cb6"
+SOURCE = "d410c61f11b5e15b30c9e2629f75838e38b5dc1c"
 ASSERTIONS = {
     "repository_policy": 8, "account_continuity_core": 6,
     "provider_auth_monitor": 18, "provider_content_import": 9,
     "multiprovider_mcp": 35, "account_continuity_bridge": 22, "provider_registry": 21,
 }
+ATOMIC_CONTROLS = {
+    "actual_windows_reader_recovers_without_target_delete",
+    "EPERM_has_expected_platform_retry_boundary",
+    "EACCES_has_expected_platform_retry_boundary",
+    "EBUSY_has_expected_platform_retry_boundary",
+    "EIO_has_expected_platform_retry_boundary",
+    "persistent_failure_is_bounded_and_preserves_previous_state",
+}
+
+
+def atomic_rename_evidence():
+    return {"ok": True, "platform": "win32",
+            "assertions": {name: True for name in sorted(ATOMIC_CONTROLS)}}
 
 
 def current_evidence():
@@ -32,13 +45,14 @@ def current_evidence():
         "source_commit": SOURCE, "installed_cache_commit": SOURCE,
         "remote_branch_commit": SOURCE, "pull_request_head_commit": SOURCE,
         "pull_request": 4, "branch": "agent/grok47-provider-recovery-20261003",
-        "installed_version": "1.1.0+codex.20261003120504",
+        "installed_version": "1.1.0+codex.20261003191426",
         "installation_scope": "production", "installed_manifest_sha256": "a" * 64,
         "native_plugin_enabled": True, "fresh_native_session": True,
         "iterations": 3, "assertions_passed_per_iteration": [119, 119, 119],
         "critical_journeys": ["PASS", "PASS", "PASS"],
         "test_runs": [{"iteration": n, "source_commit": SOURCE, "total": 119,
                        "assertions": dict(ASSERTIONS), "critical_journey": "PASS",
+                       "atomic_rename": atomic_rename_evidence(),
                        "router_concurrency": dict(concurrency), "observed_at": observed}
                       for n in range(1, 4)],
         "live_runs": [{"exact_canary_match": True, "selected_provider": "forge-qwen",
@@ -150,6 +164,8 @@ def test_long_source_validation_cannot_refresh_expired_acceptance_before_signing
         elif command[-1].endswith("Test-RouterConcurrency.mjs"):
             stdout = json.dumps({"ok": True, "concurrent_requests": 12,
                                  "concurrent_processes": 8, "contended_lock_preserved": True})
+        elif command[-1].endswith("Test-RouterAtomicRename.mjs"):
+            stdout = json.dumps(atomic_rename_evidence())
         elif command[-1].endswith("certforge_journey.py"):
             journeys.append("PASS")
             stdout = "ACCOUNT_CONTINUITY_CRITICAL_JOURNEY_OK surfaces=26 apps=8 providers=7 secret_fields=0"
@@ -195,6 +211,17 @@ def test_each_identity_substitution_fails_closed(tmp_path, field):
         verify(tmp_path, document)
 
 
+@pytest.mark.parametrize("old_sha", ["def1828001c354bcf89f7d32bc987d6eba520cb6",
+                                    "9f6e1b41cf548e62523baa020e3e1584610b704c",
+                                    "6e92def9758eaea61c145d4b5e2465ec08eee30d"])
+def test_superseded_installed_candidates_cannot_reuse_collector(tmp_path, old_sha):
+    evidence = current_evidence()
+    for field in ("source_commit", "installed_cache_commit", "remote_branch_commit", "pull_request_head_commit"):
+        evidence[field] = old_sha
+    with pytest.raises(collector.AttestationError, match="exact-source"):
+        verify(tmp_path, evidence)
+
+
 @pytest.mark.parametrize("field,value", [("installed_version", "old"), ("pull_request", 2),
                                         ("branch", "agent/old"), ("native_plugin_enabled", False),
                                         ("fresh_native_session", False)])
@@ -238,6 +265,24 @@ def test_failed_router_negative_control_rejected(tmp_path):
         verify(tmp_path, document)
 
 
+@pytest.mark.parametrize("mutation", ["missing", "failed", "non_windows", "partial", "false_ok"])
+def test_atomic_rename_controls_require_real_complete_windows_acceptance(tmp_path, mutation):
+    document = current_evidence()
+    row = document["test_runs"][1]
+    if mutation == "missing":
+        row.pop("atomic_rename")
+    elif mutation == "failed":
+        row["atomic_rename"]["assertions"]["actual_windows_reader_recovers_without_target_delete"] = False
+    elif mutation == "non_windows":
+        row["atomic_rename"]["platform"] = "linux"
+    elif mutation == "partial":
+        row["atomic_rename"]["assertions"].pop("EIO_has_expected_platform_retry_boundary")
+    else:
+        row["atomic_rename"]["ok"] = False
+    with pytest.raises(collector.AttestationError, match="atomic rename"):
+        verify(tmp_path, document)
+
+
 def test_one_missing_assertion_is_not_relabelled_pass(tmp_path):
     document = current_evidence()
     document["test_runs"][2]["assertions"]["provider_auth_monitor"] = 17
@@ -265,6 +310,14 @@ def test_zero_or_boolean_count_is_not_execution_evidence():
 def test_router_command_requires_real_success_and_negative_control(stdout):
     with pytest.raises(collector.AttestationError, match="router"):
         collector.read_router_command(subprocess.CompletedProcess(["fixture"], 0, stdout, ""))
+
+
+@pytest.mark.parametrize("stdout", ["not json", "[]", "{}",
+    '{"ok":true,"platform":"win32","assertions":6}',
+    '{"ok":true,"platform":"linux","assertions":{}}'])
+def test_atomic_rename_command_requires_all_real_windows_controls(stdout):
+    with pytest.raises(collector.AttestationError, match="atomic rename"):
+        collector.read_atomic_rename_command(subprocess.CompletedProcess(["fixture"], 0, stdout, ""))
 
 
 def test_evidence_write_does_not_replace_an_existing_owner_file(tmp_path):

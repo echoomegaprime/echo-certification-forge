@@ -1,16 +1,20 @@
 # Account Continuity Bridge production acceptance collector
 
 `scripts/hammer_account_bridge_attestor.py` is an operator collector for the reviewed
-ACB candidate `def1828001c354bcf89f7d32bc987d6eba520cb6`, PR 4, branch
+ACB candidate `d410c61f11b5e15b30c9e2629f75838e38b5dc1c`, PR 4, branch
 `agent/grok47-provider-recovery-20261003`, plugin version
-`1.1.0+codex.20261003120504`. It is not a subscriber endpoint or a generic signer.
+`1.1.0+codex.20261003191426`. It is not a subscriber endpoint or a generic signer.
 Changing the candidate requires source review and new evidence. Policy, trust
 roots and target source are not changed by this collector.
 
-This is held diagnostic source. The pinned candidate subsequently failed a real
-installed Windows router-state rename stability pass. It is not eligible for
-production signing; a repaired candidate requires a separately reviewed pin
-update and fresh measured acceptance. The hosted App receipt was also unavailable
+This is held diagnostic source. Previous candidate `def1828` failed a real
+installed Windows router-state rename stability pass; `9f6e1b4` then exposed an
+overlong Windows reader test fixture, and `6e92def` exposed loss of timestamp
+text fidelity in provider-auth state. The current reviewed successor retains
+the bounded product retry, synchronizes that fixture and preserves state values.
+Its exact identity pin
+is not proof of passing installation or production acceptance: all current
+measured evidence remains mandatory. The hosted App receipt was unavailable
 during preparation because its owner service was stopped. No signing or deployment
 was performed by this source-publication task.
 
@@ -31,9 +35,10 @@ The first review used deployed CertForge base
 `591d1ba6524c4858f63dfab21fe690e4d5a10521`. Publication transfers only this collector,
 its tests and this document onto canonical `main` base
 `4f7d99e2dd4422f3d81cf5b709581be963f5818a`, preserving unrelated main and deployed
-history. The Python collector and test bytes remain identical to the independently
-reviewed source; only this provenance/hold documentation is extended. The collector
-is standalone and uses the existing `cryptography` dependency. It does not import
+history. The initial transfer preserved the independently reviewed Python and test
+bytes; a separate follow-up binds the repaired ACB candidate and requires all six
+Windows atomic-rename controls on both hosts. The collector is standalone and uses
+the existing `cryptography` dependency. It does not import
 or install the deployed consumer changes absent from that main base. Operational
 use still requires a separately verified strict production-E2E consumer and trust
 admission; this source-only PR does not establish either.
@@ -54,7 +59,8 @@ fields by assertion or copy the synthetic test fixtures into operational evidenc
 
 The collector verifies a transferred Git bundle, exact head, branch, ancestry and
 clean checkout. It runs three independent passes of 91 HAMMER-safe assertions,
-three router concurrency/lock negative controls, and three critical journeys.
+three router concurrency/lock negative controls, three Windows atomic-rename
+control passes, and three critical journeys.
 DPAPI-dependent core/bridge assertions must pass on QUENCH's real native install;
 they are explicitly not represented as executed on HAMMER. The complete QUENCH
 suite has 119 named assertions. Secret scanning must pass on both hosts.
@@ -80,7 +86,7 @@ The JSON object schema is `echo.account-continuity.quench-evidence.v2`:
 | `installed_manifest_sha256` | Hash of the measured installed file manifest whose files were compared to the candidate |
 | `native_plugin_enabled`, `fresh_native_session` | Both verified true through actual native plugin/session readback |
 | `iterations`, `assertions_passed_per_iteration`, `critical_journeys` | 3, `[119,119,119]`, three actual `PASS` results |
-| `test_runs` | Three rows: numbered `iteration`, actual `observed_at`, exact `source_commit`, `total=119`, complete suite counts, `critical_journey=PASS`, and real `router_concurrency` output |
+| `test_runs` | Three rows: numbered `iteration`, actual `observed_at`, exact `source_commit`, `total=119`, complete suite counts, `critical_journey=PASS`, and real `router_concurrency` plus `atomic_rename` outputs |
 | `live_runs` | Three distinct nonce/session rows from actual installed bridge execution, as described below |
 | `status_runs` | Three actual non-spending installed MCP observations with time/source binding |
 | `gitleaks_exact_tree`, `codex_mcp_config` | Actual `PASS` exact-tree scan and `ok` native MCP config readback |
@@ -94,6 +100,22 @@ Every router row must be the real `Test-RouterConcurrency.mjs` result:
 `ok=true`, `concurrent_requests=12`, `concurrent_processes=8`, and
 `contended_lock_preserved=true`. This is additional acceptance, not included in
 the 119 named assertions.
+
+Each `atomic_rename` row must be the actual JSON from
+`node tests/Test-RouterAtomicRename.mjs`: `ok=true`, `platform=win32`, and exactly
+these six named `assertions`, each strictly true:
+
+- `actual_windows_reader_recovers_without_target_delete`
+- `EPERM_has_expected_platform_retry_boundary`
+- `EACCES_has_expected_platform_retry_boundary`
+- `EBUSY_has_expected_platform_retry_boundary`
+- `EIO_has_expected_platform_retry_boundary`
+- `persistent_failure_is_bounded_and_preserves_previous_state`
+
+These are six additional controls per pass, separate from the 119 base assertions.
+The actual Windows file-handle case is required on both QUENCH and HAMMER; a
+non-Windows result containing only five controls cannot substitute. The collector
+runs this command on HAMMER and includes each complete result in its evidence.
 
 Every live row requires `exact_canary_match=true`, `selected_provider=forge-qwen`,
 `selected_outcome=success`, `provenance=LIVE_PROVIDER_BRIDGE`,
