@@ -7,6 +7,10 @@ set -euo pipefail
 SOURCE_REPO="${CERTFORGE_SOURCE_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAGING_PORT="${CERTFORGE_STAGING_PORT:-8311}"
 PROD_PORT="${CERTFORGE_PROD_PORT:-8309}"
+# The governed Echo monorepo is roughly 1 GiB and can require more than five
+# minutes to materialize under normal FORGE disk contention. Keep a finite,
+# supported ceiling while avoiding false infrastructure failures at 300 seconds.
+GIT_ACQUISITION_TIMEOUT_SECONDS="${ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS:-900}"
 SERVICE="echo-certforge"
 DISPATCH_SERVICE="echo-certforge-dispatcher"
 BRANCH="${CERTFORGE_BRANCH:-main}"
@@ -14,14 +18,16 @@ EXPECTED_COMMIT_SHA="${CERTFORGE_EXPECTED_COMMIT_SHA:-}"
 RELEASE_ROOT="${CERTFORGE_RELEASE_ROOT:-/home/forge/echo-certification-forge-releases}"
 CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-current}"
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
-# Readiness waits poll /healthz every 0.5s and return on the first healthy probe.
+PRODUCTION_E2E_ATTESTATION_DIR="${ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR:-$STATE_ROOT/production-e2e/attestations}"
+PRODUCTION_E2E_TRUSTED_KEYS="${ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS:-$STATE_ROOT/production-e2e/trusted-public-keys}"
+# Readiness waits bound /healthz probes and return on the first healthy probe.
 # 20s proved too short for a cold uvicorn boot on a loaded FORGE (staging abort,
 # false rollback-restore failure, needless production rollback).
-READY_TIMEOUT_S="${CERTFORGE_READY_TIMEOUT_S:-90}"
-READY_POLLS=$(( READY_TIMEOUT_S * 2 ))
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/readiness.sh"
+configure_readiness_timeout "${CERTFORGE_READY_TIMEOUT_S:-90}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
 ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
-TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4}"
+TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-965106b00917268d556b325719f26f5096e6c3746551658ffecb9fd4a95ec342}"
 UNIT_PATH="/etc/systemd/system/$SERVICE.service"
 DISPATCH_UNIT_PATH="/etc/systemd/system/$DISPATCH_SERVICE.service"
 RELEASE_DROPIN="/etc/systemd/system/$SERVICE.service.d/10-release.conf"
@@ -67,6 +73,8 @@ mkdir -p \
   "$STATE_ROOT/run-output" \
   "$STATE_ROOT/dispatch-output" \
   "$STATE_ROOT/deploy-scratch"
+sudo install -d -o root -g root -m 0755 "$PRODUCTION_E2E_ATTESTATION_DIR"
+sudo install -d -o root -g root -m 0755 "$PRODUCTION_E2E_TRUSTED_KEYS"
 trap 'rm -rf "$RELEASE_TMP"' EXIT
 mkdir "$RELEASE_TMP"
 git archive "$NEW_SHA" | tar -x -C "$RELEASE_TMP"
@@ -95,6 +103,14 @@ case "$ADAPTER_MODE" in
   required|pending) ;;
   *) echo "!! CERTFORGE_ADAPTER_MODE must be required or pending"; exit 1 ;;
 esac
+[[ "$GIT_ACQUISITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || {
+  echo "!! ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS must be an integer"
+  exit 1
+}
+if (( GIT_ACQUISITION_TIMEOUT_SECONDS < 30 || GIT_ACQUISITION_TIMEOUT_SECONDS > 1800 )); then
+  echo "!! ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS must be between 30 and 1800"
+  exit 1
+fi
 ADAPTER_RESPONSE=""
 ADAPTER_POLICY=""
 ADAPTER_REGISTRY=""
@@ -178,6 +194,28 @@ set -a
 set +a
 PROD_PEPPER="${ECHO_CERTFORGE_API_KEY_PEPPER:-}"
 STAGING_PEPPER="${ECHO_CERTFORGE_STAGING_API_KEY_PEPPER:-}"
+PROD_DB_PATH="${ECHO_CERTFORGE_DB:-}"
+if [ -z "$PROD_DB_PATH" ]; then
+  CURRENT_SERVICE_PID="$(systemctl show "$SERVICE.service" --property MainPID --value 2>/dev/null || true)"
+  if [ "${CURRENT_SERVICE_PID:-0}" -gt 1 ] 2>/dev/null && \
+      [ -r "/proc/$CURRENT_SERVICE_PID/environ" ]; then
+    PROD_DB_PATH="$(python3 - "$CURRENT_SERVICE_PID" <<'PY'
+from pathlib import Path
+import sys
+
+for entry in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
+    if entry.startswith(b"ECHO_CERTFORGE_DB="):
+        print(entry.split(b"=", 1)[1].decode("utf-8"))
+        break
+PY
+)"
+  fi
+fi
+PROD_DB_PATH="${PROD_DB_PATH:-$STATE_ROOT/certforge.sqlite3}"
+case "$(realpath -m "$PROD_DB_PATH")" in
+  "$STATE_ROOT"/*|/mnt/documentation/echo/certforge/*) ;;
+  *) echo "!! effective production database is outside an approved state root"; exit 1 ;;
+esac
 test "${#PROD_PEPPER}" -ge 32 || {
   echo "!! production ECHO_CERTFORGE_API_KEY_PEPPER must be at least 32 bytes"
   exit 1
@@ -226,7 +264,8 @@ ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
 STAGING_PID=$!
 
 ready=0
-for _ in $(seq 1 "$READY_POLLS"); do
+readiness_start
+while readiness_pending; do
   kill -0 "$STAGING_PID" 2>/dev/null || {
     echo "!! staging process exited before readiness"
     mkdir -p "$STATE_ROOT/deploy-logs" &&
@@ -234,7 +273,7 @@ for _ in $(seq 1 "$READY_POLLS"); do
     tail -40 "$STAGING_ROOT/service.log"
     exit 1
   }
-  curl -sf "http://127.0.0.1:$STAGING_PORT/healthz" >/dev/null 2>&1 && {
+  readiness_probe "$STAGING_PORT" >/dev/null 2>&1 && {
     if ss -H -ltnp "sport = :$STAGING_PORT" | grep -q "pid=$STAGING_PID,"; then
       ready=1
     else
@@ -243,7 +282,7 @@ for _ in $(seq 1 "$READY_POLLS"); do
     fi
     break
   }
-  sleep 0.5
+  readiness_pause
 done
 if [ "$ready" != 1 ]; then
   echo "!! staging never became healthy"
@@ -317,7 +356,7 @@ if sudo test -f "$DISPATCH_RELEASE_DROPIN"; then
   sudo cat "$DISPATCH_RELEASE_DROPIN" >"$DISPATCH_RELEASE_DROPIN_BACKUP"
   HAD_DISPATCH_RELEASE_DROPIN=1
 fi
-DB_PATH="$STATE_ROOT/certforge.sqlite3"
+DB_PATH="$PROD_DB_PATH"
 DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
 HAD_DB=0
 DB_SNAPSHOT_READY=0
@@ -395,13 +434,14 @@ rollback_production() {
     if [ "$PREV_ACTIVE" = "active" ]; then
       sudo systemctl start "$SERVICE.service" || rollback_status=1
       restored=0
-      for _ in $(seq 1 "$READY_POLLS"); do
+      readiness_start
+      while readiness_pending; do
         service_owns_port "$PROD_PORT" &&
-          curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && {
+          readiness_probe "$PROD_PORT" >/dev/null 2>&1 && {
           restored=1
           break
         }
-        sleep 0.5
+        readiness_pause
       done
       [ "$restored" = 1 ] || rollback_status=1
     else
@@ -515,7 +555,7 @@ Type=simple
 User=forge
 WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_DB=$DB_PATH
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
@@ -558,7 +598,7 @@ Type=simple
 User=forge
 WorkingDirectory=$CURRENT_LINK
 Environment=PYTHONUNBUFFERED=1
-Environment=ECHO_CERTFORGE_DB=$STATE_ROOT/certforge.sqlite3
+Environment=ECHO_CERTFORGE_DB=$DB_PATH
 Environment=ECHO_CERTFORGE_EVIDENCE_ROOT=$STATE_ROOT/evidence
 Environment=ECHO_CERTFORGE_POLICY=$CURRENT_LINK/policies/mandatory-rules.v2.json
 Environment=ECHO_CERTFORGE_SUBSCRIBER_POLICY=$CURRENT_LINK/policies/subscriber-governance.v1.json
@@ -571,6 +611,9 @@ Environment=ECHO_CERTFORGE_PROD_ADAPTER_POLICY=$ADAPTER_POLICY
 Environment=ECHO_CERTFORGE_ADAPTER_REGISTRY=$ADAPTER_REGISTRY
 Environment=ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY=$ADAPTER_SIGNING_KEY
 Environment=ECHO_CERTFORGE_ADAPTER_ACCEPTANCE_REPORT=$ADAPTER_ACCEPTANCE_REPORT
+Environment=ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR=$PRODUCTION_E2E_ATTESTATION_DIR
+Environment=ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS=$PRODUCTION_E2E_TRUSTED_KEYS
+Environment=ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS=$GIT_ACQUISITION_TIMEOUT_SECONDS
 Environment=ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256=$TRUSTED_MANIFEST_SHA256
 EnvironmentFile=$ENV_FILE
 ExecStart=$CURRENT_LINK/.venv/bin/python -m echo_certification_forge.dispatch_worker --sandbox $DISPATCH_COMPAT_FLAG
@@ -597,15 +640,16 @@ sudo systemctl enable "$DISPATCH_SERVICE.service"
 
 echo "== [8/9] production health + live-smoke =="
 ready=0
-for _ in $(seq 1 "$READY_POLLS"); do
+readiness_start
+while readiness_pending; do
   service_owns_port "$PROD_PORT" &&
-    curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && {
+    readiness_probe "$PROD_PORT" >/dev/null 2>&1 && {
     ready=1
     break
   }
-  sleep 0.5
+  readiness_pause
 done
-if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$DB_PATH" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
     ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
     ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
@@ -633,7 +677,7 @@ if [ "$dispatcher_ready" != 1 ]; then
   exit 1
 fi
 if [ "$ADAPTER_MODE" = required ]; then
-  ECHO_CERTFORGE_DB="$STATE_ROOT/certforge.sqlite3" \
+  ECHO_CERTFORGE_DB="$DB_PATH" \
   ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
   ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
   "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_dispatch.py" \

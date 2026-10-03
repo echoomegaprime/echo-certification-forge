@@ -51,12 +51,14 @@ from echo_certification_forge.release_hooks import (
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.sandbox import DockerSandbox
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from production_e2e_support import trusted_generic_production_e2e
 
 TENANT = "tenant-alpha"
 OTHER_TENANT = "tenant-beta"
 SECRET = "p6-webhook-secret-0123456789abcdef"
 DEPLOY_SECRET = "p6-deploy-credential-alpha-0001"
 OTHER_DEPLOY_SECRET = "p6-deploy-credential-beta-0002"
+SOURCE_COMMIT = "abc123abc123abc123abc123abc123abc123abcd"
 
 
 def _digest(label: str) -> str:
@@ -101,6 +103,7 @@ def _certify(store, manifest, signer, environment, tmp_path, run_id, target) -> 
         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
         journey=[sys.executable, "hello.py"],
         control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+        production_e2e_attestation=trusted_generic_production_e2e(target, environment),
     )
     assert result.release_verdict == "PRODUCTION_READY", result.blocking_findings
 
@@ -112,7 +115,7 @@ def certified_target(store, manifest, signer, environment, tmp_path) -> TargetId
         target_type="container",
         canonical_ref="registry.echo/app@v1",
         artifact_sha256=_digest("http-app-v1"),
-        source_commit="abc123def456",
+        source_commit=SOURCE_COMMIT,
         dependency_sha256=_digest("dependencies"),
         configuration_sha256=_digest("configuration"),
     )
@@ -401,7 +404,7 @@ def test_http_binding_refuses_unsigned_run_and_foreign_tenant(
         target_type="container",
         canonical_ref="registry.echo/app@u1",
         artifact_sha256=_digest("unsigned-app"),
-        source_commit="abc123def456",
+        source_commit=SOURCE_COMMIT,
     )
     store.register_run("cert-unsigned", target, environment, manifest.manifest_id, manifest.digest)
     response = _post_signed(client, "/v1/certifications/cert-unsigned/bindings")
@@ -442,7 +445,7 @@ def _build_event(event_id: str = "evt-00000001") -> dict:
         "event_type": "build.artifact.published",
         "tenant_id": TENANT,
         "artifact_sha256": _digest("built-artifact"),
-        "source_commit": "abc123def456",
+        "source_commit": SOURCE_COMMIT,
         "repository": "https://github.com/echo/app",
         "environment_identity_digest": _digest("build-env"),
         "policy_version": "certforge.release-strict.v1",
@@ -488,7 +491,7 @@ def test_registry_webhook_maps_container_target(client):
         "tenant_id": TENANT,
         "image_digest": f"sha256:{_digest('pushed-image')}",
         "image_repository": "registry.echo/app",
-        "source_commit": "abc123def456",
+        "source_commit": SOURCE_COMMIT,
         "environment_identity_digest": _digest("registry-env"),
         "policy_version": "certforge.release-strict.v1",
     }
@@ -557,7 +560,7 @@ def _declared_event(artifact: str, environment, manifest, event_id: str = "evt-r
         "event_type": "build.artifact.published",
         "tenant_id": TENANT,
         "artifact_sha256": artifact,
-        "source_commit": "abc123def456",
+        "source_commit": SOURCE_COMMIT,
         "repository": "https://github.com/echo/app",
         "environment_identity_digest": environment.identity_digest,
         "policy_version": manifest.manifest_id,
@@ -582,9 +585,9 @@ def test_webhook_declared_run_reconciles_certifies_and_deploys_end_to_end(
     acquired = TargetIdentity(
         tenant_id=TENANT,
         target_type="container",
-        canonical_ref="registry.echo/app@abc123def456",
+        canonical_ref=f"registry.echo/app@{SOURCE_COMMIT}",
         artifact_sha256=artifact,
-        source_commit="abc123def456",
+        source_commit=SOURCE_COMMIT,
     )
     store.reconcile_declared_target(run_id, TENANT, acquired, environment)
     row = store.get_run(run_id, TENANT)
@@ -602,6 +605,7 @@ def test_webhook_declared_run_reconciles_certifies_and_deploys_end_to_end(
         entitlement=StaticEntitlement(frozenset({TENANT})),
         journey=[sys.executable, "hello.py"],
         control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+        production_e2e_attestation=trusted_generic_production_e2e(acquired, environment),
     )
     assert result.release_verdict == "PRODUCTION_READY", result.blocking_findings
 
@@ -646,9 +650,9 @@ def test_reconciliation_refuses_mismatched_artifact_and_run_stays_undeployable(
     tampered = TargetIdentity(
         tenant_id=TENANT,
         target_type="container",
-        canonical_ref="registry.echo/app@abc123def456",
+        canonical_ref=f"registry.echo/app@{SOURCE_COMMIT}",
         artifact_sha256=_digest("DIFFERENT-acquired-artifact"),
-        source_commit="abc123def456",
+        source_commit=SOURCE_COMMIT,
     )
     with pytest.raises(ValueError, match="target_declared_artifact_mismatch"):
         store.reconcile_declared_target(run_id, TENANT, tampered, environment)
@@ -732,9 +736,9 @@ def test_reconciliation_window_closes_at_acquisition(client, store, manifest, en
     acquired = TargetIdentity(
         tenant_id=TENANT,
         target_type="container",
-        canonical_ref="registry.echo/app@abc123def456",
+        canonical_ref=f"registry.echo/app@{SOURCE_COMMIT}",
         artifact_sha256=artifact,
-        source_commit="abc123def456",
+        source_commit=SOURCE_COMMIT,
     )
     with pytest.raises(ValueError, match="target_reconciliation_window_closed"):
         store.reconcile_declared_target(run_id, TENANT, acquired, environment)
@@ -772,6 +776,7 @@ def test_run_worker_executes_webhook_declared_run_end_to_end(
         signer=signer,
         entitled=frozenset({TENANT}),
         journey=[sys.executable, "hello.py"],
+        production_e2e_provider=trusted_generic_production_e2e,
     )
     assert outcome.get("error") is None, outcome
     assert outcome["release_verdict"] == "PRODUCTION_READY"
@@ -1837,7 +1842,7 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
             "tenant_id": TENANT,
             "image_digest": manifest_digest,
             "image_repository": repo,
-            "source_commit": "abc123def456",
+            "source_commit": SOURCE_COMMIT,
             # the platform declares the WORKER's environment commitment for the run
             "environment_identity_digest": run_worker._worker_environment().identity_digest,
             "policy_version": manifest.manifest_id,
@@ -1862,6 +1867,7 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
             entitled=frozenset({TENANT}),
             journey=["python3", "app/hello.py"],
             sandbox=DockerSandbox(docker=(sys.executable, str(stub))),
+            production_e2e_provider=trusted_generic_production_e2e,
         )
     finally:
         os.environ.pop("CERTFORGE_TEST_DOCKER_LOG", None)
@@ -2025,7 +2031,7 @@ def test_registry_webhook_oci_journey_without_sandbox_fails_closed(
             "tenant_id": TENANT,
             "image_digest": manifest_digest,
             "image_repository": repo,
-            "source_commit": "abc123def456",
+            "source_commit": SOURCE_COMMIT,
             "environment_identity_digest": run_worker._worker_environment().identity_digest,
             "policy_version": manifest.manifest_id,
         }

@@ -70,30 +70,37 @@ def main() -> int:
             "reasons": list(default.reasons),
         }
 
-        store.register_run("cert-verified-ready", target, environment, manifest.manifest_id, manifest.digest)
+        # P1 is source/control-plane acceptance, not an external production E2E run. Even with
+        # every local rule row marked true, it must remain NOT_READY without the independently
+        # signed production_e2e attestation.
+        store.register_run("cert-source-only", target, environment, manifest.manifest_id, manifest.digest)
         for index, rule in enumerate(manifest.rules, start=1):
             artifact_id = f"proof-{index:02d}"
             content = json.dumps({"rule": rule.id, "passed": True}, sort_keys=True).encode()
             store.append_artifact(
-                "cert-verified-ready", target.tenant_id, artifact_id, content,
+                "cert-source-only", target.tenant_id, artifact_id, content,
                 "application/json", "p1-independent-harness", RedactionStatus.COMPLETE,
             )
             store.record_rule_result(
-                "cert-verified-ready", target.tenant_id,
+                "cert-source-only", target.tenant_id,
                 RuleResult(rule.id, True, (artifact_id,), {"fixture": "known-good"}),
             )
-        store.set_run_outcome("cert-verified-ready", target.tenant_id, RunOutcome.COMPLETE)
-        ready = engine.evaluate(store, "cert-verified-ready", target.tenant_id, manifest, signer.key_id)
+        store.set_run_outcome("cert-source-only", target.tenant_id, RunOutcome.COMPLETE)
+        ready = engine.evaluate(store, "cert-source-only", target.tenant_id, manifest, signer.key_id)
         envelope = signer.sign(ready)
-        store.save_signed_verdict("cert-verified-ready", target.tenant_id, envelope)
+        store.save_signed_verdict("cert-source-only", target.tenant_id, envelope)
         trusted = TrustedPublicKeyRegistry.empty()
         trusted.add_pem(signer.public_key_pem)
         gate = DeployGate(store, trusted).evaluate(
-            target.tenant_id, "cert-verified-ready", target.identity_digest,
+            target.tenant_id, "cert-source-only", target.identity_digest,
             environment.identity_digest, manifest.digest,
         )
-        report["scenarios"]["verified_ready"] = {
-            "passed": ready.release_verdict.value == "PRODUCTION_READY" and gate.allowed,
+        report["scenarios"]["source_only_blocks"] = {
+            "passed": (
+                ready.release_verdict.value == "NOT_READY"
+                and not gate.allowed
+                and "production_e2e_schema_invalid" in ready.reasons
+            ),
             "verdict": ready.release_verdict.value,
             "deploy_gate_allowed": gate.allowed,
             "evidence_merkle_root": ready.evidence_merkle_root,
@@ -101,10 +108,10 @@ def main() -> int:
             "signing_key_id": envelope.key_id,
         }
 
-        tampered_path = workspace / "evidence" / target.tenant_id / "cert-verified-ready" / "artifacts" / "proof-01.bin"
+        tampered_path = workspace / "evidence" / target.tenant_id / "cert-source-only" / "artifacts" / "proof-01.bin"
         tampered_path.write_bytes(b"tampered")
         tampered_gate = DeployGate(store, trusted).evaluate(
-            target.tenant_id, "cert-verified-ready", target.identity_digest,
+            target.tenant_id, "cert-source-only", target.identity_digest,
             environment.identity_digest, manifest.digest,
         )
         report["scenarios"]["tamper_blocks"] = {

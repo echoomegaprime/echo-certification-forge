@@ -11,6 +11,7 @@ from typing import Any, Callable
 from .evidence import EvidenceStore
 from .intake import SubmitRequest
 from .policy import RuleManifest
+from .production_e2e import DirectoryProductionE2EProvider
 from .run_worker import _load_adapter_inputs, _load_signer, run
 from .sandbox import DEFAULT_IMAGE, DockerSandbox
 from .subscriber import SubscriberDispatch, SubscriberError, SubscriberGovernance, SubscriberPolicy
@@ -241,6 +242,24 @@ def main(argv: list[str] | None = None) -> int:
         choices=("platform", "customer"),
         default=os.environ.get("ECHO_CERTFORGE_SIGNING_AUTHORITY", "platform"),
     )
+    parser.add_argument(
+        "--production-e2e-attestation-dir",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR"])
+            if os.environ.get("ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR")
+            else None
+        ),
+    )
+    parser.add_argument(
+        "--trusted-production-e2e-keys",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS"])
+            if os.environ.get("ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS")
+            else None
+        ),
+    )
     args = parser.parse_args(argv)
     if args.poll_seconds <= 0:
         parser.error("--poll-seconds must be positive")
@@ -270,6 +289,23 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     store = EvidenceStore(args.db, args.evidence_root)
     signer = _load_signer(args.signing_key)
+    production_e2e_paths = (
+        args.production_e2e_attestation_dir,
+        args.trusted_production_e2e_keys,
+    )
+    if sum(path is not None for path in production_e2e_paths) not in (0, 2):
+        print(json.dumps({"error": "production_e2e_trust_incomplete"}))
+        return 2
+    production_e2e_provider = None
+    if all(path is not None for path in production_e2e_paths):
+        try:
+            production_e2e_provider = DirectoryProductionE2EProvider(
+                args.production_e2e_attestation_dir,
+                args.trusted_production_e2e_keys,
+            )
+        except ValueError:
+            print(json.dumps({"error": "production_e2e_trust_unavailable"}))
+            return 2
     sandbox = (
         DockerSandbox(
             image=args.sandbox_image,
@@ -289,6 +325,8 @@ def main(argv: list[str] | None = None) -> int:
         "execution_location": args.execution_location,
         "signing_authority": args.signing_authority,
     }
+    if production_e2e_provider is not None:
+        options["production_e2e_provider"] = production_e2e_provider
     if supplied_count == len(adapter_paths):
         options["adapter_inputs"] = {
             "response_path": args.adapter_response,
