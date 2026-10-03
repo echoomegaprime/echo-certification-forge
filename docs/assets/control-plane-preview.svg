@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Certification Forge control-plane preview</title><desc id="desc">A service status view showing exact revision, evidence, verification, and deployment gates.</desc>
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111f"/><stop offset="1" stop-color="#142e4d"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="8" stdDeviation="14" flood-opacity=".35"/></filter></defs>
+  <rect width="1200" height="675" rx="28" fill="url(#bg)"/>
+  <rect x="44" y="40" width="1112" height="595" rx="20" fill="#091725" stroke="#294763" filter="url(#s)"/>
+  <rect x="44" y="40" width="1112" height="72" rx="20" fill="#0d2037"/><rect x="44" y="92" width="1112" height="20" fill="#0d2037"/>
+  <circle cx="83" cy="76" r="7" fill="#f0c873"/><text x="106" y="84" fill="#fff" font-family="Segoe UI,Arial,sans-serif" font-size="23" font-weight="700">Certification Forge</text>
+  <rect x="900" y="62" width="213" height="32" rx="16" fill="#11382d" stroke="#3e9b76"/><text x="1007" y="84" text-anchor="middle" fill="#7ce0b2" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700">EVIDENCE-GATED</text>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="82" y="158" fill="#7894ae" font-size="13" letter-spacing="2">EXACT TARGET</text><text x="82" y="189" fill="#fff" font-size="19" font-weight="650">echoomegaprime / echo-certification-forge</text><text x="82" y="217" fill="#8ea7be" font-family="Consolas,monospace" font-size="14">source revision bound at submission</text>
+    <rect x="82" y="252" width="316" height="136" rx="14" fill="#0d2037" stroke="#294763"/><text x="108" y="286" fill="#f0c873" font-size="13" letter-spacing="2">EVIDENCE</text><text x="108" y="329" fill="#fff" font-size="30" font-weight="700">627</text><text x="177" y="329" fill="#9db5ce" font-size="16">checks passed</text><text x="108" y="361" fill="#7ce0b2" font-size="15">Merkle root anchored</text>
+    <rect x="442" y="252" width="316" height="136" rx="14" fill="#0d2037" stroke="#294763"/><text x="468" y="286" fill="#f0c873" font-size="13" letter-spacing="2">VERDICT</text><text x="468" y="329" fill="#fff" font-size="30" font-weight="700">SIGNED</text><text x="468" y="361" fill="#7ce0b2" font-size="15">Public-key verification passed</text>
+    <rect x="802" y="252" width="316" height="136" rx="14" fill="#0d2037" stroke="#294763"/><text x="828" y="286" fill="#f0c873" font-size="13" letter-spacing="2">DEPLOYMENT</text><text x="828" y="329" fill="#fff" font-size="30" font-weight="700">GREEN</text><text x="828" y="361" fill="#7ce0b2" font-size="15">Staging and production smoke</text>
+    <text x="82" y="444" fill="#7894ae" font-size="13" letter-spacing="2">RELEASE CHAIN</text>
+    <path d="M108 493H1078" stroke="#294763" stroke-width="4"/><g fill="#55b8ff"><circle cx="108" cy="493" r="10"/><circle cx="302" cy="493" r="10"/><circle cx="496" cy="493" r="10"/><circle cx="690" cy="493" r="10"/></g><g fill="#f0c873"><circle cx="884" cy="493" r="10"/><circle cx="1078" cy="493" r="10"/></g>
+    <g fill="#b8cadb" font-size="14" text-anchor="middle"><text x="108" y="529">Source</text><text x="302" y="529">Runner</text><text x="496" y="529">Custody</text><text x="690" y="529">Anchor</text><text x="884" y="529">Verdict</text><text x="1078" y="529">Promote</text></g>
+    <rect x="82" y="570" width="1036" height="34" rx="8" fill="#07111f"/><text x="101" y="593" fill="#7894ae" font-family="Consolas,monospace" font-size="13">fail_closed=true  target_bound=true  rollback_ready=true  signing_key_exposed=false</text>
+  </g>
+</svg>

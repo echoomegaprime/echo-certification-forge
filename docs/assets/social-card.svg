@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Echo Certification Forge</title><desc id="desc">Premium social card for the evidence-backed release authority.</desc>
+  <defs><radialGradient id="glow" cx="80%" cy="20%" r="80%"><stop stop-color="#275b91"/><stop offset=".58" stop-color="#0c2037"/><stop offset="1" stop-color="#050c15"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#f5d58c"/><stop offset="1" stop-color="#b27a24"/></linearGradient></defs>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+  <g opacity=".22" fill="none" stroke="#61bfff"><circle cx="1010" cy="285" r="180"/><circle cx="1010" cy="285" r="132"/><circle cx="1010" cy="285" r="84"/><path d="M830 285h360M1010 105v360"/></g>
+  <path d="M1010 187l86 49v98l-86 49-86-49v-98z" fill="#0a1a2d" stroke="url(#gold)" stroke-width="5"/>
+  <path d="M971 285l27 27 55-68" fill="none" stroke="#f0c873" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="84" y="158" fill="#f0c873" font-family="Segoe UI,Arial,sans-serif" font-size="18" letter-spacing="5">ECHO OMEGA PRIME</text>
+  <text x="84" y="252" fill="#fff" font-family="Segoe UI,Arial,sans-serif" font-size="60" font-weight="750">Certification</text>
+  <text x="84" y="318" fill="#fff" font-family="Segoe UI,Arial,sans-serif" font-size="60" font-weight="750">Forge</text>
+  <rect x="84" y="356" width="160" height="5" rx="2.5" fill="url(#gold)"/>
+  <text x="84" y="414" fill="#b8cadb" font-family="Segoe UI,Arial,sans-serif" font-size="23">Evidence-backed release authority.</text>
+  <text x="84" y="450" fill="#b8cadb" font-family="Segoe UI,Arial,sans-serif" font-size="23">Immutable targets. Deterministic verdicts.</text>
+  <text x="84" y="551" fill="#7894ae" font-family="Consolas,monospace" font-size="17">PRODUCTION_READY requires proof</text>
+</svg>

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "product_type": "service",
+  "tagline": "Evidence-backed release authority and Certification Forge runtime.",
+  "keywords": [
+    "attestation",
+    "devsecops",
+    "fastapi",
+    "provenance",
+    "python",
+    "release-verification",
+    "security",
+    "software-supply-chain"
+  ],
+  "suggested_workflows": [
+    {
+      "name": "Release qualification",
+      "description": "Qualify one immutable source revision through deterministic tests, evidence custody, signed verdicts, staged promotion, and post-deploy proof.",
+      "path": "docs/WORKFLOWS.md#release-qualification"
+    },
+    {
+      "name": "Incident containment",
+      "description": "Contain a certification, signing, runner, or evidence-custody incident without weakening trust boundaries or advancing an unverified revision.",
+      "path": "docs/WORKFLOWS.md#incident-containment"
+    }
+  ],
+  "graphics": {
+    "architecture": "docs/assets/architecture.svg",
+    "workflow": "docs/assets/workflow.svg",
+    "social_card": "docs/assets/social-card.svg",
+    "screenshots": [
+      "docs/assets/control-plane-preview.svg"
+    ]
+  }
+}

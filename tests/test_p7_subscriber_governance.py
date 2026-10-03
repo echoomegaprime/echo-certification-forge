@@ -2933,6 +2933,15 @@ def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
     assert json.loads(persisted["target_identity_json"]) == expected_target.to_dict()
     assert persisted["target_identity_digest"] == expected_target.identity_digest
 
+    replay = client.post(
+        "/v1/certifications",
+        headers=_headers(org.organization_id, org.bootstrap_api_key),
+        json=payload,
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["run_id"] == response.json()["run_id"]
+    assert replay.json()["target_identity_digest"] == expected_target.identity_digest
+
 
 def test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalizes(
     tmp_path, manifest

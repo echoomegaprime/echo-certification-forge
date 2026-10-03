@@ -3242,19 +3242,22 @@ class SubscriberGovernance:
             if existing is not None:
                 if existing["request_digest"] != request_digest:
                     raise SubscriberError(409, "idempotency_conflict")
+                # The reservation's target digest is intentionally reconciled from
+                # the caller's declared commitment to the acquired artifact digest
+                # at the execution boundary.  An exact idempotent replay is still
+                # bound by request_digest plus the persisted dispatch/submit JSON,
+                # so compare only the binding fields that remain immutable here.
                 expected_binding = (
                     project_id,
                     policy_version,
                     target_type,
                     target_reference,
-                    target_identity_digest,
                 )
                 actual_binding = (
                     existing["project_id"],
                     existing["policy_version"],
                     existing["target_type"],
                     existing["target_reference"],
-                    existing["target_identity_digest"],
                 )
                 if all(item is not None for item in expected_binding) and actual_binding != expected_binding:
                     raise SubscriberError(409, "run_reservation_binding_conflict")
@@ -3270,6 +3273,15 @@ class SubscriberGovernance:
                 )
                 if dispatch_target_json is not None and actual_dispatch != expected_dispatch:
                     raise SubscriberError(409, "run_dispatch_binding_conflict")
+                if (
+                    target_identity_digest is not None
+                    and existing["target_identity_digest"] != target_identity_digest
+                    and (
+                        existing["state"] != "RELEASED"
+                        or dispatch_target_json is None
+                    )
+                ):
+                    raise SubscriberError(409, "run_reservation_binding_conflict")
                 return RunReservation(
                     principal.organization_id,
                     idempotency_key,
@@ -3541,7 +3553,7 @@ class SubscriberGovernance:
             if row is None:
                 raise SubscriberError(409, "run_reservation_binding_missing")
             terminal_replay = bool(
-                row["state"] == "RELEASED"
+                row["state"] in {"BOUND", "RELEASED"}
                 and row["run_id"] == run_id
                 and existing_run is not None
                 and existing_run["state"] in _TERMINAL_RUN_STATES
@@ -3583,16 +3595,29 @@ class SubscriberGovernance:
                     reservation.policy_version,
                     target_type,
                     target_reference,
-                    target_identity_digest,
                 )
                 actual_binding = (
                     row["project_id"],
                     row["policy_version"],
                     row["target_type"],
                     row["target_reference"],
-                    row["target_identity_digest"],
                 )
                 if actual_binding != expected_binding:
+                    raise SubscriberError(409, "run_reservation_binding_conflict")
+                if terminal_replay:
+                    # A completed run holds the acquired artifact digest, while the
+                    # replay repeats the original declared commitment.  The exact
+                    # request and deterministic run ID were already checked above;
+                    # require the reconciled reservation to remain bound to that run.
+                    if (
+                        existing_run is None
+                        or row["target_identity_digest"]
+                        != existing_run["target_identity_digest"]
+                    ):
+                        raise SubscriberError(
+                            409, "run_reservation_binding_conflict"
+                        )
+                elif row["target_identity_digest"] != target_identity_digest:
                     raise SubscriberError(409, "run_reservation_binding_conflict")
                 if existing_run is None:
                     rerun_sequence: int | None = None
@@ -3649,13 +3674,18 @@ class SubscriberGovernance:
                         (run_id,),
                     ).fetchone()
                     created = True
+                expected_run_target_digest = (
+                    existing_run["target_identity_digest"]
+                    if terminal_replay
+                    else target_identity_digest
+                )
                 expected_run = (
                     reservation.organization_id,
                     reservation.project_id,
                     reservation.policy_version,
                     target_type,
                     target_reference,
-                    target_identity_digest,
+                    expected_run_target_digest,
                     environment_identity_digest,
                     manifest_id,
                     manifest_digest,
@@ -3690,11 +3720,7 @@ class SubscriberGovernance:
                         now,
                     )
                 elif existing_run["state"] != "QUEUED":
-                    if not (
-                        row["state"] == "BOUND"
-                        and row["run_id"] == run_id
-                        and existing_run["state"] in _TERMINAL_RUN_STATES
-                    ):
+                    if not terminal_replay:
                         raise SubscriberError(409, "run_materialization_state_conflict")
                 idempotency = connection.execute(
                     """
