@@ -7,7 +7,10 @@ and the dispatcher unit decoupled from API restarts.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
+
+from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
 PATCHED_BASE = "sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111"
@@ -51,6 +54,17 @@ def test_dispatcher_wants_but_does_not_require_the_api_service() -> None:
     assert "Wants=$SERVICE.service" in unit
     assert "Requires=$SERVICE.service" not in unit
     assert "After=network.target $SERVICE.service" in unit
+
+
+def test_package_install_rejects_vulnerable_cryptography_versions() -> None:
+    # The deployment venv installs pyproject.toml, independently of the image lock.
+    dependencies = tomllib.loads(_text("pyproject.toml"))["project"]["dependencies"]
+    requirement = next(
+        item for item in map(Requirement, dependencies) if item.name == "cryptography"
+    )
+    for vulnerable in ("44.0.0", "49.0.0", "49.0.1"):
+        assert not requirement.specifier.contains(vulnerable)
+    assert requirement.specifier.contains("50.0.0")
 
 
 def test_source_fetch_credential_helper_is_configurable_with_safe_default() -> None:
