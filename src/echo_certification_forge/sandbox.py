@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Callable
 
 # Pinned minimal Python base (same digest the P4 supply-chain pipeline pins). Override per policy.
-DEFAULT_IMAGE = "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+DEFAULT_IMAGE = "python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111"
 
 
 class SandboxError(RuntimeError):
