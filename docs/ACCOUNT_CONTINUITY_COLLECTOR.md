@@ -56,7 +56,7 @@ The JSON object schema is `echo.account-continuity.quench-evidence.v2`:
 | `host`, `observed_at` | QUENCH; actual zoned observation time, no more than one hour old |
 | `source_commit`, `installed_cache_commit`, `remote_branch_commit`, `pull_request_head_commit` | Each independently read back as the exact candidate SHA |
 | `branch`, `pull_request`, `installed_version` | Exact branch above, integer 4, exact plugin version above |
-| `installation_scope` | Explicit `isolated_canary` or `production`; never inferred or promoted |
+| `installation_scope` | Explicit `isolated_canary` or `production`; production signing requires `production` |
 | `installed_manifest_sha256` | Hash of the measured installed file manifest whose files were compared to the candidate |
 | `native_plugin_enabled`, `fresh_native_session` | Both verified true through actual native plugin/session readback |
 | `iterations`, `assertions_passed_per_iteration`, `critical_journeys` | 3, `[119,119,119]`, three actual `PASS` results |
@@ -94,10 +94,14 @@ Every nested observation must be current and timezone-aware.
 
 `isolated_canary` means a real official native installation in a new task-owned
 Codex home with the same tests, live calls, negative controls and installed-byte
-readback. It is not a workspace test. The scope remains in the signed evidence
-summary and report; it never claims the active shared home was upgraded. The
-unchanged CertForge policy remains the authority on whether this acceptance is
-sufficient. A policy rejection stays NOT_READY; do not rewrite the profile.
+readback. It is not a workspace test. The evidence validator preserves that scope,
+but the production collector rejects it before hosted collection, source execution,
+private-key access or signing. Its input remains unsigned canary evidence and the
+release remains NOT_READY. The generic production policy does not inspect this
+scope itself, so a documentation disclaimer cannot enforce the boundary. Only
+measured `production` installation evidence may enter production signing. Scope,
+custody hashes and every source timestamp are revalidated immediately before key
+access so long HAMMER test runs cannot refresh expired QUENCH observations.
 
 ## Hosted receipt and invocation
 

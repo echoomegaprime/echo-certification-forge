@@ -6,6 +6,7 @@ import json
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -73,6 +74,102 @@ def test_isolated_native_install_scope_is_preserved_not_promoted(tmp_path):
     document = current_evidence()
     document["installation_scope"] = "isolated_canary"
     assert verify(tmp_path, document)["installation_scope"] == "isolated_canary"
+
+
+def prepare_main_fixture(tmp_path, monkeypatch, *, scope):
+    document = current_evidence()
+    document["installation_scope"] = scope
+    evidence = tmp_path / "quench.json"
+    evidence.write_text(json.dumps(document), encoding="utf-8")
+    evidence_bytes = evidence.read_bytes()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    placeholder = tmp_path / "placeholder"
+    placeholder.write_text("synthetic path only", encoding="utf-8")
+    outputs = [tmp_path / name for name in ("envelope.json", "public.pem", "report.json")]
+    args = SimpleNamespace(
+        source_commit=SOURCE, base_commit="1" * 40,
+        target_identity_digest="2" * 64, environment_identity_digest="3" * 64,
+        bundle=placeholder, python=placeholder, pwsh=placeholder, node=placeholder,
+        gitleaks=placeholder, workspace_root=workspace, quench_evidence=evidence,
+        quench_evidence_sha256=hashlib.sha256(evidence_bytes).hexdigest(),
+        private_key=tmp_path / "unavailable-owner-key.pem", revision_receipt=placeholder,
+        revision_receipt_sha256="4" * 64, hosted_delivery_id="synthetic-delivery",
+        quench_address="127.0.0.1", quench_management_port=1,
+        output=outputs[0], public_key_output=outputs[1], report_output=outputs[2])
+    monkeypatch.setattr(collector, "parse_args", lambda: args)
+    monkeypatch.setattr(collector.socket, "gethostname", lambda: "HAMMER")
+    return args, evidence_bytes
+
+
+def test_isolated_canary_cannot_reach_production_collection_or_signing(tmp_path, monkeypatch):
+    args, evidence_bytes = prepare_main_fixture(tmp_path, monkeypatch, scope="isolated_canary")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("isolated canary reached a production collection/signing side effect")
+
+    for name in ("verify_hosted_receipt", "verify_quench_reachability", "run",
+                 "verify_private_key", "atomic_write"):
+        monkeypatch.setattr(collector, name, forbidden)
+    with pytest.raises(collector.AttestationError, match="production installation.*isolated_canary"):
+        collector.main()
+    assert args.quench_evidence.read_bytes() == evidence_bytes
+    assert all(not path.exists() for path in (args.output, args.public_key_output, args.report_output))
+    assert not list(args.workspace_root.iterdir())
+
+
+def test_long_source_validation_cannot_refresh_expired_acceptance_before_signing(tmp_path, monkeypatch):
+    args, evidence_bytes = prepare_main_fixture(tmp_path, monkeypatch, scope="production")
+    elapsed = timedelta()
+
+    class SimulatedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz) + elapsed
+
+    monkeypatch.setattr(collector, "datetime", SimulatedClock)
+    monkeypatch.setattr(collector, "verify_quench_reachability", lambda *args: None)
+    monkeypatch.setattr(collector, "verify_hosted_receipt", lambda *args, **kwargs: {
+        "document_sha256": "4" * 64, "receipt_hash": "5" * 64,
+        "delivery_id": "synthetic-delivery", "check_run": 1})
+    journeys = []
+
+    def synthetic_run(command, **kwargs):
+        nonlocal elapsed
+        stdout = ""
+        if "rev-parse" in command:
+            stdout = SOURCE
+        elif "list-heads" in command:
+            stdout = f"{SOURCE} refs/heads/{collector.BRANCH}"
+        elif "-File" in command:
+            label = next(label for label, relative in collector.POWERSHELL_TESTS.items()
+                         if command[-1].replace("\\", "/").endswith(relative))
+            stdout = json.dumps({"ok": True, "assertions": ASSERTIONS[label]})
+        elif command[-1].endswith("Test-ProviderRegistry.mjs"):
+            stdout = json.dumps({"ok": True, "assertions": ASSERTIONS["provider_registry"]})
+        elif command[-1].endswith("Test-RouterConcurrency.mjs"):
+            stdout = json.dumps({"ok": True, "concurrent_requests": 12,
+                                 "concurrent_processes": 8, "contended_lock_preserved": True})
+        elif command[-1].endswith("certforge_journey.py"):
+            journeys.append("PASS")
+            stdout = "ACCOUNT_CONTINUITY_CRITICAL_JOURNEY_OK surfaces=26 apps=8 providers=7 secret_fields=0"
+        elif "dir" in command:
+            elapsed = timedelta(hours=2)
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(collector, "run", synthetic_run)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("expired upstream evidence reached key access or signed output")
+
+    monkeypatch.setattr(collector, "verify_private_key", forbidden)
+    monkeypatch.setattr(collector, "atomic_write", forbidden)
+    with pytest.raises(collector.AttestationError, match="current and timezone-aware"):
+        collector.main()
+    assert journeys == ["PASS"] * 3
+    assert args.quench_evidence.read_bytes() == evidence_bytes
+    assert all(not path.exists() for path in (args.output, args.public_key_output, args.report_output))
+    assert not list(args.workspace_root.iterdir())
 
 
 def test_workspace_without_native_installation_is_not_acceptance(tmp_path):

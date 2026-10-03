@@ -307,6 +307,13 @@ def verify_current_time(value: Any) -> None:
         raise AttestationError("QUENCH evidence time is not current and timezone-aware") from exc
 
 
+def verify_production_quench_evidence(path: Path, source_commit: str, *, expected_sha256: str) -> dict[str, Any]:
+    evidence = verify_quench_evidence(path, source_commit, expected_sha256=expected_sha256)
+    if evidence["installation_scope"] != "production":
+        raise AttestationError("production installation is required; isolated_canary evidence remains unsigned and NOT_READY")
+    return evidence
+
+
 def verify_router_result(value: Any) -> None:
     if (not isinstance(value, dict) or value.get("ok") is not True
             or type(value.get("concurrent_requests")) is not int or value["concurrent_requests"] != 12
@@ -463,6 +470,8 @@ def main() -> int:
     if (len(set(output_paths)) != 3 or any(path in protected_paths or path.exists() for path in output_paths)
             or args.private_key.resolve().is_relative_to(workspace_root)):
         raise AttestationError("collector output/key paths violate ownership separation")
+    quench = verify_production_quench_evidence(quench_evidence_path, source_commit,
+                                              expected_sha256=args.quench_evidence_sha256)
     hosted = verify_hosted_receipt(
         args.revision_receipt.resolve(strict=True),
         source_commit=source_commit,
@@ -471,8 +480,6 @@ def main() -> int:
         delivery_id=args.hosted_delivery_id,
         expected_sha256=args.revision_receipt_sha256,
     )
-    quench = verify_quench_evidence(quench_evidence_path, source_commit,
-                                   expected_sha256=args.quench_evidence_sha256)
     verify_quench_reachability(args.quench_address, args.quench_management_port)
 
     test_runs: list[dict[str, int]] = []
@@ -603,6 +610,9 @@ def main() -> int:
         }
     # Source subprocesses and their temporary checkout have finished before key access.
     # This is the existing native owner signing operation, never worker-side key injection.
+    # Long test runs cannot refresh expired upstream evidence by issuing a new envelope.
+    verify_production_quench_evidence(quench_evidence_path, source_commit,
+                                     expected_sha256=args.quench_evidence_sha256)
     key, key_id, public_pem = verify_private_key(args.private_key, repository, bundle, quench_evidence_path)
     signature = key.sign(canonical_json(payload))
     envelope = {
