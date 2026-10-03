@@ -145,7 +145,7 @@ def test_deploy_gate_rejects_dead_staging_process() -> None:
     )
     process_check = DEPLOY_SCRIPT.index('kill -0 "$STAGING_PID"')
     health_check = DEPLOY_SCRIPT.index(
-        'curl -sf "http://127.0.0.1:$STAGING_PORT/healthz"'
+        'readiness_probe "$STAGING_PORT"'
     )
     ownership_check = DEPLOY_SCRIPT.index(
         'grep -q "pid=$STAGING_PID,"'

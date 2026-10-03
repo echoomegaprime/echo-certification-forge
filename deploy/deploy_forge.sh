@@ -20,11 +20,11 @@ CURRENT_LINK="${CERTFORGE_CURRENT_LINK:-/home/forge/echo-certification-forge-cur
 STATE_ROOT="${CERTFORGE_STATE_ROOT:-/home/forge/echo-certification-forge/var}"
 PRODUCTION_E2E_ATTESTATION_DIR="${ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR:-$STATE_ROOT/production-e2e/attestations}"
 PRODUCTION_E2E_TRUSTED_KEYS="${ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS:-$STATE_ROOT/production-e2e/trusted-public-keys}"
-# Readiness waits poll /healthz every 0.5s and return on the first healthy probe.
+# Readiness waits bound /healthz probes and return on the first healthy probe.
 # 20s proved too short for a cold uvicorn boot on a loaded FORGE (staging abort,
 # false rollback-restore failure, needless production rollback).
-READY_TIMEOUT_S="${CERTFORGE_READY_TIMEOUT_S:-90}"
-READY_POLLS=$(( READY_TIMEOUT_S * 2 ))
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/readiness.sh"
+configure_readiness_timeout "${CERTFORGE_READY_TIMEOUT_S:-90}"
 ADAPTER_DIR="${ECHO_CERTFORGE_PROD_ADAPTER_DIR:-$STATE_ROOT/p5}"
 ADAPTER_MODE="${CERTFORGE_ADAPTER_MODE:-required}"
 TRUSTED_MANIFEST_SHA256="${ECHO_CERTFORGE_TRUSTED_MANIFEST_SHA256:-965106b00917268d556b325719f26f5096e6c3746551658ffecb9fd4a95ec342}"
@@ -264,7 +264,8 @@ ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
 STAGING_PID=$!
 
 ready=0
-for _ in $(seq 1 "$READY_POLLS"); do
+readiness_start
+while readiness_pending; do
   kill -0 "$STAGING_PID" 2>/dev/null || {
     echo "!! staging process exited before readiness"
     mkdir -p "$STATE_ROOT/deploy-logs" &&
@@ -272,7 +273,7 @@ for _ in $(seq 1 "$READY_POLLS"); do
     tail -40 "$STAGING_ROOT/service.log"
     exit 1
   }
-  curl -sf "http://127.0.0.1:$STAGING_PORT/healthz" >/dev/null 2>&1 && {
+  readiness_probe "$STAGING_PORT" >/dev/null 2>&1 && {
     if ss -H -ltnp "sport = :$STAGING_PORT" | grep -q "pid=$STAGING_PID,"; then
       ready=1
     else
@@ -281,7 +282,7 @@ for _ in $(seq 1 "$READY_POLLS"); do
     fi
     break
   }
-  sleep 0.5
+  readiness_pause
 done
 if [ "$ready" != 1 ]; then
   echo "!! staging never became healthy"
@@ -433,13 +434,14 @@ rollback_production() {
     if [ "$PREV_ACTIVE" = "active" ]; then
       sudo systemctl start "$SERVICE.service" || rollback_status=1
       restored=0
-      for _ in $(seq 1 "$READY_POLLS"); do
+      readiness_start
+      while readiness_pending; do
         service_owns_port "$PROD_PORT" &&
-          curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && {
+          readiness_probe "$PROD_PORT" >/dev/null 2>&1 && {
           restored=1
           break
         }
-        sleep 0.5
+        readiness_pause
       done
       [ "$restored" = 1 ] || rollback_status=1
     else
@@ -638,13 +640,14 @@ sudo systemctl enable "$DISPATCH_SERVICE.service"
 
 echo "== [8/9] production health + live-smoke =="
 ready=0
-for _ in $(seq 1 "$READY_POLLS"); do
+readiness_start
+while readiness_pending; do
   service_owns_port "$PROD_PORT" &&
-    curl -sf "http://127.0.0.1:$PROD_PORT/healthz" >/dev/null 2>&1 && {
+    readiness_probe "$PROD_PORT" >/dev/null 2>&1 && {
     ready=1
     break
   }
-  sleep 0.5
+  readiness_pause
 done
 if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$DB_PATH" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
