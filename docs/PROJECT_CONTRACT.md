@@ -41,3 +41,19 @@ GS343 may propose discovery, classification, and bounded harness repairs. Determ
 ## Completion rule
 
 Implementation, source validation, contracts, real runtime, failure and recovery, evidence package, scoped Git record, and Commander acceptance are distinct gates. A registered capability is not presumed visible, healthy, schema-complete, authorized, or runnable.
+
+## Production E2E verdict gate
+
+`PRODUCTION_READY` requires a current Ed25519-signed `certforge.production-e2e.v1`
+attestation from an independently pinned collector. The attestation must bind the
+exact target and environment identities, exact deployed source revision, real
+critical journeys, negative controls, repeated stability probes, and external
+acceptance. Source checks, local journeys, HTTP 200, unsigned status fields, and
+target-authored evidence cannot satisfy this gate. Missing, expired, untrusted,
+partially passing, or identity-mismatched attestations remain `NOT_READY`.
+
+For Echo GitHub Autonomy the target-specific profile additionally requires the
+canonical MCP and OAuth surface, 30-tool schema, repeated discovery plus
+invocation without registry loss, reconciled public/private inventory and
+read/write/certify authority for all four exact GitHub account IDs, and matching
+private-repository fingerprints from ChatGPT, Claude, Codex, and Grok.

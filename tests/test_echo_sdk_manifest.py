@@ -13,7 +13,7 @@ def test_echo_sdk_manifest_matches_the_authoritative_contract() -> None:
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
     assert manifest["version"] == 1
-    assert len(manifest["capabilities"]) == contract["capability_count"] == 60
+    assert len(manifest["capabilities"]) == contract["capability_count"] == 61
     assert set(manifest["capabilities"]) == set(contract["capabilities"])
     assert len(manifest["capabilities"]) == len(set(manifest["capabilities"]))
     assert all(capability.startswith("echo.") for capability in manifest["capabilities"])

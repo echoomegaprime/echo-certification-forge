@@ -10,6 +10,14 @@
 
 ## Verification sequence
 
+Before a worker may issue `PRODUCTION_READY`, mount a collector envelope through
+`--production-e2e-attestation` (or
+`ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION`) and a directory containing only the
+pinned collector public keys through `--trusted-production-e2e-keys` (or
+`ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS`). The private collector key must not
+be present on the worker. Absence, signature failure, expiration, or any exact
+identity/E2E mismatch is a normal `NOT_READY` result, never a bypass.
+
 1. Confirm hosted CI succeeded for the exact source SHA.
 2. Execute the declared production-shaped journey with the pinned runner image.
 3. Verify evidence custody, receipt chains, signatures, expiry, and revocation state.

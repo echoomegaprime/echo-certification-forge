@@ -29,8 +29,11 @@ from .adapters import (
 from .canonical import to_utc_iso, utc_now
 from .evidence import EvidenceStore
 from .hostile import scan_target_source
-from .models import RedactionStatus, RunOutcome, RuleResult, RunState
+from .models import EnvironmentIdentity, RedactionStatus, RuleResult, RunOutcome, RunState, TargetIdentity
 from .policy import RuleManifest
+from .production_e2e import RULE_ID as PRODUCTION_E2E_RULE_ID
+from .production_e2e import VerifiedProductionE2E
+from .production_e2e import validate_production_e2e
 from .signing import Ed25519VerdictSigner
 from .supply_chain import scan_dockerfile
 from .verdict import DeterministicVerdictEngine
@@ -193,6 +196,7 @@ class RunExecutor:
         control_attestations: dict[str, bool] | None = None,
         adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
         adapter_policy: AdapterAcceptancePolicy | None = None,
+        production_e2e_attestation: VerifiedProductionE2E | None = None,
         execution_guard: Callable[[], None] | None = None,
         completion_callback: Callable[[Any], None] | None = None,
     ) -> ExecutionResult:
@@ -393,6 +397,32 @@ class RunExecutor:
         # Includes adapter records/assessment when supplied.
         evidence_chain_ok = self.store.verify_evidence(run_id, tenant_id).valid
 
+        production_e2e_passed = False
+        production_e2e_detail: dict[str, Any] = {
+            "validation": "production_e2e_attestation_missing"
+        }
+        try:
+            target_identity = TargetIdentity(**json.loads(run["target_identity_json"]))
+            environment_identity = EnvironmentIdentity(**json.loads(run["environment_identity_json"]))
+            production_e2e_payload = (
+                production_e2e_attestation.payload
+                if isinstance(production_e2e_attestation, VerifiedProductionE2E)
+                else None
+            )
+            production_e2e_passed, validation = validate_production_e2e(
+                production_e2e_payload,
+                target_identity,
+                environment_identity,
+                now=utc_now(),
+            )
+            production_e2e_detail = (
+                production_e2e_attestation.result_details()
+                if production_e2e_passed and production_e2e_attestation is not None
+                else {"validation": validation}
+            )
+        except (TypeError, ValueError):
+            production_e2e_detail = {"validation": "production_e2e_identity_invalid"}
+
         checks: dict[str, tuple[bool, dict]] = {
             "immutable_target_identity": (
                 bound("target_identity_digest"),
@@ -429,6 +459,7 @@ class RunExecutor:
                 bool(control_attestations.get("signing_authority_separation", False)),
                 {"check": "trusted_caller_attestation"},
             ),
+            PRODUCTION_E2E_RULE_ID: (production_e2e_passed, production_e2e_detail),
         }
         for rule in self.manifest.rules:
             if execution_guard is not None:
@@ -444,7 +475,12 @@ class RunExecutor:
             self.store.record_rule_result(
                 run_id,
                 tenant_id,
-                RuleResult(rule.id, passed, (artifact_id,), {"source": "executor"}),
+                RuleResult(
+                    rule.id,
+                    passed,
+                    (artifact_id,),
+                    detail if rule.id == PRODUCTION_E2E_RULE_ID else {"source": "executor"},
+                ),
             )
 
         self._t(run_id, tenant_id, RunState.CLASSIFYING_FINDINGS, "classify")

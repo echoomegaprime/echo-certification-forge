@@ -17,6 +17,7 @@ import shutil
 import sqlite3
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -38,6 +39,7 @@ from .evidence import EvidenceStore
 from .executor import RetentionPolicy, RunExecutor, StaticEntitlement
 from .models import EnvironmentIdentity, RunOutcome, RunState, TargetIdentity
 from .policy import RuleManifest
+from .production_e2e import VerifiedProductionE2E, load_signed_attestation
 from .runner import RunnerResponse
 from .sandbox import DEFAULT_IMAGE, DockerSandbox, sandboxed_journey_runner
 from .signing import Ed25519VerdictSigner
@@ -47,7 +49,7 @@ _REPO = Path(__file__).resolve().parents[2]
 _ADAPTER_RULE = "adapter_identity_and_quality"
 _PRODUCTION_MANIFEST_ID = "certforge.release-strict.v2"
 _PRODUCTION_MANIFEST_SHA256 = (
-    "7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4"
+    "08ba068ceb3e14bfed2690337edbb94c546e3e0a1a89b1321f7657653d8eea43"
 )
 class _ClaimHeartbeat:
     def __init__(self, governance: SubscriberGovernance, claim) -> None:
@@ -160,6 +162,10 @@ def run(
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
     adapter_bundle_response: RunnerResponse | None = None,
+    production_e2e_attestation: VerifiedProductionE2E | None = None,
+    production_e2e_provider: (
+        Callable[[TargetIdentity, EnvironmentIdentity], VerifiedProductionE2E] | None
+    ) = None,
     worker_id: str | None = None,
     worker_attestation_sha256: str | None = None,
     execution_location: str = "local",
@@ -348,6 +354,8 @@ def run(
         else None
     )
     environment = _worker_environment(adapter_digest, adapter_execution_profile_sha256)
+    if production_e2e_attestation is None and production_e2e_provider is not None:
+        production_e2e_attestation = production_e2e_provider(target, environment)
     if subscribers is not None:
         if existing is None or existing["state"] != RunState.QUEUED.value:
             if claim is not None:
@@ -530,6 +538,7 @@ def run(
                 },
                 adapter_records=adapter_records,
                 adapter_policy=adapter_policy,
+                production_e2e_attestation=production_e2e_attestation,
                 execution_guard=execution_guard,
                 completion_callback=completion_callback,
             )
@@ -669,6 +678,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tenant", required=True)
     parser.add_argument("--target-json", required=True, help='e.g. {"type":"local","path":"/abs/dir"}')
     parser.add_argument("--journey-json", default=None, help='e.g. ["python3","hello.py"]')
+    parser.add_argument(
+        "--production-e2e-attestation",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION"])
+            if os.environ.get("ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION")
+            else None
+        ),
+        help="trusted-collector signed production E2E envelope",
+    )
+    parser.add_argument(
+        "--trusted-production-e2e-keys",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS"])
+            if os.environ.get("ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS")
+            else None
+        ),
+        help="directory of pinned Ed25519 collector public keys",
+    )
     parser.add_argument("--policy-version", default=None)
     parser.add_argument(
         "--db",
@@ -875,6 +904,19 @@ def main(argv: list[str] | None = None) -> int:
         )
     target_spec = json.loads(args.target_json)
     journey = json.loads(args.journey_json) if args.journey_json else None
+    production_e2e_attestation = None
+    if args.production_e2e_attestation is not None:
+        if args.trusted_production_e2e_keys is None:
+            print(json.dumps({"error": "trusted_production_e2e_keys_missing"}))
+            return 2
+        try:
+            production_e2e_attestation = load_signed_attestation(
+                args.production_e2e_attestation,
+                args.trusted_production_e2e_keys,
+            )
+        except ValueError as exc:
+            print(json.dumps({"error": "production_e2e_attestation_invalid", "detail": str(exc)}))
+            return 2
     sandbox = None
     if args.sandbox:
         sandbox = DockerSandbox(
@@ -896,6 +938,7 @@ def main(argv: list[str] | None = None) -> int:
         adapter_records=adapter_records,
         adapter_policy=adapter_policy,
         adapter_bundle_response=adapter_rebound_response,
+        production_e2e_attestation=production_e2e_attestation,
         worker_id=args.worker_id,
         worker_attestation_sha256=args.worker_attestation_sha256,
         execution_location=args.execution_location,

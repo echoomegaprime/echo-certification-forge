@@ -18,6 +18,7 @@ from echo_certification_forge.deploy_gate import DeployGate
 from echo_certification_forge.models import SignedVerdictEnvelope
 from echo_certification_forge.run_worker import run
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from production_e2e_support import trusted_generic_production_e2e
 
 
 def _benign(tmp_path: Path) -> Path:
@@ -99,7 +100,8 @@ def _run_worker(store, manifest, tenant, source, journey):
     signer = Ed25519VerdictSigner.generate()
     result = run("cert-live", tenant, {"type": "local", "path": str(source)},
                  store=store, manifest=manifest, signer=signer,
-                 entitled=frozenset({tenant}), journey=journey)
+                 entitled=frozenset({tenant}), journey=journey,
+                 production_e2e_provider=trusted_generic_production_e2e)
     return result, signer
 
 

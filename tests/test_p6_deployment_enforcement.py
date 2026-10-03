@@ -41,6 +41,7 @@ from echo_certification_forge.models import (
     VerdictLifecycleEvent,
 )
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from production_e2e_support import trusted_generic_production_e2e
 
 TENANT = "tenant-alpha"
 OTHER_TENANT = "tenant-beta"
@@ -57,7 +58,7 @@ def _target(artifact_label: str, tenant_id: str = TENANT) -> TargetIdentity:
         target_type="container",
         canonical_ref=f"registry.echo/app@{artifact_label}",
         artifact_sha256=_digest(artifact_label),
-        source_commit="abc123def456",
+        source_commit="abc123abc123abc123abc123abc123abc123abcd",
         dependency_sha256=_digest("dependencies"),
         configuration_sha256=_digest("configuration"),
     )
@@ -107,6 +108,7 @@ def _certify(
         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
         journey=[sys.executable, "hello.py"],
         control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+        production_e2e_attestation=trusted_generic_production_e2e(target, environment),
     )
     assert result.release_verdict == "PRODUCTION_READY", result.blocking_findings
 
