@@ -1,0 +1,212 @@
+"""Acceptance regressions use synthetic evidence; no production key or target runs."""
+import copy
+import hashlib
+import importlib.util
+import json
+import subprocess
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+SPEC = importlib.util.spec_from_file_location(
+    "acb_attestor", Path(__file__).resolve().parents[1] / "scripts/hammer_account_bridge_attestor.py")
+collector = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(collector)
+SOURCE = "def1828001c354bcf89f7d32bc987d6eba520cb6"
+ASSERTIONS = {
+    "repository_policy": 8, "account_continuity_core": 6,
+    "provider_auth_monitor": 18, "provider_content_import": 9,
+    "multiprovider_mcp": 35, "account_continuity_bridge": 22, "provider_registry": 21,
+}
+
+
+def current_evidence():
+    observed = datetime.now(UTC).isoformat()
+    concurrency = {"ok": True, "concurrent_requests": 12, "concurrent_processes": 8,
+                   "contended_lock_preserved": True}
+    return {
+        "schema_version": "echo.account-continuity.quench-evidence.v2",
+        "host": "QUENCH", "observed_at": observed,
+        "source_commit": SOURCE, "installed_cache_commit": SOURCE,
+        "remote_branch_commit": SOURCE, "pull_request_head_commit": SOURCE,
+        "pull_request": 4, "branch": "agent/grok47-provider-recovery-20261003",
+        "installed_version": "1.1.0+codex.20261003120504",
+        "installation_scope": "production", "installed_manifest_sha256": "a" * 64,
+        "native_plugin_enabled": True, "fresh_native_session": True,
+        "iterations": 3, "assertions_passed_per_iteration": [119, 119, 119],
+        "critical_journeys": ["PASS", "PASS", "PASS"],
+        "test_runs": [{"iteration": n, "source_commit": SOURCE, "total": 119,
+                       "assertions": dict(ASSERTIONS), "critical_journey": "PASS",
+                       "router_concurrency": dict(concurrency), "observed_at": observed}
+                      for n in range(1, 4)],
+        "live_runs": [{"exact_canary_match": True, "selected_provider": "forge-qwen",
+                       "selected_outcome": "success", "provenance": "LIVE_PROVIDER_BRIDGE",
+                       "credential_copied_or_exposed": False, "canary_sha256": str(n) * 64,
+                       "response_sha256": str(n) * 64, "observed_at": observed,
+                       "session_id": f"synthetic-native-session-{n}", "model": "fixture-model",
+                       "source_commit": SOURCE, "governance": "PASS"}
+                      for n in range(1, 4)],
+        "status_runs": [{"status_nonspending": True,
+                         "server_name": "account_continuity_multiprovider_mcp",
+                         "server_version": "0.5.0", "provider_count": 7, "tool_count": 17,
+                         "observed_at": observed, "source_commit": SOURCE} for _ in range(3)],
+        "gitleaks_exact_tree": "PASS", "codex_mcp_config": "ok",
+        "private_key_exported": False, "credentials_in_evidence": False,
+    }
+
+
+def verify(tmp_path, document):
+    path = tmp_path / "synthetic-evidence.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return collector.verify_quench_evidence(path, SOURCE)
+
+
+def test_current_exact_installed_release_acceptance_is_supported(tmp_path):
+    result = verify(tmp_path, current_evidence())
+    assert result["assertions_passed_per_iteration"] == [119, 119, 119]
+    assert result["live_canaries"] == 3
+    assert result["installation_scope"] == "production"
+
+
+def test_isolated_native_install_scope_is_preserved_not_promoted(tmp_path):
+    document = current_evidence()
+    document["installation_scope"] = "isolated_canary"
+    assert verify(tmp_path, document)["installation_scope"] == "isolated_canary"
+
+
+def test_workspace_without_native_installation_is_not_acceptance(tmp_path):
+    document = current_evidence()
+    document["installation_scope"] = "workspace"
+    with pytest.raises(collector.AttestationError, match="scope"):
+        verify(tmp_path, document)
+
+
+def test_journey_surface_count_cannot_substitute_for_native_tool_inventory(tmp_path):
+    document = current_evidence()
+    document["status_runs"][0]["tool_count"] = 26
+    with pytest.raises(collector.AttestationError, match="surface"):
+        verify(tmp_path, document)
+
+
+@pytest.mark.parametrize("field", ["source_commit", "installed_cache_commit",
+                                  "remote_branch_commit", "pull_request_head_commit"])
+def test_each_identity_substitution_fails_closed(tmp_path, field):
+    document = current_evidence()
+    document[field] = "0" * 40
+    with pytest.raises(collector.AttestationError, match="exact-source"):
+        verify(tmp_path, document)
+
+
+@pytest.mark.parametrize("field,value", [("installed_version", "old"), ("pull_request", 2),
+                                        ("branch", "agent/old"), ("native_plugin_enabled", False),
+                                        ("fresh_native_session", False)])
+def test_uninstalled_or_wrong_native_release_is_rejected(tmp_path, field, value):
+    document = current_evidence()
+    document[field] = value
+    with pytest.raises(collector.AttestationError):
+        verify(tmp_path, document)
+
+
+def test_duplicate_canary_cannot_count_as_three_runs(tmp_path):
+    document = current_evidence()
+    document["live_runs"] = [copy.deepcopy(document["live_runs"][0]) for _ in range(3)]
+    with pytest.raises(collector.AttestationError, match="distinct"):
+        verify(tmp_path, document)
+
+
+@pytest.mark.parametrize("field,value", [("exact_canary_match", False),
+    ("selected_provider", "fixture"), ("provenance", "MIRRORED"),
+    ("governance", "UNKNOWN"), ("source_commit", "0" * 40),
+    ("credential_copied_or_exposed", True), ("response_sha256", "f" * 64)])
+def test_missing_real_canary_acceptance_cannot_pass(tmp_path, field, value):
+    document = current_evidence()
+    document["live_runs"][1][field] = value
+    with pytest.raises(collector.AttestationError):
+        verify(tmp_path, document)
+
+
+def test_stale_and_naive_evidence_time_rejected(tmp_path):
+    for observed in ((datetime.now(UTC) - timedelta(hours=2)).isoformat(), "2026-10-03T10:00:00"):
+        document = current_evidence()
+        document["observed_at"] = observed
+        with pytest.raises(collector.AttestationError, match="current"):
+            verify(tmp_path, document)
+
+
+def test_failed_router_negative_control_rejected(tmp_path):
+    document = current_evidence()
+    document["test_runs"][1]["router_concurrency"]["contended_lock_preserved"] = False
+    with pytest.raises(collector.AttestationError, match="router"):
+        verify(tmp_path, document)
+
+
+def test_one_missing_assertion_is_not_relabelled_pass(tmp_path):
+    document = current_evidence()
+    document["test_runs"][2]["assertions"]["provider_auth_monitor"] = 17
+    with pytest.raises(collector.AttestationError, match="assertions"):
+        verify(tmp_path, document)
+
+
+def test_ok_flag_cannot_hide_failed_named_assertion():
+    result = subprocess.CompletedProcess(["fixture"], 0,
+        json.dumps({"ok": True, "assertions": {"negative_control": False}}), "")
+    with pytest.raises(collector.AttestationError, match="assertion"):
+        collector.parse_test_json(result, "fixture")
+
+
+def test_zero_or_boolean_count_is_not_execution_evidence():
+    for assertions in (0, -1, True, {}):
+        result = subprocess.CompletedProcess(["fixture"], 0,
+            json.dumps({"ok": True, "assertions": assertions}), "")
+        with pytest.raises(collector.AttestationError, match="assertion"):
+            collector.parse_test_json(result, "fixture")
+
+
+@pytest.mark.parametrize("stdout", ["not json", "[]", "{}",
+    '{"ok":true,"concurrent_requests":12,"concurrent_processes":8,"contended_lock_preserved":false}'])
+def test_router_command_requires_real_success_and_negative_control(stdout):
+    with pytest.raises(collector.AttestationError, match="router"):
+        collector.read_router_command(subprocess.CompletedProcess(["fixture"], 0, stdout, ""))
+
+
+def test_evidence_write_does_not_replace_an_existing_owner_file(tmp_path):
+    destination = tmp_path / "receipt.json"
+    destination.write_bytes(b"existing owner evidence")
+    with pytest.raises(FileExistsError):
+        collector.atomic_write(destination, b"replacement")
+    assert destination.read_bytes() == b"existing owner evidence"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["receipt.json"]
+
+
+def test_evidence_write_is_complete_and_removes_temporary_file(tmp_path):
+    destination = tmp_path / "receipt.json"
+    collector.atomic_write(destination, b"complete evidence")
+    assert destination.read_bytes() == b"complete evidence"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["receipt.json"]
+
+
+def test_owner_evidence_pin_rejects_changed_bytes(tmp_path):
+    path = tmp_path / "evidence.json"
+    path.write_text('{"host":"QUENCH"}')
+    with pytest.raises(collector.AttestationError, match="custody"):
+        collector.read_json(path, expected_sha256="0" * 64)
+
+
+def test_parse_and_custody_hash_use_one_byte_snapshot(tmp_path, monkeypatch):
+    path = tmp_path / "evidence.json"
+    original = b'{"host":"QUENCH"}'
+    path.write_bytes(original)
+    expected = hashlib.sha256(original).hexdigest()
+    real_read = Path.read_bytes
+
+    def replace_after_read(selected):
+        data = real_read(selected)
+        if selected == path:
+            path.write_bytes(b'{"host":"changed-after-read"}')
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+    document, digest = collector.read_json(path, expected_sha256=expected)
+    assert document == {"host": "QUENCH"}
+    assert digest == expected
