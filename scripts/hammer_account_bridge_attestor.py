@@ -25,8 +25,8 @@ REPORT_SCHEMA = "echo.account-continuity.hammer-attestor-report.v1"
 PROFILE = "generic-production-v1"
 REPOSITORY = "echoomegaprime/account-continuity-bridge"
 BRANCH = "agent/grok47-provider-recovery-20261003"
-SOURCE_COMMIT = "d410c61f11b5e15b30c9e2629f75838e38b5dc1c"
-PLUGIN_VERSION = "1.1.0+codex.20261003191426"
+SOURCE_COMMIT = "d9ffe76ad63b71545d5378f154e15af10e4f7a9e"
+PLUGIN_VERSION = "1.1.0+codex.20261003194149"
 PULL_REQUEST = 4
 COLLECTOR_KEY_ID = "ed25519:59de9be507b39b291ee13c4a57378ec6"
 BASE_CHECKS = frozenset(
@@ -71,6 +71,13 @@ ATOMIC_RENAME_CONTROLS = frozenset({
     "persistent_failure_is_bounded_and_preserves_previous_state",
 })
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+LOCK_ACQUISITION_CONTROLS = frozenset({
+    "EPERM_acquisition_has_expected_platform_retry_boundary",
+    "EACCES_acquisition_has_expected_platform_retry_boundary",
+    "EBUSY_acquisition_has_expected_platform_retry_boundary",
+    "EIO_acquisition_has_expected_platform_retry_boundary",
+    "persistent_acquisition_failure_preserves_unowned_lock_and_state",
+})
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -237,6 +244,7 @@ def verify_quench_evidence(path: Path, source_commit: str, *, expected_sha256: s
             raise AttestationError("QUENCH detailed assertions are invalid")
         verify_router_result(row.get("router_concurrency"))
         verify_atomic_rename_result(row.get("atomic_rename"))
+        verify_lock_acquisition_result(row.get("router_lock_acquisition"))
     live_runs = document.get("live_runs")
     if not isinstance(live_runs, list) or len(live_runs) != 3:
         raise AttestationError("QUENCH live canary evidence is invalid")
@@ -298,6 +306,7 @@ def verify_quench_evidence(path: Path, source_commit: str, *, expected_sha256: s
         "live_canaries": len(live_runs),
         "status_probes": len(status_runs),
         "atomic_rename_controls_per_iteration": len(ATOMIC_RENAME_CONTROLS),
+        "router_lock_acquisition_controls_per_iteration": len(LOCK_ACQUISITION_CONTROLS),
         "tool_count": status_runs[0]["tool_count"],
         "provider_count": status_runs[0]["provider_count"],
         "selected_provider": "forge-qwen",
@@ -356,6 +365,24 @@ def read_atomic_rename_command(completed: subprocess.CompletedProcess[str]) -> d
     except json.JSONDecodeError as exc:
         raise AttestationError("atomic rename command did not return JSON") from exc
     verify_atomic_rename_result(value)
+    return value
+
+
+def verify_lock_acquisition_result(value: Any) -> None:
+    if not isinstance(value, dict) or value.get("ok") is not True or value.get("platform") != "win32":
+        raise AttestationError("Windows lock acquisition acceptance is incomplete")
+    assertions = value.get("assertions")
+    if (not isinstance(assertions, dict) or set(assertions) != LOCK_ACQUISITION_CONTROLS
+            or any(passed is not True for passed in assertions.values())):
+        raise AttestationError("Windows lock acquisition controls are incomplete or failed")
+
+
+def read_lock_acquisition_command(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    try:
+        value = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise AttestationError("lock acquisition command did not return JSON") from exc
+    verify_lock_acquisition_result(value)
     return value
 
 
@@ -514,6 +541,7 @@ def main() -> int:
     journey_runs: list[str] = []
     router_runs: list[dict[str, Any]] = []
     atomic_rename_runs: list[dict[str, Any]] = []
+    lock_acquisition_runs: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="acb-attest-", dir=workspace_root) as temporary:
         root = Path(temporary)
         repository = root / "repo"
@@ -564,6 +592,9 @@ def main() -> int:
             atomic_rename_runs.append(read_atomic_rename_command(run(
                 [str(node), str(repository / "tests/Test-RouterAtomicRename.mjs")],
                 cwd=repository, env=environment)))
+            lock_acquisition_runs.append(read_lock_acquisition_command(run(
+                [str(node), str(repository / "tests/Test-RouterLockAcquisition.mjs")],
+                cwd=repository, env=environment)))
             test_runs.append(counts)
             journey = run(
                 [str(python), "-B", str(repository / "scripts/certforge_journey.py")],
@@ -593,7 +624,9 @@ def main() -> int:
             "installed_manifest_sha256": quench["installed_manifest_sha256"],
             "hammer_router_concurrency": router_runs,
             "hammer_atomic_rename": atomic_rename_runs,
+            "hammer_router_lock_acquisition": lock_acquisition_runs,
             "quench_atomic_rename_controls_per_iteration": quench["atomic_rename_controls_per_iteration"],
+            "quench_router_lock_acquisition_controls_per_iteration": quench["router_lock_acquisition_controls_per_iteration"],
             "hammer_test_iterations": len(test_runs),
             "hammer_assertions_passed_per_iteration": [sum(row.values()) for row in test_runs],
             "hammer_assertion_detail": test_runs,
@@ -622,7 +655,11 @@ def main() -> int:
                 and len(atomic_rename_runs) == 3
                 and all(set(row["assertions"]) == ATOMIC_RENAME_CONTROLS
                         and all(passed is True for passed in row["assertions"].values())
-                        for row in atomic_rename_runs)),
+                        for row in atomic_rename_runs)
+                and len(lock_acquisition_runs) == 3
+                and all(set(row["assertions"]) == LOCK_ACQUISITION_CONTROLS
+                        and all(passed is True for passed in row["assertions"].values())
+                        for row in lock_acquisition_runs)),
             "stability_verified": test_runs == [HAMMER_EXPECTED_ASSERTIONS] * 3,
             "external_acceptance_verified": quench["live_canaries"] == 3 and quench["status_probes"] == 3,
         }

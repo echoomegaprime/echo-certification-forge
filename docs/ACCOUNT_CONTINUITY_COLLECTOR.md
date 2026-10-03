@@ -1,22 +1,26 @@
 # Account Continuity Bridge production acceptance collector
 
 `scripts/hammer_account_bridge_attestor.py` is an operator collector for the reviewed
-ACB candidate `d410c61f11b5e15b30c9e2629f75838e38b5dc1c`, PR 4, branch
+ACB candidate `d9ffe76ad63b71545d5378f154e15af10e4f7a9e`, PR 4, branch
 `agent/grok47-provider-recovery-20261003`, plugin version
-`1.1.0+codex.20261003191426`. It is not a subscriber endpoint or a generic signer.
+`1.1.0+codex.20261003194149`. It is not a subscriber endpoint or a generic signer.
 Changing the candidate requires source review and new evidence. Policy, trust
 roots and target source are not changed by this collector.
 
 This is held diagnostic source. Previous candidate `def1828` failed a real
 installed Windows router-state rename stability pass; `9f6e1b4` then exposed an
 overlong Windows reader test fixture, and `6e92def` exposed loss of timestamp
-text fidelity in provider-auth state. The current reviewed successor retains
-the bounded product retry, synchronizes that fixture and preserves state values.
+text fidelity in provider-auth state. Candidate `d410c61` then lost case-distinct
+JSON keys, and `85e6885` exposed a separate Windows sharing error during router
+lock acquisition. The current reviewed successor preserves case-sensitive state
+keys and retries lock acquisition within its existing bounded deadline, while
+retaining the prior atomic-rename bound and synchronized reader fixture.
 Its exact identity pin
 is not proof of passing installation or production acceptance: all current
-measured evidence remains mandatory. The hosted App receipt was unavailable
-during preparation because its owner service was stopped. No signing or deployment
-was performed by this source-publication task.
+measured evidence remains mandatory. The hosted App service was initially stopped;
+its separately recovered loopback service still does not establish an authentic
+exact-candidate webhook receipt. No signing or deployment was performed by this
+source-publication task.
 
 ## Source provenance
 
@@ -37,7 +41,8 @@ its tests and this document onto canonical `main` base
 `4f7d99e2dd4422f3d81cf5b709581be963f5818a`, preserving unrelated main and deployed
 history. The initial transfer preserved the independently reviewed Python and test
 bytes; a separate follow-up binds the repaired ACB candidate and requires all six
-Windows atomic-rename controls on both hosts. The collector is standalone and uses
+Windows atomic-rename controls and five lock-acquisition controls on both hosts.
+The collector is standalone and uses
 the existing `cryptography` dependency. It does not import
 or install the deployed consumer changes absent from that main base. Operational
 use still requires a separately verified strict production-E2E consumer and trust
@@ -60,7 +65,7 @@ fields by assertion or copy the synthetic test fixtures into operational evidenc
 The collector verifies a transferred Git bundle, exact head, branch, ancestry and
 clean checkout. It runs three independent passes of 91 HAMMER-safe assertions,
 three router concurrency/lock negative controls, three Windows atomic-rename
-control passes, and three critical journeys.
+control passes, three Windows lock-acquisition control passes, and three critical journeys.
 DPAPI-dependent core/bridge assertions must pass on QUENCH's real native install;
 they are explicitly not represented as executed on HAMMER. The complete QUENCH
 suite has 119 named assertions. Secret scanning must pass on both hosts.
@@ -86,7 +91,7 @@ The JSON object schema is `echo.account-continuity.quench-evidence.v2`:
 | `installed_manifest_sha256` | Hash of the measured installed file manifest whose files were compared to the candidate |
 | `native_plugin_enabled`, `fresh_native_session` | Both verified true through actual native plugin/session readback |
 | `iterations`, `assertions_passed_per_iteration`, `critical_journeys` | 3, `[119,119,119]`, three actual `PASS` results |
-| `test_runs` | Three rows: numbered `iteration`, actual `observed_at`, exact `source_commit`, `total=119`, complete suite counts, `critical_journey=PASS`, and real `router_concurrency` plus `atomic_rename` outputs |
+| `test_runs` | Three rows: numbered `iteration`, actual `observed_at`, exact `source_commit`, `total=119`, complete suite counts, `critical_journey=PASS`, and real `router_concurrency`, `atomic_rename`, and `router_lock_acquisition` outputs |
 | `live_runs` | Three distinct nonce/session rows from actual installed bridge execution, as described below |
 | `status_runs` | Three actual non-spending installed MCP observations with time/source binding |
 | `gitleaks_exact_tree`, `codex_mcp_config` | Actual `PASS` exact-tree scan and `ok` native MCP config readback |
@@ -116,6 +121,22 @@ These are six additional controls per pass, separate from the 119 base assertion
 The actual Windows file-handle case is required on both QUENCH and HAMMER; a
 non-Windows result containing only five controls cannot substitute. The collector
 runs this command on HAMMER and includes each complete result in its evidence.
+
+Each `router_lock_acquisition` row must be the actual JSON from
+`node tests/Test-RouterLockAcquisition.mjs`: `ok=true`, `platform=win32`, and
+exactly these five named `assertions`, each strictly true:
+
+- `EPERM_acquisition_has_expected_platform_retry_boundary`
+- `EACCES_acquisition_has_expected_platform_retry_boundary`
+- `EBUSY_acquisition_has_expected_platform_retry_boundary`
+- `EIO_acquisition_has_expected_platform_retry_boundary`
+- `persistent_acquisition_failure_preserves_unowned_lock_and_state`
+
+These five controls are separate from the 119 base assertions and six rename
+controls. The collector executes the command during each of its three HAMMER
+passes, validates every result, and retains those complete outputs in the signed
+evidence summary. No skipped or non-Windows control result substitutes for real
+Windows execution on either host.
 
 Every live row requires `exact_canary_match=true`, `selected_provider=forge-qwen`,
 `selected_outcome=success`, `provenance=LIVE_PROVIDER_BRIDGE`,
@@ -158,7 +179,7 @@ The standalone strict run alone does not supply this hosted-app receipt.
 ```powershell
 & '<HAMMER python>' scripts/hammer_account_bridge_attestor.py `
   --bundle '<exact-source.bundle>' --base-commit '<reviewed-base-SHA>' `
-  --source-commit def1828001c354bcf89f7d32bc987d6eba520cb6 `
+  --source-commit d9ffe76ad63b71545d5378f154e15af10e4f7a9e `
   --target-identity-digest '<acquired-target-digest>' `
   --environment-identity-digest '<current-worker-environment-digest>' `
   --revision-receipt '<owner-readback.json>' --revision-receipt-sha256 '<measured-hash>' `
