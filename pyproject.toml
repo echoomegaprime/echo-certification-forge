@@ -27,6 +27,7 @@ dev = [
 [project.scripts]
 echo-cert = "echo_certification_forge.cli:main"
 echo-cert-graphic = "echo_certification_forge.certificate_graphic:main"
+echo-cert-git-credential = "echo_certification_forge.github_app_git_credential:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/echo_certification_forge"]
