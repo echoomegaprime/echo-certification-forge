@@ -196,6 +196,11 @@ The standalone strict run alone does not supply this hosted-app receipt.
 This command signs only after every real acceptance gate completes. Source tests
 do not execute it against production or existing keys. The operator separately
 verifies the returned signature and exact binding, then admits the envelope via
-the root-owned atomic transfer described in `OPERATIONS.md`. The collector has
-no remote admission/deployment code. A new idempotent strict run consumes fresh
+the root-owned atomic transfer described in the separately deployed consumer's
+[exact Operations contract](https://github.com/echoomegaprime/echo-certification-forge/blob/d8ad9fd881365801354b78a758632d2a31ab6828/docs/OPERATIONS.md#verification-sequence).
+That reference specifies required custody semantics; it does not establish that
+the current deployment satisfies them or grant a production-canary bootstrap
+exception. This branch's own `OPERATIONS.md` does not contain that deployed
+consumer section. The collector has no remote admission/deployment code.
+A new idempotent strict run consumes fresh
 evidence; existing terminal runs and their signed verdicts remain unchanged.
