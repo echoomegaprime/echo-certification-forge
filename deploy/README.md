@@ -16,6 +16,14 @@ Staging failures retain the service log under
 `$STATE_ROOT/deploy-logs/staging-<release>.log`. Listener ownership, signed
 readiness verification, live-smoke gates, and rollback requirements still apply.
 
+# Source validation and release evidence
+
+The `CI` Actions job runs the full deterministic suite with coverage and P1, P6,
+and P7 verification. The `CodeQL` job performs Python security analysis and uploads
+its results. Both check out the immutable PR head (or event SHA on push), verify
+that checkout, and bind their output to it. Their names match Release Sentinel's
+required authentic checks; neither is a substitute status or a release verdict.
+
 A green source-validation run does not prove current production identity or
 provide signed production E2E evidence. Every changed candidate needs fresh
 exact-SHA certification. Historical smoke reports and old certified tags must not
