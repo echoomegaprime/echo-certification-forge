@@ -136,6 +136,25 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def write_acceptance_report(path: Path, report: dict[str, Any]) -> None:
+    """Publish phase completion only after checks and final cleanup succeed."""
+    report.pop("completed_phase_gate", None)
+    checks = report.get("checks")
+    cleanup = report.get("cleanup") or {}
+    if (
+        report.get("phase") == "P4"
+        and report.get("passed") is True
+        and report.get("run_outcome") == "COMPLETE"
+        and isinstance(checks, dict)
+        and checks
+        and all(value is True for value in checks.values())
+        and cleanup.get("unrelated_container_ids_preserved") is True
+        and cleanup.get("ephemeral_private_files_removed") is True
+    ):
+        report["completed_phase_gate"] = "P4"
+    write_json(path, report)
+
+
 def docker_json(*arguments: str) -> Any:
     return json.loads(run(["docker", *arguments]).stdout)
 
@@ -1859,7 +1878,7 @@ def main() -> int:
             report["error"] = {"type": "CleanupError", "message": "unrelated container identity changed"}
             return_code = 1
         report["completed_at_utc"] = to_utc_iso(datetime.now(UTC))
-        write_json(output, report)
+        write_acceptance_report(output, report)
         print(
             json.dumps(
                 {
