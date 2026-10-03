@@ -1,4 +1,7 @@
 name: certification-forge-ci
+# Hosted GitHub Actions is disabled account-wide (support ticket #4663295).
+# This workflow remains the local/contract definition. Do not treat a missing
+# hosted run as green, and do not try to re-enable account Actions here.
 
 "on":
   push:

@@ -22,6 +22,16 @@ isolated journey execution --> append-only evidence --> independent anchor
                       exact-digest deployment gate
 ```
 
+HTTP mutations that accept a JSON body authorize in a FastAPI dependency, not
+inside the handler. FastAPI validates bodies before it calls the endpoint, so an
+in-handler check is a schema oracle: anonymous callers can distinguish 422 from
+401 and brute-force the request shape. Dependencies run first, so malformed and
+well-formed anonymous POSTs to `/v1/certifications` (and the other body-validated
+subscriber mutations) return the same status and body. The authorized tenant is
+the principal's organization, not a caller-supplied body field. A submit body
+that names a different `tenant_id` is rejected as `tenant_mismatch` before
+reservation or persistence.
+
 The intake and subscriber layers authorize a bounded run and reserve it idempotently. The runner
 executes the declared journey in a constrained environment and records artifacts. Custody verifies
 hashes and receipt order. The verdict engine derives `PRODUCTION_READY` or `NOT_READY` from policy;
