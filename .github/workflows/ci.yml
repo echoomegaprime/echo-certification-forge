@@ -13,13 +13,22 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Release Sentinel requires the authentic Actions check named CI.
+    name: CI
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify candidate identity
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Configure Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -37,9 +46,9 @@ jobs:
         run: python scripts/p7_acceptance.py
       - name: Upload verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: certification-forge-evidence-${{ github.sha }}
+          name: certification-forge-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30
