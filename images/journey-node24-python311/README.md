@@ -2,9 +2,12 @@
 
 This recipe builds an **unadmitted development candidate** for journeys that need
 Node 24.19.0 and Python 3.11 together. It selects official Linux/amd64 Debian
-Bookworm manifests by immutable digest and copies Node with its matching C++/GCC
+Trixie manifests by immutable digest and copies Node with its matching C++/GCC
 runtime libraries into the pinned Python image. No package installation or target
-code is involved. Build with networking disabled for all RUN steps.
+code is involved. Installer packages and bundled ensurepip wheels are removed:
+the declared journey needs Node built-ins and Python's standard library only.
+This avoids carrying unused installer vulnerabilities into the runtime. Build
+with networking disabled for all RUN steps.
 
 ```text
 docker build --network=none --platform linux/amd64 --pull=false \
