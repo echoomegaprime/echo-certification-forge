@@ -34,6 +34,8 @@ class JourneyQualification(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     identity_digest: str
+    first_build_receipt_id: str = Field(pattern=r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
+    second_build_receipt_id: str = Field(pattern=r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
     archive_sha256: str
     independent_archive_sha256: str
     normalized_first_sha256: str
@@ -61,8 +63,8 @@ class JourneyQualification(BaseModel):
             "scanner_report_sha256", "node_core_report_sha256", "runtime_probe_sha256",
         ):
             require_sha256(getattr(self, name), name)
-        if self.archive_sha256 == self.independent_archive_sha256:
-            raise ValueError("independent_build_evidence_required")
+        if self.first_build_receipt_id == self.second_build_receipt_id:
+            raise ValueError("distinct_build_receipts_required")
         if self.normalized_first_sha256 != self.normalized_second_sha256:
             raise ValueError("normalized_build_mismatch")
         if any((self.critical_count, self.fixed_high_or_critical_count,
@@ -175,6 +177,7 @@ def prepare_admission_request(
 
 def seal_admission_request(
     request: JourneyAdmissionRequest, *, authority: ImageAttestationAuthority,
+    current_policy: ImageAdmissionPolicy, current_attestation: ImageAttestation,
     approved_request_sha256: str, now: datetime | None = None,
     valid_for: timedelta = timedelta(days=7),
 ) -> tuple[ImageAttestation, ImageAdmissionPolicy]:
@@ -190,6 +193,7 @@ def seal_admission_request(
     if request.digest != approved_request_sha256:
         raise ImageAdmissionDenied("reviewed_request_mismatch")
     current = now or datetime.now(UTC)
+    verify_current_authority(request, current_policy, current_attestation, now=current)
     policy = proposed_policy(request, now=current)
     previous = request.prior_attestation
     if authority.key_id != previous.key_id or authority.public_key_pem != previous.public_key_pem:
@@ -201,3 +205,15 @@ def seal_admission_request(
     if not evaluate_image_admission(attestation, policy, now=current).allowed:
         raise ImageAdmissionDenied("signed_candidate_not_admitted")
     return attestation, policy
+
+
+def verify_current_authority(
+    request: JourneyAdmissionRequest, policy: ImageAdmissionPolicy,
+    attestation: ImageAttestation, *, now: datetime | None = None,
+) -> None:
+    """Reject policy, revocation or signature drift since the reviewed preparation."""
+    if (policy.model_dump(mode="json") != request.prior_policy.model_dump(mode="json")
+            or attestation.model_dump(mode="json") != request.prior_attestation.model_dump(mode="json")):
+        raise ImageAdmissionDenied("current_authority_changed_since_review")
+    if not evaluate_image_admission(attestation, policy, now=now).allowed:
+        raise ImageAdmissionDenied("current_authority_not_admitted")

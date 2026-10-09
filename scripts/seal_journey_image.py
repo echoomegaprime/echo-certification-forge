@@ -18,9 +18,11 @@ from prepare_journey_image_admission import plain_path, read_bounded, write_new
 from seal_p4_images import load_private_key
 
 from echo_certification_forge.journey_image_admission import (
-    JourneyAdmissionRequest, proposed_policy, seal_admission_request,
+    JourneyAdmissionRequest, proposed_policy, seal_admission_request, verify_current_authority,
 )
-from echo_certification_forge.supply_chain import ImageAdmissionDenied, ImageAttestationAuthority
+from echo_certification_forge.supply_chain import (
+    ImageAdmissionDenied, ImageAdmissionPolicy, ImageAttestation, ImageAttestationAuthority,
+)
 
 
 def main() -> int:
@@ -28,6 +30,8 @@ def main() -> int:
     parser.add_argument('--request',type=Path,required=True)
     parser.add_argument('--approved-request-sha256',required=True)
     parser.add_argument('--attestation-private-key',type=Path,required=True)
+    parser.add_argument('--current-policy',type=Path,required=True)
+    parser.add_argument('--current-attestation',type=Path,required=True)
     parser.add_argument('--valid-days',type=int,default=7)
     parser.add_argument('--output-dir',type=Path,required=True)
     args = parser.parse_args()
@@ -36,6 +40,9 @@ def main() -> int:
         if request.digest != args.approved_request_sha256:
             raise ImageAdmissionDenied('reviewed_request_mismatch')
         proposed_policy(request)
+        verify_current_authority(request,
+            ImageAdmissionPolicy.model_validate_json(read_bounded(args.current_policy)),
+            ImageAttestation.model_validate_json(read_bounded(args.current_attestation)))
         # The existing P4 custody is POSIX, owner-only. No mode changes or copies.
         if os.name != 'posix':
             raise ImageAdmissionDenied('control_plane_platform_required')
@@ -49,8 +56,13 @@ def main() -> int:
             raise ImageAdmissionDenied('new_output_required')
         # Reuse the existing P4 loader only inside the admitted control plane.
         # The key object is never serialized, printed, passed to a child or worker.
-        authority = ImageAttestationAuthority(load_private_key(path))
+        authority = ImageAttestationAuthority(load_private_key(path, expected_stat=info))
+        # Re-read the actual owner files immediately before the signing guard.
+        # Owner serialization must span these reads, signing and output creation.
+        current_policy = ImageAdmissionPolicy.model_validate_json(read_bounded(args.current_policy))
+        current_attestation = ImageAttestation.model_validate_json(read_bounded(args.current_attestation))
         attestation, policy = seal_admission_request(request,authority=authority,
+            current_policy=current_policy,current_attestation=current_attestation,
             approved_request_sha256=args.approved_request_sha256,
             valid_for=timedelta(days=args.valid_days))
         args.output_dir.mkdir(exist_ok=False)

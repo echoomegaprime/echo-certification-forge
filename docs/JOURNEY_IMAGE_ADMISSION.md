@@ -14,7 +14,9 @@ Preparation verifies bounded exact material bytes, recipe policy, source and
 SPDX image/runtime-package binding, independent-build comparison commitments,
 scanner/Node-core negative counts, runtime isolation assertions, and current
 existing authority. Qualifications are strict typed, at most24 hours old, and
-must bind the canonical identity digest. Public assertions and report hashes
+must bind the canonical identity digest. Distinct observed build receipt IDs
+are required; the archive hashes may be identical for a reproducible build.
+Distinct IDs alone do not prove independence. Public assertions and report hashes
 are review inputs, not authenticated scanner attestations. Independently inspect
 their referenced raw reports, tool provenance and two actual builds before
 approving the request. Do not infer image qualification from operator-supplied
@@ -47,6 +49,8 @@ sealer with the **existing** P4 key in its original custody:
 python scripts/seal_journey_image.py \
   --request <request.UNSIGNED.json> \
   --approved-request-sha256 <canonical-request-digest-from-reviewed-receipt> \
+  --current-policy <canonical-current-owner-policy.json> \
+  --current-attestation <canonical-current-owner-attestation.json> \
   --attestation-private-key <existing-owner-only-P4-key-path> \
   --valid-days 7 --output-dir <new-owned-sealed-directory>
 ```
@@ -54,7 +58,15 @@ python scripts/seal_journey_image.py \
 This wrapper reuses `seal_p4_images.load_private_key`; it has no key generation,
 trust bootstrap or policy installation mode. It requires POSIX same-owner0600
 regular-file custody, current exact prior public admission and the same public
-key/key ID. It never serializes the private key, passes it to a child or exposes
+key/key ID. The existing P4 loader's optional strict mode binds the checked
+inode, owner/group, permissions, size and timestamps to an O_NOFOLLOW descriptor
+before and after its bounded read. Legacy P4 callers retain their existing behavior.
+The current owner policy and attestation must still exactly equal the
+reviewed public snapshot and pass current admission. Both files are reread after
+key loading immediately before the signing guard; changed revocations, trust or
+signature state stop signing. Owner serialization must span those reads, signing
+and output creation; a file snapshot alone is not an atomic trust transaction.
+It never serializes the private key, passes it to a child or exposes
 it to a worker. Signing is bounded by both30days and the existing authority's
 remaining lifetime. All outputs are public; errors report a fixed category.
 The review digest proves input integrity, **not permission or a Commander

@@ -55,6 +55,8 @@ def prepared():
         approved_lockfile_sha256=identity.lockfile_sha256,trusted_attestation_keys={authority.key_id:authority.public_key_pem},
         revoked_image_digests=("sha256:"+"9"*64,),compromised_key_ids=("historical-compromised-fixture",))
     qualification = JourneyQualification(identity_digest=identity.digest,
+        first_build_receipt_id='11111111-1111-1111-1111-111111111111',
+        second_build_receipt_id='22222222-2222-2222-2222-222222222222',
         archive_sha256="5"*64,independent_archive_sha256="6"*64,
         normalized_first_sha256="7"*64,normalized_second_sha256="7"*64,
         scanner_report_sha256="8"*64,node_core_report_sha256="a"*64,runtime_probe_sha256="b"*64,
@@ -76,7 +78,8 @@ def test_owner_seal_retains_trust_and_does_not_mutate_old_policy(prepared):
     assert proposed.revoked_image_digests == kwargs['prior_policy'].revoked_image_digests
     assert proposed.compromised_key_ids == kwargs['prior_policy'].compromised_key_ids
     assert request.state == 'UNSIGNED_NOT_ADMITTED'
-    signed,policy=seal_admission_request(request,authority=authority,approved_request_sha256=request.digest,now=kwargs['now'])
+    signed,policy=seal_admission_request(request,authority=authority,approved_request_sha256=request.digest,
+        current_policy=kwargs['prior_policy'],current_attestation=kwargs['prior_attestation'],now=kwargs['now'])
     assert evaluate_image_admission(signed,policy,now=kwargs['now']).allowed
     assert not evaluate_image_admission(signed,kwargs['prior_policy'],now=kwargs['now']).allowed
     assert kwargs['prior_policy'].model_dump_json() == before
@@ -94,7 +97,7 @@ def test_material_drift_rejected(prepared,field):
     ('critical_count',1),('fixed_high_or_critical_count',1),('secret_count',1),
     ('node_core_finding_count',1),('critical_count',False),('secret_count','0'),
     ('read_only_root',1),('read_only_root',False),('network_disabled',False),('utf8',False),
-    ('normalized_second_sha256','c'*64),('independent_archive_sha256','5'*64),
+    ('normalized_second_sha256','c'*64),('second_build_receipt_id','11111111-1111-1111-1111-111111111111'),
     ('node_version','24.18.0'),('python_version','3.12.1'),('uid',0),
 ])
 def test_failed_or_coerced_qualification_refused(prepared,field,value):
@@ -132,7 +135,8 @@ def test_seal_requires_exact_review_and_existing_authority(prepared,change):
     request=prepare_admission_request(**kwargs)
     if change=='new_authority': authority=ImageAttestationAuthority.generate()
     authority.sign=Mock(side_effect=AssertionError('must never sign'))
-    options={'approved_request_sha256':request.digest,'valid_for':timedelta(days=7)}
+    options={'approved_request_sha256':request.digest,'valid_for':timedelta(days=7),
+             'current_policy':kwargs['prior_policy'],'current_attestation':kwargs['prior_attestation']}
     if change=='changed_review': options['approved_request_sha256']='f'*64
     elif change=='too_long': options['valid_for']=timedelta(days=20)
     elif change=='zero_lifetime': options['valid_for']=timedelta(0)
@@ -145,7 +149,8 @@ def test_changed_signer_output_refused(prepared):
     request=prepare_admission_request(**kwargs)
     authority.sign=Mock(return_value=kwargs['prior_attestation'])
     with pytest.raises(ImageAdmissionDenied,match='signed_candidate_not_admitted'):
-        seal_admission_request(request,authority=authority,approved_request_sha256=request.digest,now=kwargs['now'])
+        seal_admission_request(request,authority=authority,approved_request_sha256=request.digest,
+            current_policy=kwargs['prior_policy'],current_attestation=kwargs['prior_attestation'],now=kwargs['now'])
 
 
 def test_cli_new_outputs_only_and_safe_error(prepared,tmp_path):
@@ -201,11 +206,15 @@ def test_rehashed_malformed_material_is_not_accepted(prepared,field,value,catego
     with pytest.raises(ImageAdmissionDenied,match=category): prepare_admission_request(**kwargs)
 
 
-@pytest.mark.parametrize('invalid',['none','review','custody','output'])
+@pytest.mark.parametrize('invalid',['none','review','custody','output','revoked_before','revoked_during_key_load'])
 def test_owner_wrapper_uses_only_existing_injected_fixture_key(prepared,tmp_path,monkeypatch,capsys,invalid):
     kwargs,authority=prepared
     request=prepare_admission_request(**kwargs)
     request_file=tmp_path/'request.json';request_file.write_text(request.model_dump_json(),encoding='utf-8')
+    current_policy=tmp_path/'current-policy.json'
+    current_attestation=tmp_path/'current-attestation.json'
+    current_policy.write_text(kwargs['prior_policy'].model_dump_json(),encoding='utf-8')
+    current_attestation.write_text(kwargs['prior_attestation'].model_dump_json(),encoding='utf-8')
     output=tmp_path/'sealed'
     if invalid=='output': output.mkdir()
     keypath=tmp_path/'test-key-placeholder'
@@ -218,10 +227,20 @@ def test_owner_wrapper_uses_only_existing_injected_fixture_key(prepared,tmp_path
     monkeypatch.setattr(module,'plain_path',lambda p:SimpleNamespace(stat=lambda:info) if p==keypath else original_path(p))
     monkeypatch.setattr(module,'os',SimpleNamespace(name='posix',geteuid=lambda:1000))
     loader=Mock(return_value=authority._private_key)
+    def revoke_during_load(path, **unused):
+        changed=kwargs['prior_policy'].model_copy(update={'revoked_image_digests':(request.identity.image_digest,)})
+        current_policy.write_text(changed.model_dump_json(),encoding='utf-8')
+        return authority._private_key
+    if invalid=='revoked_before': revoke_during_load(None)
+    elif invalid=='revoked_during_key_load': loader.side_effect=revoke_during_load
+    if invalid.startswith('revoked_'):
+        authority.sign=Mock(side_effect=AssertionError('must not sign after authority drift'))
+        monkeypatch.setattr(module,'ImageAttestationAuthority',lambda key:authority)
     monkeypatch.setattr(module,'load_private_key',loader)
     monkeypatch.setattr(sys,'argv',['seal','--request',str(request_file),
         '--approved-request-sha256','0'*64 if invalid=='review' else request.digest,
-        '--attestation-private-key',str(keypath),'--output-dir',str(output)])
+        '--attestation-private-key',str(keypath),'--current-policy',str(current_policy),
+        '--current-attestation',str(current_attestation),'--output-dir',str(output)])
     code=module.main()
     printed=capsys.readouterr()
     assert not printed.err and 'PRIVATE KEY' not in printed.out
@@ -231,5 +250,70 @@ def test_owner_wrapper_uses_only_existing_injected_fixture_key(prepared,tmp_path
         assert (output/'sealing-receipt.json').is_file()
     else:
         assert code==1 and json.loads(printed.out)['state']=='NOT_READY'
-        loader.assert_not_called()
+        if invalid=='revoked_during_key_load': loader.assert_called_once()
+        else: loader.assert_not_called()
+        if invalid.startswith('revoked_'): authority.sign.assert_not_called()
         assert not (output/'sealing-receipt.json').exists()
+
+
+def test_bit_identical_archives_are_valid_with_distinct_observed_receipts(prepared):
+    kwargs,_=prepared
+    data=kwargs['qualification'].model_dump()
+    data['independent_archive_sha256']=data['archive_sha256']
+    kwargs['qualification']=JourneyQualification.model_validate(data)
+    assert prepare_admission_request(**kwargs).state=='UNSIGNED_NOT_ADMITTED'
+
+
+@pytest.mark.parametrize('drift',['revoked_image','compromised_key','removed_trust','changed_attestation'])
+def test_current_authority_drift_blocks_before_sign(prepared,drift):
+    kwargs,authority=prepared
+    request=prepare_admission_request(**kwargs)
+    policy=kwargs['prior_policy'];attestation=kwargs['prior_attestation']
+    if drift=='revoked_image': policy=policy.model_copy(update={'revoked_image_digests':(request.identity.image_digest,)})
+    elif drift=='compromised_key': policy=policy.model_copy(update={'compromised_key_ids':(authority.key_id,)})
+    elif drift=='removed_trust': policy=policy.model_copy(update={'trusted_attestation_keys':{}})
+    else: attestation=attestation.model_copy(update={'signature_b64':'changed-fixture-signature'})
+    authority.sign=Mock(side_effect=AssertionError('must not sign'))
+    with pytest.raises(ImageAdmissionDenied,match='current_authority_changed_since_review'):
+        seal_admission_request(request,authority=authority,approved_request_sha256=request.digest,
+            current_policy=policy,current_attestation=attestation,now=kwargs['now'])
+    authority.sign.assert_not_called()
+
+
+def test_strict_key_loader_binds_actual_descriptor_before_crypto(tmp_path,monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT/'scripts'))
+    import seal_p4_images as sealer
+    path=tmp_path/'owned-key-fixture'
+    path.write_bytes(b'original synthetic non-key bytes')
+    checked=path.stat()
+    replacement=tmp_path/'replacement-fixture'
+    replacement.write_bytes(b'replacement synthetic non-key bytes')
+    replacement.replace(path)
+    crypto=Mock(side_effect=AssertionError('crypto must not receive replaced bytes'))
+    monkeypatch.setattr(sealer.serialization,'load_pem_private_key',crypto)
+    with pytest.raises(RuntimeError,match='custody changed before read'):
+        sealer.load_private_key(path,expected_stat=checked)
+    crypto.assert_not_called()
+
+
+def test_strict_key_loader_binds_metadata_and_size(tmp_path,monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT/'scripts'))
+    import seal_p4_images as sealer
+    path=tmp_path/'oversized-key-fixture';path.write_bytes(b'x'*8193)
+    crypto=Mock(side_effect=AssertionError('crypto must not receive oversized bytes'))
+    monkeypatch.setattr(sealer.serialization,'load_pem_private_key',crypto)
+    with pytest.raises(RuntimeError,match='type or size invalid'):
+        sealer.load_private_key(path,expected_stat=path.stat())
+    crypto.assert_not_called()
+
+
+def test_strict_key_loader_accepts_existing_test_key_with_matching_metadata(tmp_path,monkeypatch,prepared):
+    from cryptography.hazmat.primitives import serialization
+    monkeypatch.syspath_prepend(str(ROOT/'scripts'))
+    import seal_p4_images as sealer
+    _,authority=prepared
+    path=tmp_path/'ephemeral-unit-test-key'
+    path.write_bytes(authority._private_key.private_bytes(serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
+    loaded=sealer.load_private_key(path,expected_stat=path.stat())
+    assert ImageAttestationAuthority(loaded).key_id==authority.key_id
