@@ -91,7 +91,7 @@ def submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=journey)
     payload = {
         "tenant_id": organization_id,
         "project_id": project.json()["project_id"],
@@ -678,6 +678,7 @@ def main() -> int:
         worker_active.bootstrap_api_key,
         worker_source,
         key="p7-worker-retention-0001",
+        journey=[sys.executable, "-c", "print('ok')"],
     )
     suspended_worker_run_id, _suspended_target = submit_local_run(
         client,
@@ -686,6 +687,7 @@ def main() -> int:
         worker_suspended.bootstrap_api_key,
         worker_source,
         key="p7-worker-suspended-0001",
+        journey=[sys.executable, "journey.py"],
     )
     with closing(sqlite3.connect(db)) as connection:
         connection.execute(
@@ -1547,6 +1549,9 @@ def main() -> int:
         canonical_ref=intake_acquired.canonical_ref,
         artifact_sha256=intake_acquired.artifact_sha256,
     )
+    intake_environment = _worker_environment(
+        manifest=manifest, journey=[sys.executable, "journey.py"]
+    )
     intake_request = SubmitRequest.model_validate(
         {
             "tenant_id": intake_org.organization_id,
@@ -1558,9 +1563,9 @@ def main() -> int:
                 "path": intake_source.resolve().as_posix(),
             },
             "environment": {
-                "identity_digest": _worker_environment().identity_digest,
+                "identity_digest": intake_environment.identity_digest,
                 "runner_image_digest": "sha256:"
-                + _worker_environment().runner_image_sha256,
+                + intake_environment.runner_image_sha256,
             },
             "policy_version": manifest.manifest_id,
             "idempotency_key": "p7-durable-intake-0001",
@@ -1659,8 +1664,8 @@ def main() -> int:
         crash_claim,
         target_identity=crash_target.to_dict(),
         target_identity_digest=crash_target.identity_digest,
-        environment_identity=_worker_environment().to_dict(),
-        environment_identity_digest=_worker_environment().identity_digest,
+        environment_identity=_worker_environment(manifest=manifest).to_dict(),
+        environment_identity_digest=_worker_environment(manifest=manifest).identity_digest,
     )
     heartbeat_expiry = governance.heartbeat_worker_claim(crash_claim)
     with closing(sqlite3.connect(db)) as connection:
@@ -1945,7 +1950,7 @@ def main() -> int:
         and identity_marker.exists()
         and json.loads(identity_row["target_identity_json"]) == identity_target.to_dict()
         and json.loads(identity_row["environment_identity_json"])
-        == _worker_environment().to_dict(),
+        == _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).to_dict(),
         worker_result=identity_result,
         target_identity=json.loads(identity_row["target_identity_json"]),
         environment_identity=json.loads(identity_row["environment_identity_json"]),

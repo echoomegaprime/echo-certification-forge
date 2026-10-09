@@ -63,7 +63,14 @@ class SubmitTarget(BaseModel):
 
     def worker_spec(self) -> dict[str, str]:
         if self.target_type == "local":
-            return {"type": "local", "path": self.path or self.reference}
+            spec = {"type": "local", "path": self.path or self.reference}
+            # Atomic subscriber materialization persists these commitments from
+            # the worker spec. Dropping them skips exact identity reconciliation.
+            if self.artifact_sha256 is not None:
+                spec["artifact_sha256"] = self.artifact_sha256
+            if self.source_commit is not None:
+                spec["source_commit"] = self.source_commit
+            return spec
         if self.target_type == "git":
             if self.url is not None:
                 spec = {"type": "git", "url": self.url}
