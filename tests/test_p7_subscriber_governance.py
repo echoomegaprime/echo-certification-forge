@@ -3023,7 +3023,7 @@ def test_local_declared_commitments_survive_intake_and_fail_closed_on_drift(
         {"type": "local", "path": str(source)}, tmp_path / "unused-acquisition"
     )
     source_commit = "a" * 40
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"])
     target = {
         "target_type": "local",
         "identity_digest": declared_target_identity_digest(
