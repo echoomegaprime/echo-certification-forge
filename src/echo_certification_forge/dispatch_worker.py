@@ -13,7 +13,7 @@ from .intake import SubmitRequest
 from .policy import RuleManifest
 from .production_e2e import DirectoryProductionE2EProvider
 from .run_worker import _load_adapter_inputs, _load_signer, run
-from .sandbox import DEFAULT_IMAGE, DockerSandbox
+from .runtime_identity import load_runtime_profile
 from .subscriber import SubscriberDispatch, SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -183,10 +183,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--sandbox", action="store_true")
+    parser.add_argument("--runtime-profile", type=Path)
     parser.add_argument("--non-production-compat", action="store_true")
     parser.add_argument(
         "--sandbox-image",
-        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
+        default=None,
     )
     parser.add_argument(
         "--sandbox-docker",
@@ -306,20 +307,22 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError:
             print(json.dumps({"error": "production_e2e_trust_unavailable"}))
             return 2
-    sandbox = (
-        DockerSandbox(
-            image=args.sandbox_image,
+    try:
+        runtime = load_runtime_profile(
+            args.runtime_profile, image=args.sandbox_image,
             docker=tuple(args.sandbox_docker.split()),
         )
-        if args.sandbox
-        else None
-    )
+    except ValueError as exc:
+        print(json.dumps({"error": "runtime_profile_invalid", "detail": str(exc)}))
+        return 2
+    sandbox = runtime.sandbox if args.sandbox else None
     options = {
         "store": store,
         "manifest": manifest,
         "signer": signer,
         "subscribers": governance,
         "sandbox": sandbox,
+        "runtime_profile": runtime if not args.non_production_compat else None,
         "worker_id": args.worker_id,
         "worker_attestation_sha256": args.worker_attestation_sha256,
         "execution_location": args.execution_location,

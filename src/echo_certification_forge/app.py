@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 from .evidence import EvidenceStore
@@ -10,6 +11,7 @@ from .release_hooks import WebhookSecretRegistry
 from .runner import TrustedTransportRegistry
 from .adapters import adapter_set_digest
 from .run_worker import _worker_environment, load_adapter_execution_profile
+from .runtime_identity import load_runtime_profile
 from .service import ServiceContext, create_app
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import SubscriberGovernance, SubscriberPolicy
@@ -78,16 +80,23 @@ def _load_certification_environment() -> dict[str, str] | None:
         raise RuntimeError(
             "required adapter mode lacks public profile inputs: " + ", ".join(missing)
         )
-    records, _policy, _response, profile_sha256 = load_adapter_execution_profile(
+    records, _adapter_policy, _response, profile_sha256 = load_adapter_execution_profile(
         **{name: Path(value) for name, value in required.items() if value is not None}
     )
     adapter_sha256 = adapter_set_digest(records)
-    environment = _worker_environment(adapter_sha256, profile_sha256)
+    runtime = load_runtime_profile()
+    environment = _worker_environment(
+        adapter_sha256, profile_sha256, manifest=RuleManifest.load(_policy),
+        sandbox=runtime.sandbox,
+        journey=list(runtime.journey) if runtime.journey else None,
+    )
     return {
         "certification_environment_identity_digest": environment.identity_digest,
         "runner_image_digest": "sha256:" + environment.runner_image_sha256,
         "adapter_set_sha256": adapter_sha256,
         "adapter_execution_profile_sha256": profile_sha256,
+        "runtime_profile_schema": "certforge.runtime.v1",
+        "runtime_journey_json": json.dumps(runtime.journey),
     }
 
 
