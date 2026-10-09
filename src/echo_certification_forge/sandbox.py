@@ -18,14 +18,18 @@ target code — only the journey runs, and only inside the sandbox.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from .canonical import sha256_json
+
 # Pinned minimal Python base (same digest the P4 supply-chain pipeline pins). Override per policy.
 DEFAULT_IMAGE = "python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111"
+_PINNED_IMAGE = re.compile(r"(?:^|@)sha256:([0-9a-f]{64})$")
 
 
 class SandboxError(RuntimeError):
@@ -52,10 +56,27 @@ class DockerSandbox:
     docker: tuple[str, ...] = ("docker",)
     extra_env: dict[str, str] = field(default_factory=dict)
 
+    def image_sha256(self) -> str:
+        """Reuse the exact-image contract from the reviewed sandbox profile candidate."""
+        match = _PINNED_IMAGE.search(self.image)
+        if match is None:
+            raise SandboxError("sandbox image must be pinned by sha256 digest")
+        return match.group(1)
+
+    def execution_profile_sha256(self) -> str:
+        """Commit to actual isolation/configuration without emitting environment values."""
+        command = self.build_command(["__CERTFORGE_JOURNEY__"], Path("/__certforge_source__"))
+        # Source mount paths differ per run; the fixed sentinel makes this portable.
+        mount = command.index("-v") + 1
+        command[mount] = "__CERTFORGE_SOURCE__:/work:ro"
+        return sha256_json({"schema": "certforge.sandbox-profile.v1", "argv": command,
+                            "timeout_s": self.timeout_s})
+
     def build_command(self, argv: list[str], workdir: Path) -> list[str]:
         """Construct the fully-hardened `docker run` argv. Pure — no side effects, unit-testable."""
         if not argv:
             raise SandboxError("empty journey argv")
+        self.image_sha256()
         cmd: list[str] = [
             *self.docker, "run", "--rm",
             "--network", "none",

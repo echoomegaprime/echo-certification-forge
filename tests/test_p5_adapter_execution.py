@@ -45,6 +45,7 @@ from echo_certification_forge.run_worker import (
     main as run_worker_main,
 )
 from echo_certification_forge.run_worker import _worker_environment
+from echo_certification_forge.sandbox import DockerSandbox
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.production_launch import production_worker_args
 from test_family_r5 import FakeFamilyTransport, expected as expected_r5
@@ -720,6 +721,7 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     expected_environment = _worker_environment(
         adapter_set_digest(records),
         result["adapter_execution_profile_sha256"],
+        DockerSandbox(),
     )
     assert result["environment_identity_digest"] == expected_environment.identity_digest
     store = EvidenceStore(db_path, evidence_root)

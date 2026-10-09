@@ -1844,7 +1844,12 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
             "image_repository": repo,
             "source_commit": SOURCE_COMMIT,
             # the platform declares the WORKER's environment commitment for the run
-            "environment_identity_digest": run_worker._worker_environment().identity_digest,
+            "environment_identity_digest": run_worker._worker_environment(
+                sandbox=DockerSandbox(
+                    image=f"127.0.0.1:{registry.port}/testapp@{manifest_digest}",
+                    docker=(sys.executable, str(stub)),
+                ),
+            ).identity_digest,
             "policy_version": manifest.manifest_id,
         }
         body = json.dumps(event).encode("utf-8")

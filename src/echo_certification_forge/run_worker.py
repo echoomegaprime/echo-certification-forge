@@ -101,18 +101,27 @@ def _env_digest(component: str) -> str:
 def _worker_environment(
     adapter_set_sha256: str | None = None,
     adapter_execution_profile_sha256: str | None = None,
+    sandbox: DockerSandbox | None = None,
 ) -> EnvironmentIdentity:
     """Declared certification environment.
 
     The legacy v1 path retains its historical environment commitment. P5/v2 callers pass the exact
     digest derived from the verified signed adapter execution records.
     """
+    # A selected sandbox is a real runtime identity, not the legacy fixed label.
+    # Reuses the existing sandbox-profile repair; includes all execution flags/env.
+    harness_sha256 = _env_digest("harness")
+    if sandbox is not None:
+        harness_sha256 = sha256_json({
+            "base_harness_sha256": harness_sha256,
+            "sandbox_execution_profile_sha256": sandbox.execution_profile_sha256(),
+        })
     return EnvironmentIdentity(
-        runner_image_sha256=_env_digest("runner-image"),
+        runner_image_sha256=sandbox.image_sha256() if sandbox is not None else _env_digest("runner-image"),
         adapter_set_sha256=adapter_set_sha256 or _env_digest("adapter-set"),
         test_plan_sha256=_env_digest("test-plan"),
         policy_sha256=_env_digest("policy"),
-        harness_sha256=_env_digest("harness"),
+        harness_sha256=harness_sha256,
         prompt_set_sha256=_env_digest("prompt-set"),
         model_route_sha256=(
             sha256_json(
@@ -175,6 +184,9 @@ def run(
     execution_location: str = "local",
     signing_authority: str = "platform",
 ) -> dict:
+    if sandbox is not None:
+        # Reject an invalid runtime before claiming or acquiring any target.
+        sandbox.execution_profile_sha256()
     if subscribers is None:
         try:
             with sqlite3.connect(store.db_path) as connection:
@@ -357,7 +369,7 @@ def run(
         if adapter_bundle_response is not None
         else None
     )
-    environment = _worker_environment(adapter_digest, adapter_execution_profile_sha256)
+    environment = _worker_environment(adapter_digest, adapter_execution_profile_sha256, sandbox_effective)
     if production_e2e_attestation is None and production_e2e_provider is not None:
         production_e2e_attestation = production_e2e_provider(target, environment)
     if subscribers is not None:
@@ -594,6 +606,10 @@ def run(
         "adapter_bundle_response_sha256": computed_adapter_response_sha256,
         "signer_public_key_id": signer.key_id,
         "journey_isolation": "docker" if sandbox_effective is not None else "none",
+        "runner_image_digest": "sha256:" + environment.runner_image_sha256,
+        "sandbox_execution_profile_sha256": (
+            sandbox_effective.execution_profile_sha256() if sandbox_effective is not None else None
+        ),
     }
 
 
