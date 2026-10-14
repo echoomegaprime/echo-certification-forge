@@ -1782,32 +1782,42 @@
         "additionalProperties": false,
         "properties": {
           "environment": {
+            "additionalProperties": false,
             "properties": {
               "adapter_set_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "egress_policy_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "harness_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "model_route_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "os_runtime_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "policy_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "prompt_set_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "runner_image_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
               "test_plan_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               }
             },

@@ -34,7 +34,7 @@ from .intake import (
     project_run,
     submit,
 )
-from .models import EnvironmentIdentity, RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
+from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
 from .openapi_auth import install_openapi_auth
 from .policy import RuleManifest
 from .product_readiness import verify_product_readiness
@@ -124,11 +124,27 @@ class RuntimeEnvironmentRequest(BaseModel):
         return value
 
 
+RuntimeIdentityDigest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class RuntimeEnvironmentComponents(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    runner_image_sha256: RuntimeIdentityDigest
+    adapter_set_sha256: RuntimeIdentityDigest
+    test_plan_sha256: RuntimeIdentityDigest
+    policy_sha256: RuntimeIdentityDigest
+    harness_sha256: RuntimeIdentityDigest
+    prompt_set_sha256: RuntimeIdentityDigest
+    model_route_sha256: RuntimeIdentityDigest
+    os_runtime_sha256: RuntimeIdentityDigest
+    egress_policy_sha256: RuntimeIdentityDigest
+
+
 class RuntimeEnvironmentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal["certforge.runtime.v1"] = "certforge.runtime.v1"
     journey: list[JourneyArgument] | None
-    environment: EnvironmentIdentity
+    environment: RuntimeEnvironmentComponents
     submit_environment: SubmitEnvironment
 
 
@@ -543,7 +559,7 @@ def create_app(context: ServiceContext) -> FastAPI:
                 raise HTTPException(status_code=422, detail=code) from exc
             raise HTTPException(status_code=503, detail="runtime_identity_unavailable") from exc
         return RuntimeEnvironmentResponse(
-            journey=request.journey, environment=environment,
+            journey=request.journey, environment=RuntimeEnvironmentComponents.model_validate(environment.to_dict()),
             submit_environment=SubmitEnvironment(
                 identity_digest=environment.identity_digest,
                 runner_image_digest="sha256:" + environment.runner_image_sha256,

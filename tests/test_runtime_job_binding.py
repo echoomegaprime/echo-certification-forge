@@ -9,12 +9,13 @@ import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.run_worker import _worker_environment
 from echo_certification_forge.runtime_identity import RuntimeProfile
 from echo_certification_forge.sandbox import DockerSandbox
-from echo_certification_forge.service import ServiceContext, create_app
+from echo_certification_forge.service import RuntimeEnvironmentResponse, ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.subscriber import SubscriberGovernance, SubscriberPolicy
 
@@ -83,6 +84,15 @@ def test_sdk_command_selector_is_removed_before_runtime_resolution(runtime_api):
     assert direct.status_code == sdk.status_code == 200
     assert direct.json() == sdk.json()
     assert not context.store.list_runs(headers["X-Tenant-ID"])
+
+
+@pytest.mark.parametrize("change", [{"unexpected": "x"}, {"harness_sha256": "invalid"}])
+def test_runtime_response_components_reject_extras_and_invalid_hashes(runtime_api, change):
+    client, _context, headers = runtime_api
+    response = client.post("/v1/subscriber/runtime/environment", headers=headers, json={"journey": ["python3", "test.py"]}).json()
+    response["environment"].update(change)
+    with pytest.raises(ValidationError):
+        RuntimeEnvironmentResponse.model_validate(response)
 
 
 def test_two_resolved_job_plans_agree_with_worker_and_keep_release_gates(runtime_api, tmp_path, monkeypatch):
