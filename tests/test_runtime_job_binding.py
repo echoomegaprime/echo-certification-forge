@@ -72,6 +72,19 @@ def test_authenticated_environment_resolution_distinguishes_jobs_without_executi
     assert client.post("/v1/subscriber/runtime/environment", headers=other, json={"journey": plans[0]}).status_code == 404
 
 
+def test_sdk_command_selector_is_removed_before_runtime_resolution(runtime_api):
+    client, context, headers = runtime_api
+    plan = ["python3", "test.py"]
+    direct = client.post("/v1/subscriber/runtime/environment", headers=headers, json={"journey": plan})
+    sdk = client.post(
+        "/v1/subscriber/runtime/environment", headers=headers,
+        json={"command": "runtime_environment", "journey": plan},
+    )
+    assert direct.status_code == sdk.status_code == 200
+    assert direct.json() == sdk.json()
+    assert not context.store.list_runs(headers["X-Tenant-ID"])
+
+
 def test_two_resolved_job_plans_agree_with_worker_and_keep_release_gates(runtime_api, tmp_path, monkeypatch):
     from echo_certification_forge import run_worker
     from echo_certification_forge.acquisition import acquire_target
@@ -138,6 +151,20 @@ def test_environment_resolution_requires_configured_runtime(runtime_api):
     reply = client.post("/v1/subscriber/runtime/environment", headers=headers, json={"journey": ["python3", "test.py"]})
     assert reply.status_code == 503
     assert reply.json()["detail"] == "runtime_profile_unavailable"
+
+
+@pytest.mark.parametrize("with_bearer", [False, True])
+def test_environment_resolution_requires_subscriber_governance(runtime_api, with_bearer):
+    client, context, headers = runtime_api
+    context.subscribers = None
+    request_headers = headers if with_bearer else {"X-Tenant-ID": headers["X-Tenant-ID"]}
+    reply = client.post(
+        "/v1/subscriber/runtime/environment", headers=request_headers,
+        json={"journey": ["python3", "test.py"]},
+    )
+    assert reply.status_code == 503
+    assert reply.json()["detail"] == "subscriber_governance_disabled"
+    assert not context.store.list_runs(headers["X-Tenant-ID"])
 
 
 def test_declared_job_runtime_mismatch_rejects_before_acquisition(monkeypatch, store, manifest):

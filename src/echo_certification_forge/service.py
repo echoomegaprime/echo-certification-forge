@@ -525,7 +525,7 @@ def create_app(context: ServiceContext) -> FastAPI:
         x_tenant_id: str | None = Header(default=None),
         authorization: str | None = Header(default=None),
     ) -> RuntimeEnvironmentResponse:
-        authorize(x_tenant_id, authorization, Permission.RUN_READ, "runtime.environment.resolve")
+        subscriber_principal(x_tenant_id, authorization, Permission.RUN_READ, "runtime.environment.resolve")
         profile = context.runtime_profile
         public = context.certification_environment
         if profile is None or public is None:
