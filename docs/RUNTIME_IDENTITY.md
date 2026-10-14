@@ -38,19 +38,39 @@ environment variables and signing files are never scanned or hashed. Sandbox
 an execution-affecting input from the commitment. Only package `*.py` files,
 `pyproject.toml`, and `images/requirements.lock` are read for the harness commitment;
 target files, `var/`, trust stores, and private keys are outside that traversal.
+Wheels include those two public declarations under `runtime_data/`; measurement
+uses the actual installed package files and the same canonical names as the
+source checkout. The installed interpreter directory is never treated as a
+repository, and missing packaged declarations fail closed.
 
 The API publishes `certification_environment_identity_digest`,
-`runner_image_digest`, `runtime_profile_schema`, and `runtime_journey_json`.
+`runner_image_digest`, `runtime_profile_schema`, `runtime_journey_json`, and
+`runtime_journey_mode`.
 The production dispatcher loads the same profile and passes its actual sandbox to
-the worker. Before acquisition, the worker rejects a different sandbox or journey.
+the worker. A non-null operator journey remains an exact pin. A null journey
+selects `per_job` mode: each persisted job supplies its own bounded argv while
+the operator's image, Docker command and isolation limits remain exact pins.
+Before acquisition, the worker rejects a different sandbox, an incompatible
+operator journey, or an environment declaration that does not match the measured
+job inputs.
 It measures the effective inputs again and uses existing transactional environment
 reconciliation to fence changes before target execution. Source and installed
 dependencies must be immutable within a release; restart API and dispatcher on a
 release or public-profile change. A missing/unreadable measured input fails closed.
 
-Without a profile, the advertised journey is null and the selected pinned default
-sandbox is used. This is not a useful production acceptance plan: the mandatory
-critical-journey gate remains failing until an operator selects a real journey.
+For a shared service, resolve the exact job argv through authenticated read-only
+`POST /v1/subscriber/runtime/environment` (`echo.certforge.runtime_environment`).
+It accepts only `journey` (null or 1–32 nonempty strings of at most 2048 characters,
+without NUL). It returns canonical `environment` components and
+`submit_environment` for the existing submission contract. Use that exact argv
+and declaration together. This operation does not execute code, create a run,
+reserve quota, select an image, or certify readiness. It uses the existing
+subscriber read permission and rate/authentication controls.
+
+The null-journey environment advertised by `/v1/status` describes the shared
+profile's default plan; it is not a declaration for a job with a different argv.
+Without an explicit image profile, the selected pinned default sandbox is used.
+Omitting a real job journey still fails the mandatory critical-journey gate.
 The existing minimal Python image does not imply that target dependencies are
 installed. A dependency-complete image must be built, independently pinned and
 selected by the release owner before running a program that needs those packages.
@@ -61,7 +81,7 @@ All old fixed-label environment commitments differ from the measured contract.
 Existing verdicts are not re-signed, upgraded, or silently reused. Queued requests
 declaring an old or mismatched environment fail closed through existing worker
 reconciliation. After admission of the changed release, callers must obtain the
-fresh service environment and submit a new exact-identity request with a new
+fresh per-job environment and submit a new exact-identity request with a new
 idempotency key. Nothing in this change automatically updates production profiles,
 queues, trust roots, collector attestations, or service units.
 
@@ -73,9 +93,11 @@ production-E2E protections. The repair must be reviewed against the deployed
 baseline and reconciled with canonical history before promotion; replacing the
 deployed release with older main is not a valid rollback or integration strategy.
 
-Focused verification is `python -m pytest -q tests/test_runtime_identity.py`.
+Focused verification is `python -m pytest -q tests/test_runtime_identity.py tests/test_runtime_job_binding.py`.
 The tests cover changed image, journey, policy, harness and sandbox limits;
 secret-field rejection; service/dispatcher/worker identity agreement; and rejection
-before acquisition. Subscriber regression tests additionally verify that changed
+before acquisition, authenticated per-job resolution, caller-image rejection,
+and equivalent source/real-built-wheel harness commitments. Subscriber regression
+tests additionally verify that changed
 journey commitments cannot execute or receive a signed verdict. Full repository
 and acceptance checks remain required before a release claim.

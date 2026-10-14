@@ -23,7 +23,7 @@ from .models import EnvironmentIdentity
 from .policy import RuleManifest
 from .sandbox import DEFAULT_IMAGE, DockerSandbox
 
-_ROOT = Path(__file__).resolve().parents[2]
+_PACKAGE = Path(__file__).resolve().parent
 _LOG = logging.getLogger(__name__)
 _SCHEMA = "certforge.runtime.v1"
 _IMAGE = re.compile(r"(?:[^@\s]+@)?sha256:([0-9a-f]{64})\Z")
@@ -71,7 +71,7 @@ def _journey(value: object) -> tuple[str, ...] | None:
         return None
     if not isinstance(value, (tuple, list)) or not 1 <= len(value) <= 32:
         raise ValueError("runtime_journey_invalid")
-    if any(not isinstance(item, str) or not item or "\x00" in item for item in value):
+    if any(not isinstance(item, str) or not item or len(item) > 2048 or "\x00" in item for item in value):
         raise ValueError("runtime_journey_invalid")
     return tuple(value)
 
@@ -82,7 +82,10 @@ class RuntimeProfile:
     journey: tuple[str, ...] | None = None
 
     def check_execution(self, sandbox: DockerSandbox | None, journey: list[str] | None) -> None:
-        if _sandbox_inputs(sandbox) != _sandbox_inputs(self.sandbox) or _journey(journey) != self.journey:
+        selected = _journey(journey)
+        if _sandbox_inputs(sandbox) != _sandbox_inputs(self.sandbox) or (
+            self.journey is not None and selected != self.journey
+        ):
             raise ValueError("runtime_profile_mismatch")
 
 
@@ -115,18 +118,22 @@ def load_runtime_profile(
     return RuntimeProfile(sandbox, _journey(raw.get("journey")))
 
 
-def _harness_digest(source_root: Path) -> str:
+def _harness_digest(source_root: Path | None = None) -> str:
     """Hash the explicit executable package and dependency declarations, never var/ or keys."""
-    package = source_root / "src/echo_certification_forge"
+    package = source_root / "src/echo_certification_forge" if source_root else _PACKAGE
+    repository = source_root or (package.parent.parent if package.parent.name == "src" else None)
     paths = sorted(package.rglob("*.py"))
     if not paths or not (package / "executor.py").is_file():
         raise ValueError("runtime_harness_source_missing")
-    paths += [source_root / "pyproject.toml", source_root / "images/requirements.lock"]
+    declarations = {
+        "pyproject.toml": repository / "pyproject.toml" if repository else package / "runtime_data/pyproject.toml",
+        "images/requirements.lock": repository / "images/requirements.lock" if repository else package / "runtime_data/requirements.lock",
+    }
     try:
-        return sha256_json({
-            path.relative_to(source_root).as_posix(): sha256_bytes(path.read_bytes())
-            for path in paths
-        })
+        hashes = {"src/echo_certification_forge/" + path.relative_to(package).as_posix(): sha256_bytes(path.read_bytes())
+                  for path in paths}
+        hashes.update({name: sha256_bytes(path.read_bytes()) for name, path in declarations.items()})
+        return sha256_json(hashes)
     except OSError as exc:
         raise ValueError("runtime_harness_source_unreadable") from exc
 
@@ -136,7 +143,7 @@ def measured_environment(
     journey: list[str] | tuple[str, ...] | None = None,
     adapter_set_sha256: str | None = None,
     adapter_execution_profile_sha256: str | None = None,
-    source_root: Path = _ROOT,
+    source_root: Path | None = None,
 ) -> EnvironmentIdentity:
     config = _sandbox_inputs(sandbox)
     plan = _journey(journey)

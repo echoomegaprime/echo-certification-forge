@@ -169,8 +169,24 @@ def run(
             return {"run_id": run_id, "error": "runtime_profile_mismatch"}
     try:
         # Reject unmeasurable inputs before claiming work or acquiring a target.
-        _worker_environment(manifest=manifest, sandbox=sandbox, journey=journey)
-    except (ValueError, OSError):
+        prepared = _worker_environment(
+            adapter_set_digest(adapter_records) if adapter_records is not None else None,
+            sha256_json(adapter_bundle_response.body) if adapter_bundle_response is not None else None,
+            manifest=manifest, sandbox=sandbox, journey=journey,
+        )
+        if runtime_profile is not None:
+            try:
+                declared = store.get_run(run_id, tenant)
+            except KeyError:
+                declared = None
+            if declared is not None:
+                public = json.loads(str(declared["environment_identity_json"]))
+                image = public.get("runner_image_digest")
+                if declared["environment_identity_digest"] != prepared.identity_digest or (
+                    image is not None and image != "sha256:" + prepared.runner_image_sha256
+                ):
+                    return {"run_id": run_id, "error": "runtime_environment_mismatch"}
+    except (ValueError, OSError, sqlite3.Error):
         _LOGGER.warning("runtime_identity_rejected", extra={"run_id": run_id, "error_code": "runtime_identity_unavailable"})
         return {"run_id": run_id, "error": "runtime_identity_unavailable"}
     if subscribers is None:

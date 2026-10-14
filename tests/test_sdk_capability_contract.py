@@ -32,7 +32,7 @@ def test_generated_sdk_contract_is_current() -> None:
 def test_every_certforge_capability_has_command_and_output_schema() -> None:
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     capabilities = contract["capabilities"]
-    assert contract["capability_count"] == 61 == len(capabilities)
+    assert contract["capability_count"] == 62 == len(capabilities)
     for capability, item in capabilities.items():
         input_schema = item["input_schema"]
         output_schema = item["output_schema"]
