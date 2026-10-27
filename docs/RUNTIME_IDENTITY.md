@@ -80,10 +80,16 @@ selected by the release owner before running a program that needs those packages
 All old fixed-label environment commitments differ from the measured contract.
 Existing verdicts are not re-signed, upgraded, or silently reused. Queued requests
 declaring an old or mismatched environment fail closed through existing worker
-reconciliation. After the bounded dispatch attempts are exhausted before execution,
-the run becomes `INFRASTRUCTURE_FAILURE`, its reservation is released, and its
-original billing-period charge is compensated exactly once. No target acquisition
-is allowed for a mismatched profile. After admission of the changed release, callers must obtain the
+reconciliation. An operator sandbox mismatch or unavailable measurement opens the
+dispatcher circuit: its exact unexecuted claim returns to pending without
+spending retry budget, and the process exits before touching another run. The service
+supervisor's restart delay bounds automatic retries; operators must resolve runtime
+drift before the queue can progress. Tenant environment and journey mismatches use
+a persisted 60-second retry delay, allowing other tenants to progress, and consume
+the normal bounded retry budget. Other job failures
+that exhaust bounded pre-execution retries become `INFRASTRUCTURE_FAILURE` and are
+compensated once in their original billing period. No target acquisition is allowed
+for a mismatched profile. After admission of the changed release, callers must obtain the
 fresh per-job environment and submit a new exact-identity request with a new
 idempotency key. Nothing in this change automatically updates production profiles,
 queues, trust roots, collector attestations, or service units.

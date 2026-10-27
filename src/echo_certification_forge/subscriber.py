@@ -4130,8 +4130,9 @@ class SubscriberGovernance:
         with self._connection(immediate=True) as connection:
             self._recover_expired_claims(connection, organization_id, now_value)
             self._recover_expired_dispatches(connection, now_value)
-            filters = ["d.state = 'PENDING'", "r.state = 'BOUND'", "runs.state = 'QUEUED'"]
-            parameters: list[Any] = []
+            filters = ["d.state = 'PENDING'", "r.state = 'BOUND'", "runs.state = 'QUEUED'",
+                       "(d.last_error IS NULL OR d.last_error NOT IN ('runtime_profile_mismatch', 'runtime_environment_mismatch') OR d.updated_at <= ?)"]
+            parameters: list[Any] = [to_utc_iso(now_value - timedelta(seconds=60))]
             if run_id is not None:
                 filters.append("d.run_id = ?")
                 parameters.append(run_id)
@@ -4217,6 +4218,43 @@ class SubscriberGovernance:
                 claim_token=claim_token,
                 lease_expires_at=lease_expires_at,
                 attempts=int(row["attempts"]) + 1,
+            )
+
+    def defer_dispatch_runtime_failure(self, dispatch: SubscriberDispatch, *, error: str) -> None:
+        """Return an unexecuted claim without spending a customer's retry budget.
+
+        Runtime drift can affect the entire dispatcher. The caller must stop its
+        polling loop; a supervisor may restart it after the configured delay.
+        """
+        if error not in {"runtime_operator_profile_mismatch", "runtime_identity_unavailable"}:
+            raise ValueError("runtime deferral requires a runtime failure")
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE subscriber_run_dispatches
+                SET state = 'PENDING', attempts = MAX(attempts - 1, 0),
+                    claim_token = NULL, lease_owner = NULL, lease_expires_at = NULL,
+                    last_error = ?, updated_at = ?
+                WHERE run_id = ? AND organization_id = ? AND claim_token = ?
+                  AND state = 'CLAIMED'
+                  AND EXISTS (SELECT 1 FROM runs WHERE runs.run_id = subscriber_run_dispatches.run_id
+                              AND runs.tenant_id = subscriber_run_dispatches.organization_id
+                              AND runs.state = 'QUEUED')
+                  AND EXISTS (SELECT 1 FROM subscriber_run_reservations r
+                              WHERE r.run_id = subscriber_run_dispatches.run_id
+                                AND r.organization_id = subscriber_run_dispatches.organization_id
+                                AND r.state = 'BOUND')
+                """,
+                (error, now, dispatch.run_id, dispatch.organization_id, dispatch.claim_token),
+            )
+            if cursor.rowcount != 1:
+                raise SubscriberError(409, "dispatch_claim_inactive")
+            self._append_audit(
+                connection, organization_id=dispatch.organization_id,
+                actor_ref="certforge.dispatcher", action="certification.runtime_deferred",
+                resource_type="certification", resource_id=dispatch.run_id,
+                outcome="denied", details={"reason": error, "retry_budget_consumed": False},
             )
 
     def finish_dispatch(

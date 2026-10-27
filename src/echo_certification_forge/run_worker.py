@@ -42,7 +42,7 @@ from .models import EnvironmentIdentity, RunOutcome, RunState, TargetIdentity
 from .policy import RuleManifest
 from .production_e2e import VerifiedProductionE2E, load_signed_attestation
 from .runner import RunnerResponse
-from .runtime_identity import RuntimeProfile, load_runtime_profile, measured_environment
+from .runtime_identity import RuntimeProfile, _journey, load_runtime_profile, measured_environment
 from .sandbox import DockerSandbox, sandboxed_journey_runner
 from .signing import Ed25519VerdictSigner
 from .subscriber import SubscriberError, SubscriberGovernance, SubscriberPolicy
@@ -161,7 +161,17 @@ def run(
     execution_location: str = "local",
     signing_authority: str = "platform",
 ) -> dict:
+    try:
+        _journey(journey)
+    except ValueError:
+        # Applies to persisted legacy jobs and non-production compatibility too.
+        return {"run_id": run_id, "error": "runtime_profile_mismatch"}
     if runtime_profile is not None:
+        try:
+            # Check operator-controlled inputs independently of tenant argv.
+            runtime_profile.check_execution(sandbox, runtime_profile.journey)
+        except ValueError:
+            return {"run_id": run_id, "error": "runtime_operator_profile_mismatch"}
         try:
             runtime_profile.check_execution(sandbox, journey)
         except ValueError:
@@ -180,7 +190,12 @@ def run(
             except KeyError:
                 declared = None
             if declared is not None:
-                public = json.loads(str(declared["environment_identity_json"]))
+                try:
+                    public = json.loads(str(declared["environment_identity_json"]))
+                except (ValueError, KeyError):
+                    return {"run_id": run_id, "error": "runtime_environment_mismatch"}
+                if not isinstance(public, dict):
+                    return {"run_id": run_id, "error": "runtime_environment_mismatch"}
                 image = public.get("runner_image_digest")
                 if declared["environment_identity_digest"] != prepared.identity_digest or (
                     image is not None and image != "sha256:" + prepared.runner_image_sha256

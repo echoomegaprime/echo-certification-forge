@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import stat
@@ -280,6 +281,7 @@ def test_current_authority_drift_blocks_before_sign(prepared,drift):
     authority.sign.assert_not_called()
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Strict sealing requires POSIX descriptor custody; Windows stat/fstat ctime differ')
 def test_strict_key_loader_binds_actual_descriptor_before_crypto(tmp_path,monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT/'scripts'))
     import seal_p4_images as sealer
@@ -296,6 +298,7 @@ def test_strict_key_loader_binds_actual_descriptor_before_crypto(tmp_path,monkey
     crypto.assert_not_called()
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Strict sealing requires POSIX descriptor custody; Windows stat/fstat ctime differ')
 def test_strict_key_loader_binds_metadata_and_size(tmp_path,monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT/'scripts'))
     import seal_p4_images as sealer
@@ -307,6 +310,7 @@ def test_strict_key_loader_binds_metadata_and_size(tmp_path,monkeypatch):
     crypto.assert_not_called()
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='Strict sealing requires POSIX descriptor custody; Windows stat/fstat ctime differ')
 def test_strict_key_loader_accepts_existing_test_key_with_matching_metadata(tmp_path,monkeypatch,prepared):
     from cryptography.hazmat.primitives import serialization
     monkeypatch.syspath_prepend(str(ROOT/'scripts'))

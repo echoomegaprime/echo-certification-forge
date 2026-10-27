@@ -1,5 +1,29 @@
 # Operations
 
+## Dispatcher recovery limits
+
+Operator sandbox and runtime measurement failures stop the dispatcher before
+it claims another job. The unexecuted claim returns to pending with its retry count
+unchanged. Service restarts use the configured supervisor delay. Inspect the
+structured `dispatcher_runtime_circuit_open` event, repair the runtime through
+supported governance, then restart. Tenant journey or environment mismatches use a
+persisted 60-second delay between bounded retries; they cannot open the global
+circuit or occupy the head of the queue while delayed. Do not consume the customer
+backlog as a diagnostic probe.
+
+Intake recovery isolates validated request-local failures and malformed stored
+intake payloads. Unexpected database integrity failures and corrupt materialized
+run records deliberately remain fail-loud: stop and investigate the original
+database with a preserved snapshot. Broad exception swallowing could conceal
+cross-record corruption or an ownership failure. API rejection refunds are fenced
+to the exact still-reserved request; recovery-owned or executing work is retained.
+
+The current post-promotion dispatch smoke shares the normal FIFO queue and has a
+180-second deadline. A backlog can cause a false red and source rollback. Check
+queue drain readiness before promotion; scoped canary dispatch remains a separate
+availability improvement. This smoke is not a claim that the service supports
+multiple independent dispatchers during long target acquisition.
+
 ## Operator principles
 
 - Treat `NOT_READY` as the default and expected failure state.

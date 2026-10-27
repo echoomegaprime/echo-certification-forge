@@ -634,13 +634,13 @@ def create_app(context: ServiceContext) -> FastAPI:
         except SubmitError as exc:
             if reservation is not None and reservation.created:
                 context.subscribers.release_reservation(
-                    reservation, reason="submit_rejected", compensate_meter=True
+                    reservation, reason="submit_rejected", compensate_meter=True, only_reserved=True
                 )
             raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
         except SubscriberError as exc:
             if reservation is not None and reservation.created:
                 context.subscribers.release_reservation(
-                    reservation, reason="governance_rejected", compensate_meter=True
+                    reservation, reason="governance_rejected", compensate_meter=True, only_reserved=True
                 )
             raise subscriber_error(exc) from exc
         except sqlite3.Error as exc:
@@ -650,6 +650,7 @@ def create_app(context: ServiceContext) -> FastAPI:
                         reservation,
                         reason="subscriber_storage_failure",
                         compensate_meter=True,
+                        only_reserved=True,
                     )
                 except sqlite3.Error:
                     pass
@@ -1028,7 +1029,7 @@ def create_app(context: ServiceContext) -> FastAPI:
         except SubscriberError as exc:
             if reservation is not None and reservation.created:
                 context.subscribers.release_reservation(
-                    reservation, reason="rerun_rejected", compensate_meter=True
+                    reservation, reason="rerun_rejected", compensate_meter=True, only_reserved=True
                 )
             raise subscriber_error(exc) from exc
 

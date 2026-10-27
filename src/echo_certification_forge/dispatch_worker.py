@@ -136,6 +136,19 @@ def dispatch_once(
         )
         raise
     error = str(result.get("error")) if result.get("error") else None
+    if error in {"runtime_operator_profile_mismatch", "runtime_identity_unavailable"}:
+        try:
+            governance.defer_dispatch_runtime_failure(dispatch, error=error)
+        except SubscriberError as exc:
+            # Cancellation, lease fencing or post-claim failure may already have
+            # consumed this claim. Preserve that state and still stop cleanly.
+            if exc.code != "dispatch_claim_inactive":
+                raise
+        logging.getLogger(__name__).error(json.dumps({
+            "event": "dispatcher_runtime_circuit_open", "reason": error,
+            "run_ref": sha256_bytes(dispatch.run_id.encode())[:32],
+        }))
+        return dispatch, {**result, "dispatcher_halted": True, "retry_budget_consumed": False}
     try:
         governance.finish_dispatch(dispatch, error=error)
     except SubscriberError as exc:
@@ -366,6 +379,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         if dispatch is not None:
             print(json.dumps(result, sort_keys=True))
+        if result is not None and result.get("dispatcher_halted") is True:
+            return 2
         if args.once:
             return 0 if dispatch is not None else 3
         if dispatch is None:
