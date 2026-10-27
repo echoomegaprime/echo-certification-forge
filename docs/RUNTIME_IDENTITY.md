@@ -85,13 +85,17 @@ fresh per-job environment and submit a new exact-identity request with a new
 idempotency key. Nothing in this change automatically updates production profiles,
 queues, trust roots, collector attestations, or service units.
 
-This repair is based on measured deployed revision
-`d8ad9fd881365801354b78a758632d2a31ab6828`. Canonical main was separately measured at
-`4f7d99e2dd4422f3d81cf5b709581be963f5818a`; their merge base is
-`153ee6b6d40d6c789436b7081fafa9714bfb3a2c`. Main lacks deployed acquisition and
-production-E2E protections. The repair must be reviewed against the deployed
-baseline and reconciled with canonical history before promotion; replacing the
-deployed release with older main is not a valid rollback or integration strategy.
+This repair retains measured deployed revision
+`d8ad9fd881365801354b78a758632d2a31ab6828`. The ECF release reconciliation merges
+canonical main `4f7d99e2dd4422f3d81cf5b709581be963f5818a`, measured-runtime repair
+`690ea5b58cee637e76bb1011e7d08da0895422fa` (PR28), and image-admission/local-intake
+repair `77cba79e0fd971ad7301203242108c76998d26e5` (PR29). It preserves the deployed
+acquisition and production-E2E protections alongside main's longer bounded
+readiness polling and retained staging diagnostics. The P7 intake probe uses one
+measured environment for its exact journey. Original owner branches are retained.
+This source reconciliation is not runtime admission, a certificate, or a
+production promotion. The exact combined source still requires those gates;
+replacing the deployed release with older main is not a valid rollback strategy.
 
 Focused verification is `python -m pytest -q tests/test_runtime_identity.py tests/test_runtime_job_binding.py`.
 The tests cover changed image, journey, policy, harness and sandbox limits;
