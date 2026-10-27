@@ -1,7 +1,7 @@
 # Admit a separate journey image through existing P4 authority
 
-The Node24/Python3.11 journey image has a different layout from the twelve P4
-role images. It must not be relabeled as a P4 role variant or replace their
+The Node24/Python journey images have a different layout from the twelve P4
+role images. They must not be relabeled as a P4 role variant or replace their
 manifest. `prepare_journey_image_admission.py` prepares a separate unsigned
 `ImageAdmissionPolicy` using the existing public policy and attestation. It
 preserves trusted keys, compromised-key exclusions and revoked image digests,
@@ -9,6 +9,23 @@ and binds only the candidate image, source, final base, recipe and dependency
 commitment. The two-stage base provenance remains in the hashed input lock and
 provenance. A source-integrated recipe does not relabel a previously built image;
 retain that image's actual build source in `ImageIdentity`.
+
+The qualification contract accepts the original Node24.19.0/Python3.11.x pair
+and the exact ECF security-update pair Node24.22.1/Python3.12.16. Cross-pairs and
+other Python3.12 patch versions are rejected. This adds no serialized field, so
+legacy request digests retain their existing representation. Both pairs still
+require matching actual runtime packages in the hash-bound SPDX document, fresh
+independent build and security evidence, current admitted owner authority and
+the exact reviewed request digest. The ECF pair additionally requires exactly
+one nodejs and one CPython entry in its SPDX package inventory; mixed or duplicate
+runtime entries fail closed. Supporting a version pair is not image admission,
+a clean-security assertion, or release permission. Reviewers must independently
+reject outdated Node-core reports, including for legacy versions; the contract
+does not authenticate a submitted report hash or its zero-count assertions.
+The reviewer must also compare the referenced runtime probe and SPDX runtime
+rows with the actual candidate image at its exact digest; matching declarations
+alone do not prove which binary executes. The legacy pair retains its previous
+inventory rules, including the absence of the new ECF-only uniqueness check.
 
 Preparation verifies bounded exact material bytes, recipe policy, source and
 SPDX image/runtime-package binding, independent-build comparison commitments,
@@ -25,7 +42,7 @@ zero counts alone.
 ```text
 python scripts/prepare_journey_image_admission.py \
   --packet <public-evidence-directory> --qualification <qualification.json> \
-  --dockerfile images/journey-node24-python311/Dockerfile \
+  --dockerfile <exact-candidate-Dockerfile> \
   --prior-policy <existing-public-policy.json> \
   --prior-attestation <existing-public-attestation.json> \
   --expected-source <actual-image-source-sha> \

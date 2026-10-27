@@ -47,8 +47,8 @@ class JourneyQualification(BaseModel):
     fixed_high_or_critical_count: int = Field(ge=0)
     secret_count: int = Field(ge=0)
     node_core_finding_count: int = Field(ge=0)
-    node_version: Literal["24.19.0"]
-    python_version: str = Field(pattern=r"^3\.11\.[0-9]+$")
+    node_version: Literal["24.19.0", "24.22.1"]
+    python_version: str = Field(pattern=r"^(?:3\.11\.[0-9]+|3\.12\.16)$")
     uid: int = Field(gt=0)
     read_only_root: bool
     network_disabled: bool
@@ -57,6 +57,12 @@ class JourneyQualification(BaseModel):
 
     @model_validator(mode="after")
     def check_qualification(self) -> JourneyQualification:
+        # Preserve the original serialized contract and its legacy pair. The
+        # ECF runner adds one exact measured pair, not an arbitrary version range.
+        legacy_pair = self.node_version == "24.19.0" and self.python_version.startswith("3.11.")
+        ecf_pair = (self.node_version, self.python_version) == ("24.22.1", "3.12.16")
+        if not (legacy_pair or ecf_pair):
+            raise ValueError("unsupported_runtime_pair")
         for name in (
             "identity_digest", "archive_sha256", "independent_archive_sha256",
             "normalized_first_sha256", "normalized_second_sha256",
@@ -169,6 +175,11 @@ def prepare_admission_request(
                 if isinstance(row.get("name"), str) and isinstance(row.get("versionInfo"), str)}
     if ("nodejs", qualification.node_version) not in packages or ("CPython", qualification.python_version) not in packages:
         raise ImageAdmissionDenied("runtime_packages_missing_from_sbom")
+    if qualification.node_version == "24.22.1":
+        for name, version in (("nodejs", qualification.node_version), ("CPython", qualification.python_version)):
+            runtime_rows = [row for row in sbom_record["packages"] if row.get("name") == name]
+            if len(runtime_rows) != 1 or runtime_rows[0].get("versionInfo") != version:
+                raise ImageAdmissionDenied("ambiguous_runtime_packages")
     request = JourneyAdmissionRequest(identity=identity, qualification=qualification,
                                       prior_policy=prior_policy, prior_attestation=prior_attestation)
     proposed_policy(request, now=now)

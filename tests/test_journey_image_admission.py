@@ -108,6 +108,89 @@ def test_failed_or_coerced_qualification_refused(prepared,field,value):
     with pytest.raises(ValidationError): JourneyQualification.model_validate(payload)
 
 
+@pytest.mark.parametrize('node,python', [
+    ('24.19.0', '3.12.16'), ('24.22.1', '3.11.17'),
+    ('24.22.1', '3.12.15'), ('24.22.1', '3.12.17'), ('24.20.0', '3.12.16'),
+])
+def test_runtime_pair_rejects_cross_pair_and_unreviewed_patch(prepared, node, python):
+    kwargs, _ = prepared
+    data = kwargs['qualification'].model_dump()
+    data.update(node_version=node, python_version=python)
+    with pytest.raises(ValidationError):
+        JourneyQualification.model_validate(data)
+
+
+def test_ecf_pair_requires_matching_actual_sbom(prepared):
+    kwargs, _ = prepared
+    kwargs['qualification'] = kwargs['qualification'].model_copy(
+        update={'node_version': '24.22.1', 'python_version': '3.12.16'})
+    with pytest.raises(ImageAdmissionDenied, match='runtime_packages_missing_from_sbom'):
+        prepare_admission_request(**kwargs)
+
+
+def test_ecf_pair_seals_only_with_bound_material_and_existing_authority(prepared):
+    kwargs, authority = prepared
+    kwargs['sbom'] = encoded(build_spdx_document(
+        image_name='synthetic-ecf', image_digest=kwargs['identity'].image_digest,
+        created_at=kwargs['now'], packages=[{'name': 'nodejs', 'version': '24.22.1'},
+                                          {'name': 'CPython', 'version': '3.12.16'}]))
+    kwargs['identity'] = kwargs['identity'].model_copy(
+        update={'sbom_sha256': hashlib.sha256(kwargs['sbom']).hexdigest()})
+    kwargs['qualification'] = kwargs['qualification'].model_copy(update={
+        'node_version': '24.22.1', 'python_version': '3.12.16',
+        'identity_digest': kwargs['identity'].digest})
+    prior = kwargs['prior_policy'].model_dump_json()
+    request = prepare_admission_request(**kwargs)
+    signed, policy = seal_admission_request(
+        request, authority=authority, approved_request_sha256=request.digest,
+        current_policy=kwargs['prior_policy'], current_attestation=kwargs['prior_attestation'],
+        now=kwargs['now'])
+    assert signed.identity == kwargs['identity']
+    assert evaluate_image_admission(signed, policy, now=kwargs['now']).allowed
+    assert policy.trusted_attestation_keys == kwargs['prior_policy'].trusted_attestation_keys
+    assert kwargs['prior_policy'].model_dump_json() == prior
+    # A supported runtime pair cannot bypass the existing security evidence gate.
+    kwargs['qualification'] = kwargs['qualification'].model_copy(update={'node_core_finding_count': 1})
+    with pytest.raises(ValidationError, match='image_security_policy_failed'):
+        prepare_admission_request(**kwargs)
+
+
+@pytest.mark.parametrize('extra', [
+    {'name': 'nodejs', 'version': '24.19.0'},
+    {'name': 'CPython', 'version': '3.11.17'},
+    {'name': 'nodejs', 'version': '24.22.1'},
+])
+def test_ecf_pair_rejects_ambiguous_runtime_inventory(prepared, extra):
+    kwargs, _ = prepared
+    kwargs['sbom'] = encoded(build_spdx_document(
+        image_name='synthetic-ecf', image_digest=kwargs['identity'].image_digest,
+        created_at=kwargs['now'], packages=[{'name': 'nodejs', 'version': '24.22.1'},
+                                          {'name': 'CPython', 'version': '3.12.16'}, extra]))
+    kwargs['identity'] = kwargs['identity'].model_copy(
+        update={'sbom_sha256': hashlib.sha256(kwargs['sbom']).hexdigest()})
+    kwargs['qualification'] = kwargs['qualification'].model_copy(update={
+        'node_version': '24.22.1', 'python_version': '3.12.16',
+        'identity_digest': kwargs['identity'].digest})
+    with pytest.raises(ImageAdmissionDenied, match='ambiguous_runtime_packages'):
+        prepare_admission_request(**kwargs)
+
+
+def test_legacy_qualification_serialization_retained():
+    # Golden digest was measured using the unmodified 15a41b0 source.
+    data = {name: char * 64 for name, char in [
+        ('identity_digest', '1'), ('archive_sha256', '2'), ('independent_archive_sha256', '3'),
+        ('normalized_first_sha256', '4'), ('normalized_second_sha256', '4'),
+        ('scanner_report_sha256', '5'), ('node_core_report_sha256', '6'), ('runtime_probe_sha256', '7')]}
+    data.update(first_build_receipt_id='11111111-1111-1111-1111-111111111111',
+                second_build_receipt_id='22222222-2222-2222-2222-222222222222',
+                critical_count=0, fixed_high_or_critical_count=0, secret_count=0,
+                node_core_finding_count=0, node_version='24.19.0', python_version='3.11.17',
+                uid=65534, read_only_root=True, network_disabled=True, utf8=True,
+                observed_at=datetime(2026, 10, 27, tzinfo=UTC))
+    raw = JourneyQualification.model_validate(data).model_dump_json()
+    assert hashlib.sha256(raw.encode()).hexdigest() == '5ef44f4648e2698f66b33e496c4ca11ef28eba72863cd3bb0f143ab832323a90'
+
+
 @pytest.mark.parametrize('change',['unknown_key','expired','revoked','stale','future','wrong_identity'])
 def test_trust_and_identity_fail_before_signing(prepared,change):
     kwargs,authority=prepared
