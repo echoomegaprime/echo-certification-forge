@@ -56,6 +56,14 @@ def _r5_input() -> dict[str, Any]:
 
 
 def _manual_capabilities() -> dict[str, dict[str, Any]]:
+    project_id = {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        # A negative any-character lookahead is a strict end assertion in both
+        # ECMAScript and Python; '$' alone also accepts a final newline.
+        "pattern": r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\s\S])",
+    }
     r5_result = _object_schema(
         {
             "schema": {"type": "string"},
@@ -78,6 +86,33 @@ def _manual_capabilities() -> dict[str, dict[str, Any]]:
         ],
     )
     return {
+        # The fleet SDK mirrors projected arguments in options and can wrap a
+        # successful HTTP 204 as an object. Keep this adapter contract in the
+        # generator so regeneration cannot erase the deployed compatibility fix.
+        "echo.certforge.projects.archive": {
+            "operation": "DELETE /v1/subscriber/projects/{project_id}",
+            "input_schema": _object_schema(
+                {
+                    "command": COMMAND_SCHEMA,
+                    "project_id": project_id,
+                    "options": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "properties": {
+                            "command": COMMAND_SCHEMA,
+                            "project_id": project_id,
+                        },
+                    },
+                },
+                ["command", "project_id"],
+            ),
+            "output_schema": {
+                "anyOf": [
+                    {"type": "null"},
+                    {"type": "object", "additionalProperties": True},
+                ],
+            },
+        },
         "echo.certforge.run": {
             "operation": "POST /sdk/certification-forge/run",
             "input_schema": _object_schema(

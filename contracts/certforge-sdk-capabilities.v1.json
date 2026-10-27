@@ -1310,7 +1310,27 @@
             "minLength": 1,
             "type": "string"
           },
+          "options": {
+            "additionalProperties": true,
+            "properties": {
+              "command": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "project_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])",
             "type": "string"
           }
         },
@@ -1322,7 +1342,15 @@
       },
       "operation": "DELETE /v1/subscriber/projects/{project_id}",
       "output_schema": {
-        "type": "null"
+        "anyOf": [
+          {
+            "type": "null"
+          },
+          {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        ]
       }
     },
     "echo.certforge.projects.create": {

@@ -305,3 +305,14 @@ ON CONFLICT (id) DO UPDATE SET
   lifecycle_status = 'active',
   health_status = 'unknown',
   updated_at = now();
+
+-- Preserve the archive adapter's deployed fleet-envelope projections (fix-cap
+-- 25412 / 39521). The generated SDK schema sync supplies its canonical schemas
+-- after registration in the same deployment transaction.
+UPDATE arcanum_sdk.sdk_capabilities
+SET
+  option_projections = '["command", "project_id"]'::jsonb,
+  default_timeout_seconds = GREATEST(COALESCE(default_timeout_seconds, 0), 20),
+  never_archive = true,
+  updated_at = now()
+WHERE id = 'echo.certforge.projects.archive';
