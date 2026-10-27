@@ -72,10 +72,10 @@ def _p7(value: dict[str, Any]) -> None:
 
 def _sdk(value: dict[str, Any]) -> None:
     capabilities = value.get("capabilities")
-    _require(value.get("capability_count") == 61, "SDK contract must contain exactly 61 capabilities")
-    _require(isinstance(capabilities, dict) and len(capabilities) == 61, "SDK capability rows are incomplete")
+    _require(value.get("capability_count") == 62, "SDK contract must contain exactly 62 capabilities")
+    _require(isinstance(capabilities, dict) and len(capabilities) == 62, "SDK capability rows are incomplete")
     names = list(capabilities)
-    _require(len(set(names)) == 61, "SDK capability IDs are not unique")
+    _require(len(set(names)) == 62, "SDK capability IDs are not unique")
     _require(all(isinstance(name, str) and name.startswith("echo.cert") for name in names), "SDK capability namespace drift")
     _require(
         all(

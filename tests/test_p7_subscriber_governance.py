@@ -167,7 +167,7 @@ def _submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=journey)
     payload = {
         "tenant_id": organization_id,
         "project_id": project_response.json()["project_id"],
@@ -354,7 +354,7 @@ def test_subscriber_oci_without_sandbox_fails_and_releases_claim(
         target_reference=reference,
         target_identity_digest=_digest("subscriber-oci-declared-target"),
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest)
     run_id = "cert_" + _digest("subscriber-oci-run")[:40]
     governance.materialize_reserved_run(
         reservation,
@@ -1191,6 +1191,7 @@ def test_run_worker_uses_plan_retention_immediately_before_execution(
         org.bootstrap_api_key,
         source,
         key="worker-retention-0001",
+        journey=[sys.executable, "hello.py"],
     )
 
     result = run(
@@ -2271,9 +2272,9 @@ def test_dispatcher_recovers_crash_after_durable_reservation(
                 "path": source.resolve().as_posix(),
             },
             "environment": {
-                "identity_digest": _worker_environment().identity_digest,
+                "identity_digest": _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).identity_digest,
                 "runner_image_digest": "sha256:"
-                + _worker_environment().runner_image_sha256,
+                + _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).runner_image_sha256,
             },
             "policy_version": manifest.manifest_id,
             "idempotency_key": "durable-intake-0001",
@@ -2398,8 +2399,8 @@ def test_worker_lease_heartbeat_and_started_crash_recovery(tmp_path, manifest):
         claim,
         target_identity=target.to_dict(),
         target_identity_digest=target.identity_digest,
-        environment_identity=_worker_environment().to_dict(),
-        environment_identity_digest=_worker_environment().identity_digest,
+        environment_identity=_worker_environment(manifest=manifest).to_dict(),
+        environment_identity_digest=_worker_environment(manifest=manifest).identity_digest,
     )
     assert authorization.subscription_version >= 1
 
@@ -2740,7 +2741,7 @@ def test_api_worker_reconciles_canonical_identities_and_rejects_digest_drift(
     assert result["signed"] is True
     assert marker.exists()
     assert json.loads(persisted["target_identity_json"]) == target.to_dict()
-    assert json.loads(persisted["environment_identity_json"]) == _worker_environment().to_dict()
+    assert json.loads(persisted["environment_identity_json"]) == _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).to_dict()
     assert store.latest_signed_verdict(run_id, org.organization_id) is not None
 
     drift_source = tmp_path / "identity-drift-source"
@@ -2839,6 +2840,69 @@ def test_api_worker_reconciles_canonical_identities_and_rejects_digest_drift(
     assert store.latest_signed_verdict(environment_run_id, org.organization_id) is None
 
 
+def test_runtime_measurement_loss_after_acquisition_releases_claim(tmp_path, manifest, monkeypatch):
+    from echo_certification_forge import run_worker
+
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "runtime-measurement-loss", plan_code="professional")
+    source = tmp_path / "runtime-measurement-source"
+    source.mkdir()
+    (source / "README.txt").write_text("trusted fixture")
+    run_id, _ = _submit_local_run(
+        client, manifest, org.organization_id, org.bootstrap_api_key, source,
+        key="runtime-measurement-loss-0001",
+    )
+    original_acquire = run_worker.acquire_target
+
+    def unavailable_after_acquisition(*args):
+        acquired = original_acquire(*args)
+
+        def unavailable(*args, **kwargs):
+            raise ValueError("runtime_metadata_unavailable")
+
+        monkeypatch.setattr(run_worker, "_worker_environment", unavailable)
+        return acquired
+
+    monkeypatch.setattr(run_worker, "acquire_target", unavailable_after_acquisition)
+    result = run_worker.run(
+        run_id, org.organization_id, {"type": "local", "path": str(source)},
+        store=store, manifest=manifest, signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance,
+    )
+    assert result.get("error") == "runtime_identity_unavailable"
+    assert store.latest_signed_verdict(run_id, org.organization_id) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert not any((store.evidence_root / ".worker").iterdir())
+    usage = governance.usage_summary(_owner(
+        governance, org.organization_id, org.bootstrap_api_key, Permission.USAGE_READ,
+    ))
+    assert usage["active_run_reservations"] == 0
+
+
+def test_worker_rejects_changed_journey_before_execution(tmp_path, manifest):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "journey-identity-fence", plan_code="professional")
+    source = tmp_path / "journey-identity"
+    source.mkdir()
+    marker = tmp_path / "must-not-execute"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('unsafe')\n", encoding="utf-8",
+    )
+    run_id, _ = _submit_local_run(
+        client, manifest, org.organization_id, org.bootstrap_api_key, source,
+        key="journey-identity-fence-0001", journey=[sys.executable, "journey.py"],
+    )
+    result = run(
+        run_id, org.organization_id, {"type": "local", "path": str(source)},
+        store=store, manifest=manifest, signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance, journey=[sys.executable, "journey.py", "changed-test-plan"],
+    )
+    assert result["detail"] == "worker_environment_identity_mismatch"
+    assert not marker.exists()
+    assert store.latest_signed_verdict(run_id, org.organization_id) is None
+
+
 def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
     tmp_path, manifest, monkeypatch
 ):
@@ -2864,7 +2928,7 @@ def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
     repository = "https://github.com/echo/example.git"
     reference = f"{repository}@{source_commit}"
     artifact_sha256 = _digest("verified-acquired-git-tree")
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"])
     declared_digest = declared_target_identity_digest(
         org.organization_id,
         "git",
@@ -2960,7 +3024,7 @@ def test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalize
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"])
     request = SubmitRequest.model_validate(
         {
             "tenant_id": org.organization_id,

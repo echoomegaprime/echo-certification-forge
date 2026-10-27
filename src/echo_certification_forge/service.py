@@ -8,12 +8,12 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .canonical import sha256_json, to_utc_iso, utc_now
 from .deploy_gate import DeployGate
@@ -45,6 +45,7 @@ from .operational_telemetry import (
     SignedOperationalReport,
 )
 from .runner import TrustedTransportRegistry
+from .runtime_identity import RuntimeProfile, _journey, measured_environment
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import (
     MemberRole,
@@ -84,6 +85,7 @@ class ServiceContext:
     operational_registry: OperationalTelemetryRegistry | None = None
     adapter_mode: str = "pending"
     certification_environment: dict[str, str] | None = None
+    runtime_profile: RuntimeProfile | None = None
     product_readiness_report_path: Path | None = None
     # Adapter acceptance evidence. Deliberately has no usable default: an unset path makes
     # the adapter gate BLOCK, so a misconfigured deployment fails closed instead of
@@ -106,6 +108,44 @@ class DeployGateRequest(BaseModel):
     target_identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     environment_identity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     rule_manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+JourneyArgument = Annotated[str, Field(min_length=1, max_length=2048, pattern=r"^[^\x00]*$")]
+
+
+class RuntimeEnvironmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    journey: list[JourneyArgument] | None = Field(default=None, min_length=1, max_length=32)
+
+    @field_validator("journey")
+    @classmethod
+    def validate_journey(cls, value: list[str] | None) -> list[str] | None:
+        _journey(value)
+        return value
+
+
+RuntimeIdentityDigest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class RuntimeEnvironmentComponents(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    runner_image_sha256: RuntimeIdentityDigest
+    adapter_set_sha256: RuntimeIdentityDigest
+    test_plan_sha256: RuntimeIdentityDigest
+    policy_sha256: RuntimeIdentityDigest
+    harness_sha256: RuntimeIdentityDigest
+    prompt_set_sha256: RuntimeIdentityDigest
+    model_route_sha256: RuntimeIdentityDigest
+    os_runtime_sha256: RuntimeIdentityDigest
+    egress_policy_sha256: RuntimeIdentityDigest
+
+
+class RuntimeEnvironmentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["certforge.runtime.v1"] = "certforge.runtime.v1"
+    journey: list[JourneyArgument] | None
+    environment: RuntimeEnvironmentComponents
+    submit_environment: SubmitEnvironment
 
 
 class ProjectCreateRequest(BaseModel):
@@ -494,6 +534,37 @@ def create_app(context: ServiceContext) -> FastAPI:
         if context.certification_environment is not None:
             result.update(context.certification_environment)
         return result
+
+    @app.post("/v1/subscriber/runtime/environment")
+    def resolve_runtime_environment(
+        request: RuntimeEnvironmentRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> RuntimeEnvironmentResponse:
+        subscriber_principal(x_tenant_id, authorization, Permission.RUN_READ, "runtime.environment.resolve")
+        profile = context.runtime_profile
+        public = context.certification_environment
+        if profile is None or public is None:
+            raise HTTPException(status_code=503, detail="runtime_profile_unavailable")
+        try:
+            profile.check_execution(profile.sandbox, request.journey)
+            environment = measured_environment(
+                manifest=context.manifest, sandbox=profile.sandbox, journey=request.journey,
+                adapter_set_sha256=public.get("adapter_set_sha256"),
+                adapter_execution_profile_sha256=public.get("adapter_execution_profile_sha256"),
+            )
+        except ValueError as exc:
+            code = str(exc)
+            if code in {"runtime_profile_mismatch", "runtime_journey_invalid"}:
+                raise HTTPException(status_code=422, detail=code) from exc
+            raise HTTPException(status_code=503, detail="runtime_identity_unavailable") from exc
+        return RuntimeEnvironmentResponse(
+            journey=request.journey, environment=RuntimeEnvironmentComponents.model_validate(environment.to_dict()),
+            submit_environment=SubmitEnvironment(
+                identity_digest=environment.identity_digest,
+                runner_image_digest="sha256:" + environment.runner_image_sha256,
+            ),
+        )
 
     @app.post("/v1/certifications", status_code=201)
     def submit_certification(

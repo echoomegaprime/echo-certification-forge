@@ -50,6 +50,7 @@
     "echo.certforge.r5.status",
     "echo.certforge.r5.submit_async",
     "echo.certforge.run",
+    "echo.certforge.runtime_environment",
     "echo.certforge.service_status",
     "echo.certforge.status",
     "echo.certforge.submit",

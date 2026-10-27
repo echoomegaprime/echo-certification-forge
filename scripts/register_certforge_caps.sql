@@ -22,6 +22,12 @@ INSERT INTO arcanum_sdk.sdk_capabilities
    input_schema_json, required_scope, danger_tier, static_headers, default_timeout_seconds,
    lifecycle_status, health_status)
 VALUES
+  ('echo.certforge.runtime_environment',
+   'Certification Forge: resolve a bounded job journey into the effective operator-selected runtime identity. Authenticated read only; no customer execution or run creation.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/runtime/environment', 'POST', 'json_body', 'forge',
+   '{"type":"object","additionalProperties":false,"properties":{"journey":{"type":["array","null"],"minItems":1,"maxItems":32,"items":{"type":"string","minLength":1,"maxLength":2048}}}}'::jsonb,
+   'certforge.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
   ('echo.certforge.health',
    'Certification Forge: service health — status, version, custody/anchor/signing posture. No tenant, no side effects.',
    'http', 'http://127.0.0.1:8309/healthz', 'GET', 'query', 'forge',
