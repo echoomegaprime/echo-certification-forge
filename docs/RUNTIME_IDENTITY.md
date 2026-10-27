@@ -80,7 +80,10 @@ selected by the release owner before running a program that needs those packages
 All old fixed-label environment commitments differ from the measured contract.
 Existing verdicts are not re-signed, upgraded, or silently reused. Queued requests
 declaring an old or mismatched environment fail closed through existing worker
-reconciliation. After admission of the changed release, callers must obtain the
+reconciliation. After the bounded dispatch attempts are exhausted before execution,
+the run becomes `INFRASTRUCTURE_FAILURE`, its reservation is released, and its
+original billing-period charge is compensated exactly once. No target acquisition
+is allowed for a mismatched profile. After admission of the changed release, callers must obtain the
 fresh per-job environment and submit a new exact-identity request with a new
 idempotency key. Nothing in this change automatically updates production profiles,
 queues, trust roots, collector attestations, or service units.
@@ -92,7 +95,11 @@ canonical main `4f7d99e2dd4422f3d81cf5b709581be963f5818a`, measured-runtime repa
 repair `77cba79e0fd971ad7301203242108c76998d26e5` (PR29). It preserves the deployed
 acquisition and production-E2E protections alongside main's longer bounded
 readiness polling and retained staging diagnostics. The P7 intake probe uses one
-measured environment for its exact journey. Original owner branches are retained.
+measured environment for its exact journey and the same manifest-scoped request
+digest and idempotency key as production intake. Its v1 host-worker scenarios are
+subscriber regression evidence, not v2 Docker runtime admission. Release acceptance
+must separately exercise the authenticated runtime endpoint and actual pinned
+Docker worker under the production policy. Original owner branches are retained.
 This source reconciliation is not runtime admission, a certificate, or a
 production promotion. The exact combined source still requires those gates;
 replacing the deployed release with older main is not a valid rollback strategy.
@@ -105,3 +112,9 @@ and equivalent source/real-built-wheel harness commitments. Subscriber regressio
 tests additionally verify that changed
 journey commitments cannot execute or receive a signed verdict. Full repository
 and acceptance checks remain required before a release claim.
+
+Host Python and kernel measurements are intentional identity inputs. A host update
+can invalidate queued job declarations even if application source is unchanged.
+Coordinate host updates with API and dispatcher restarts, resolve a fresh per-job
+environment, and submit a new identity-bound request. Do not keep old identity
+labels or weaken these measurements to preserve availability.

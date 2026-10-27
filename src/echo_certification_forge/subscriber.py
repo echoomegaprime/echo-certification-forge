@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import sqlite3
 from collections.abc import Collection, Iterator, Mapping
@@ -3410,7 +3411,9 @@ class SubscriberGovernance:
             raise SubscriberError(503, "source_dispatch_invalid")
         return target, journey
 
-    def pending_intake_requests(self, limit: int = 100) -> list[PendingSubscriberIntake]:
+    def pending_intake_requests(
+        self, limit: int = 100, *, policy_version: str | None = None
+    ) -> list[PendingSubscriberIntake]:
         if limit <= 0 or limit > 1000:
             raise ValueError("limit must be between 1 and 1000")
         with self._connection() as connection:
@@ -3424,13 +3427,22 @@ class SubscriberGovernance:
                 WHERE state = 'RESERVED'
                   AND dispatch_target_json IS NOT NULL
                   AND submit_request_json IS NOT NULL
+                  AND (? IS NULL OR policy_version = ?)
                 ORDER BY created_at, idempotency_key
                 LIMIT ?
                 """,
-                (limit,),
+                (policy_version, policy_version, limit),
             ).fetchall()
         pending: list[PendingSubscriberIntake] = []
         for row in rows:
+            reservation = RunReservation(
+                organization_id=str(row["organization_id"]),
+                idempotency_key=str(row["idempotency_key"]),
+                request_digest=str(row["request_digest"]), created=False,
+                project_id=str(row["project_id"]), policy_version=str(row["policy_version"]),
+                target_type=str(row["target_type"]), target_reference=str(row["target_reference"]),
+                target_identity_digest=str(row["target_identity_digest"]),
+            )
             try:
                 target_spec = json.loads(str(row["dispatch_target_json"]))
                 request = json.loads(str(row["submit_request_json"]))
@@ -3439,25 +3451,21 @@ class SubscriberGovernance:
                     if row["dispatch_journey_json"] is not None
                     else None
                 )
-            except json.JSONDecodeError as exc:
-                raise SubscriberError(503, "pending_intake_invalid") from exc
-            if not isinstance(target_spec, dict) or not isinstance(request, dict):
-                raise SubscriberError(503, "pending_intake_invalid")
-            if journey is not None and not isinstance(journey, list):
-                raise SubscriberError(503, "pending_intake_invalid")
+                if not isinstance(target_spec, dict) or not isinstance(request, dict):
+                    raise ValueError("pending_intake_invalid")
+                if journey is not None and not isinstance(journey, list):
+                    raise ValueError("pending_intake_invalid")
+            except ValueError:
+                self.release_reservation(reservation, reason="pending_intake_invalid",
+                                         compensate_meter=True, only_reserved=True)
+                logging.getLogger(__name__).warning(json.dumps({
+                    "event": "pending_intake_rejected", "reason": "pending_intake_invalid",
+                    "reservation_ref": sha256_bytes(reservation.idempotency_key.encode())[:32],
+                }))
+                continue
             pending.append(
                 PendingSubscriberIntake(
-                    reservation=RunReservation(
-                        organization_id=str(row["organization_id"]),
-                        idempotency_key=str(row["idempotency_key"]),
-                        request_digest=str(row["request_digest"]),
-                        created=False,
-                        project_id=str(row["project_id"]),
-                        policy_version=str(row["policy_version"]),
-                        target_type=str(row["target_type"]),
-                        target_reference=str(row["target_reference"]),
-                        target_identity_digest=str(row["target_identity_digest"]),
-                    ),
+                    reservation=reservation,
                     request=request,
                     target_spec=target_spec,
                     journey=journey,
@@ -4291,6 +4299,29 @@ class SubscriberGovernance:
                 state = "FAILED"
             elif error is not None and int(row["attempts"]) < self.policy.max_dispatch_attempts:
                 state = "PENDING"
+            elif (error is not None and row["reservation_state"] == "BOUND"
+                  and run_state in {"CREATED", "QUEUED"}):
+                self._transition_run_with_connection(
+                    connection, dispatch.run_id, dispatch.organization_id, run_state,
+                    "INFRASTRUCTURE_FAILURE", "certforge.dispatcher",
+                    "dispatch_attempts_exhausted_before_execution", "p7.subscriber", now,
+                )
+                connection.execute(
+                    "UPDATE runs SET run_outcome = 'INFRA_FAILED', updated_at = ? "
+                    "WHERE run_id = ? AND tenant_id = ?",
+                    (now, dispatch.run_id, dispatch.organization_id),
+                )
+                connection.execute(
+                    "UPDATE subscriber_run_reservations SET state = 'RELEASED', updated_at = ? "
+                    "WHERE run_id = ? AND organization_id = ? AND state = 'BOUND'",
+                    (now, dispatch.run_id, dispatch.organization_id),
+                )
+                self._compensate_crash_meter(
+                    connection, dispatch.organization_id, str(row["idempotency_key"]),
+                    dispatch.run_id, str(row["metered_at"]), key_prefix="dispatch-retry-exhausted",
+                    reason="dispatch_attempts_exhausted_before_execution",
+                )
+                state = "FAILED"
             else:
                 state = "FAILED"
             connection.execute(
@@ -5189,14 +5220,15 @@ class SubscriberGovernance:
                 )
 
     def release_reservation(
-        self, reservation: RunReservation, *, reason: str, compensate_meter: bool
+        self, reservation: RunReservation, *, reason: str, compensate_meter: bool,
+        only_reserved: bool = False,
     ) -> None:
         require_identifier(reason, "reason")
         now = to_utc_iso(self._now())
         with self._connection(immediate=True) as connection:
             row = connection.execute(
                 """
-                SELECT r.state, r.created_at,
+                SELECT r.state, r.created_at, r.request_digest,
                        (
                            SELECT u.occurred_at
                            FROM subscriber_usage_events u
@@ -5212,6 +5244,11 @@ class SubscriberGovernance:
                 (reservation.organization_id, reservation.idempotency_key),
             ).fetchone()
             if row is None or row["state"] == "RELEASED":
+                return
+            # Recovery owns only the exact still-unbound reservation it observed.
+            # A concurrent API materialization or dispatcher claim must survive.
+            if only_reserved and (row["state"] != "RESERVED"
+                                  or row["request_digest"] != reservation.request_digest):
                 return
             connection.execute(
                 """

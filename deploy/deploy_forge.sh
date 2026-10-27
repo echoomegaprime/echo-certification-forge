@@ -253,6 +253,7 @@ ECHO_CERTFORGE_EVIDENCE_ROOT="$STAGING_ROOT/evidence" \
 ECHO_CERTFORGE_POLICY="$RELEASE_DIR/policies/mandatory-rules.v2.json" \
 ECHO_CERTFORGE_TRUSTED_KEYS="$STATE_ROOT/trusted-public-keys" \
 ECHO_CERTFORGE_TRANSPORT_KEYS="$STATE_ROOT/trusted-transport-keys" \
+ECHO_CERTFORGE_ADAPTER_MODE="$ADAPTER_MODE" \
 ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE="$ADAPTER_RESPONSE" \
 ECHO_CERTFORGE_PROD_ADAPTER_POLICY="$ADAPTER_POLICY" \
 ECHO_CERTFORGE_ADAPTER_REGISTRY="$ADAPTER_REGISTRY" \
@@ -305,6 +306,7 @@ ECHO_CERTFORGE_DB="$STAGING_ROOT/staging.sqlite3" \
 ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
 ECHO_CERTFORGE_API_KEY_PEPPER="$STAGING_PEPPER" \
 ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
+ECHO_CERTFORGE_EXPECT_RUNTIME_PROFILE="$ADAPTER_MODE" \
 "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
   "http://127.0.0.1:$STAGING_PORT" || {
   echo "!! STAGING SMOKE RED - production untouched"
@@ -365,6 +367,7 @@ DB_PATH="$PROD_DB_PATH"
 DB_BACKUP="$STATE_ROOT/deploy-scratch/echo-certforge-db.$RELEASE_ID"
 HAD_DB=0
 DB_SNAPSHOT_READY=0
+PROD_API_STARTED=0
 
 PROMOTION_ARMED=1
 rollback_production() {
@@ -377,11 +380,23 @@ rollback_production() {
   rollback_status=0
   sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
   sudo systemctl stop "$SERVICE.service" >/dev/null 2>&1 || true
-  if systemctl is-active --quiet "$SERVICE.service"; then
-    rollback_status=1
+  if systemctl is-active --quiet "$SERVICE.service" ||
+      systemctl is-active --quiet "$DISPATCH_SERVICE.service"; then
+    echo "!! rollback cannot quiesce writers; database and recovery snapshots preserved"
+    return 1
   fi
   sudo systemctl disable "$SERVICE.service" >/dev/null 2>&1 || true
-  if [ "$DB_SNAPSHOT_READY" = 1 ]; then
+  if [ "$DB_SNAPSHOT_READY" = 1 ] && [ "$PROD_API_STARTED" = 1 ]; then
+    # The API may have acknowledged customer writes during promotion. Retain
+    # them for the prior source and save an additional immutable recovery copy.
+    # If the old source is incompatible, its health check fails closed below;
+    # never silently discard acknowledged writes by restoring the old snapshot.
+    "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/preserve_rollback_database.py" \
+      "$DB_PATH" "$DB_BACKUP.post-promotion" || {
+        echo "!! accepted-write snapshot failed; both services remain stopped"
+        return 1
+      }
+  elif [ "$DB_SNAPSHOT_READY" = 1 ]; then
     rm -f "$DB_PATH-wal" "$DB_PATH-shm"
     if [ "$HAD_DB" = 1 ]; then
       DB_RESTORE="$DB_PATH.rollback.$$"
@@ -504,7 +519,7 @@ rollback_production() {
     sudo systemctl daemon-reload || rollback_status=1
   fi
   rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" \
-    "$RELEASE_DROPIN_BACKUP" "$DISPATCH_RELEASE_DROPIN_BACKUP" "$DB_BACKUP"
+    "$RELEASE_DROPIN_BACKUP" "$DISPATCH_RELEASE_DROPIN_BACKUP"
   if [ "$rollback_status" = 0 ]; then
     echo "ROLLBACK COMPLETE - prior production state is healthy"
   else
@@ -641,6 +656,7 @@ sudo systemctl stop "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl reset-failed "$SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl reset-failed "$DISPATCH_SERVICE.service" >/dev/null 2>&1 || true
 sudo systemctl enable "$SERVICE.service"
+PROD_API_STARTED=1
 sudo systemctl restart "$SERVICE.service"
 sudo systemctl enable "$DISPATCH_SERVICE.service"
 
@@ -658,6 +674,7 @@ if [ "$ready" != 1 ] || ! ECHO_CERTFORGE_DB="$DB_PATH" \
     ECHO_CERTFORGE_SUBSCRIBER_POLICY="$RELEASE_DIR/policies/subscriber-governance.v1.json" \
     ECHO_CERTFORGE_API_KEY_PEPPER="$PROD_PEPPER" \
     ECHO_CERTFORGE_EXPECT_PRODUCT_READY=1 \
+    ECHO_CERTFORGE_EXPECT_RUNTIME_PROFILE="$ADAPTER_MODE" \
     "$RELEASE_DIR/.venv/bin/python" "$RELEASE_DIR/deploy/smoke_live.py" \
       "http://127.0.0.1:$PROD_PORT"; then
   echo "!! PROD RED"
@@ -703,7 +720,7 @@ cat \
 
 PROMOTION_ARMED=0
 trap - EXIT
-rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP" "$DB_BACKUP"
+rm -f "$UNIT_BACKUP" "$DISPATCH_UNIT_BACKUP"
 echo "DEPLOY GREEN - $SERVICE live on :$PROD_PORT @ $NEW_SHA"
 sudo systemctl status "$SERVICE.service" --no-pager -l | head -6 || true
 sudo systemctl status "$DISPATCH_SERVICE.service" --no-pager -l | head -6 || true

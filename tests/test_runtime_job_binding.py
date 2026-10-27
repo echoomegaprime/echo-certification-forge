@@ -73,6 +73,52 @@ def test_authenticated_environment_resolution_distinguishes_jobs_without_executi
     assert client.post("/v1/subscriber/runtime/environment", headers=other, json={"journey": plans[0]}).status_code == 404
 
 
+def test_deployment_smoke_uses_authenticated_job_identity_not_status_default(runtime_api, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("runtime_smoke_test", ROOT / "deploy/smoke_dispatch.py")
+    smoke = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(smoke)
+    client, context, headers = runtime_api
+    journey = ["python3", "certforge_smoke.py"]
+    def request(base, method, path, **kwargs):
+        assert method == "POST" and path == "/v1/subscriber/runtime/environment"
+        assert kwargs["tenant"] == headers["X-Tenant-ID"]
+        response = client.post(path, headers=headers, json=kwargs["body"])
+        return response.status_code, response.json()
+    monkeypatch.setattr(smoke, "_request", request)
+    actual = smoke._resolve_environment("http://isolated.test", {"tenant": headers["X-Tenant-ID"], "token": "synthetic"}, journey, context.runtime_profile.sandbox.image)
+    default = _worker_environment("b" * 64, "c" * 64, manifest=context.manifest, sandbox=context.runtime_profile.sandbox)
+    expected = _worker_environment("b" * 64, "c" * 64, manifest=context.manifest, sandbox=context.runtime_profile.sandbox, journey=journey)
+    assert actual["identity_digest"] == expected.identity_digest
+    assert actual["identity_digest"] != default.identity_digest
+    with pytest.raises(RuntimeError, match="operator image"):
+        smoke._resolve_environment("http://isolated.test", {"tenant": headers["X-Tenant-ID"], "token": "synthetic"}, journey, "sha256:" + "d" * 64)
+
+
+def test_staging_runtime_probe_exercises_real_auth_and_fails_missing_profile(runtime_api, monkeypatch):
+    import importlib.util
+    from types import SimpleNamespace
+    spec = importlib.util.spec_from_file_location("staging_runtime_probe_test", ROOT / "deploy/smoke_live.py")
+    smoke = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(smoke)
+    client, context, headers = runtime_api
+    owner = SimpleNamespace(organization_id=headers['X-Tenant-ID'], bootstrap_api_key=headers['Authorization'][7:])
+    intruder = context.subscribers.provision_organization(
+        slug='runtime-intruder', display_name='Synthetic intruder', owner_email='intruder@example.test',
+        owner_display_name='Synthetic intruder', plan_code='developer')
+    def request(base, method, path, **kwargs):
+        auth = {}
+        if kwargs.get('tenant'): auth['X-Tenant-ID'] = kwargs['tenant']
+        if kwargs.get('token'): auth['Authorization'] = 'Bearer ' + kwargs['token']
+        response = client.post(path, headers=auth, json=kwargs.get('body'))
+        return response.status_code, response.json()
+    monkeypatch.setattr(smoke, '_req', request)
+    public = {'runner_image_digest': context.runtime_profile.sandbox.image}
+    assert smoke.check_runtime_profile('http://isolated.test', owner, intruder, public)
+    context.runtime_profile = None
+    assert not smoke.check_runtime_profile('http://isolated.test', owner, intruder, public)
+
+
 def test_sdk_command_selector_is_removed_before_runtime_resolution(runtime_api):
     client, context, headers = runtime_api
     plan = ["python3", "test.py"]

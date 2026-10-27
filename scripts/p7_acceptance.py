@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from echo_certification_forge.acquisition import acquire_target
-from echo_certification_forge.canonical import parse_utc_iso
+from echo_certification_forge.canonical import parse_utc_iso, sha256_json
 from echo_certification_forge.dispatch_worker import dispatch_once
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.intake import SubmitRequest
@@ -1581,8 +1581,11 @@ def main() -> int:
     intake_reservation = governance.reserve_certification_run(
         intake_principal,
         project_id=str(intake_request.project_id),
-        idempotency_key=intake_request.idempotency_key,
-        request_digest=intake_request.request_digest(),
+        idempotency_key=f"{intake_request.idempotency_key}@{manifest.digest[:16]}",
+        request_digest=sha256_json({
+            "request": intake_request.request_digest(),
+            "active_rule_manifest_digest": manifest.digest,
+        }),
         policy_version=intake_request.policy_version,
         target_type=intake_request.target.target_type,
         target_reference=intake_request.target.reference,

@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any, Callable
 
+from pydantic import ValidationError
+
 from .evidence import EvidenceStore
+from .canonical import sha256_bytes
 from .intake import SubmitRequest
 from .policy import RuleManifest
 from .production_e2e import DirectoryProductionE2EProvider
@@ -25,22 +29,36 @@ def recover_pending_intake(
     manifest: RuleManifest,
 ) -> int:
     recovered = 0
-    for pending in governance.pending_intake_requests():
-        request = SubmitRequest.model_validate(pending.request)
-        governance.materialize_reserved_run(
-            pending.reservation,
-            run_id=request.run_id(manifest.digest),
-            target_type=request.target.target_type,
-            target_reference=request.target.reference,
-            target_identity_digest=request.target.identity_digest,
-            environment_identity_digest=request.environment.identity_digest,
-            environment_json=request.environment.model_dump(exclude_none=True),
-            manifest_id=manifest.manifest_id,
-            manifest_digest=manifest.digest,
-            target_spec=pending.target_spec,
-            journey=pending.journey,
-        )
-        recovered += 1
+    for pending in governance.pending_intake_requests(policy_version=manifest.manifest_id):
+        try:
+            request = SubmitRequest.model_validate(pending.request)
+            governance.materialize_reserved_run(
+                pending.reservation,
+                run_id=request.run_id(manifest.digest),
+                target_type=request.target.target_type,
+                target_reference=request.target.reference,
+                target_identity_digest=request.target.identity_digest,
+                environment_identity_digest=request.environment.identity_digest,
+                environment_json=request.environment.model_dump(exclude_none=True),
+                manifest_id=manifest.manifest_id,
+                manifest_digest=manifest.digest,
+                target_spec=pending.target_spec,
+                journey=pending.journey,
+            )
+            recovered += 1
+        except (SubscriberError, ValidationError) as exc:
+            code = exc.code if isinstance(exc, SubscriberError) else "pending_intake_invalid"
+            # Service/storage failures remain visible. Request-local permanent
+            # refusals cannot wedge dispatch for every other tenant.
+            if isinstance(exc, SubscriberError) and exc.status_code >= 500:
+                raise
+            governance.release_reservation(
+                pending.reservation, reason=code, compensate_meter=True, only_reserved=True,
+            )
+            logging.getLogger(__name__).warning(json.dumps({
+                "event": "pending_intake_rejected", "reason": code,
+                "reservation_ref": sha256_bytes(pending.reservation.idempotency_key.encode())[:32],
+            }))
     return recovered
 
 

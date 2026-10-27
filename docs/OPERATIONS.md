@@ -83,3 +83,22 @@ output while diagnosing the failure.
 Production uses a current-release pointer and retained prior release. If post-promotion health or
 identity differs, atomically restore the prior pointer, restart through the deployment gate, and
 record the rollback receipt. Do not delete failed evidence or reuse a run ID for another target.
+
+After the candidate API has been started, automatic rollback preserves the current
+database, including submissions and billing events acknowledged during promotion.
+With both API and dispatcher stopped, it creates a separate integrity-checked
+post-promotion SQLite snapshot and restores the prior source and service units.
+The original pre-promotion snapshot is retained as a separate recovery artifact.
+Only failures before the first candidate API start may restore that older snapshot
+automatically. A failure to stop either writer or preserve the accepted-write
+snapshot stops rollback without replacing the database. If the previous source
+cannot read the retained database, its health check fails closed and forward
+recovery is required; acknowledged work must not be discarded to obtain green
+health. Schema-changing releases must separately prove backward compatibility.
+
+Required-adapter staging boots with the same adapter mode and inherited owner
+runtime profile as production. Its authenticated runtime probe validates the
+journey commitment and operator image, rejects missing authorization and another
+tenant's key, and fails before promotion when the runtime profile is unavailable.
+Production dispatch smoke resolves its own exact journey declaration through the
+same runtime API instead of reusing the default status environment.
