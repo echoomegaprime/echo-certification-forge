@@ -1549,6 +1549,9 @@ def main() -> int:
         canonical_ref=intake_acquired.canonical_ref,
         artifact_sha256=intake_acquired.artifact_sha256,
     )
+    intake_environment = _worker_environment(
+        manifest=manifest, journey=[sys.executable, "journey.py"]
+    )
     intake_request = SubmitRequest.model_validate(
         {
             "tenant_id": intake_org.organization_id,
@@ -1560,9 +1563,9 @@ def main() -> int:
                 "path": intake_source.resolve().as_posix(),
             },
             "environment": {
-                "identity_digest": _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).identity_digest,
+                "identity_digest": intake_environment.identity_digest,
                 "runner_image_digest": "sha256:"
-                + _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).runner_image_sha256,
+                + intake_environment.runner_image_sha256,
             },
             "policy_version": manifest.manifest_id,
             "idempotency_key": "p7-durable-intake-0001",

@@ -3000,6 +3000,101 @@ def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
     assert persisted["target_identity_digest"] == expected_target.identity_digest
 
 
+@pytest.mark.parametrize("drift", [None, "artifact", "source"])
+def test_local_declared_commitments_survive_intake_and_fail_closed_on_drift(
+    tmp_path, manifest, monkeypatch, drift
+):
+    """Exercise API validation, atomic reservation, acquisition and worker admission."""
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "local-commitments", plan_code="professional")
+    project = _project(
+        client, org.organization_id, org.bootstrap_api_key, slug="local-commitments"
+    )
+    assert project.status_code == 201
+    source = tmp_path / "local-committed-source"
+    source.mkdir()
+    marker = tmp_path / "local-committed-executed"
+    (source / "journey.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    acquired = acquire_target(
+        {"type": "local", "path": str(source)}, tmp_path / "unused-acquisition"
+    )
+    source_commit = "a" * 40
+    environment = _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"])
+    target = {
+        "target_type": "local",
+        "identity_digest": declared_target_identity_digest(
+            org.organization_id, "local", acquired.artifact_sha256,
+            source_commit, acquired.canonical_ref,
+        ),
+        "reference": acquired.canonical_ref,
+        "path": str(source),
+        "artifact_sha256": acquired.artifact_sha256,
+        "source_commit": source_commit,
+    }
+    payload = {
+        "tenant_id": org.organization_id,
+        "project_id": project.json()["project_id"],
+        "target": target,
+        "environment": {
+            "identity_digest": environment.identity_digest,
+            "runner_image_digest": "sha256:" + environment.runner_image_sha256,
+        },
+        "policy_version": manifest.manifest_id,
+        "idempotency_key": "local-commitments-0001",
+        "journey": [sys.executable, "journey.py"],
+    }
+    headers = _headers(org.organization_id, org.bootstrap_api_key)
+    response = client.post("/v1/certifications", headers=headers, json=payload)
+    assert response.status_code == 201, response.text
+    run_id = response.json()["run_id"]
+    persisted = store.get_run(run_id, org.organization_id)
+    declared = json.loads(persisted["target_identity_json"])
+    assert declared["declared_artifact_sha256"] == acquired.artifact_sha256
+    assert declared["declared_source_commit"] == source_commit
+    replay = client.post("/v1/certifications", headers=headers, json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["run_id"] == run_id
+
+    if drift == "artifact":
+        (source / "post-intake-change.txt").write_text("drift\n", encoding="utf-8")
+    elif drift == "source":
+        # Preserve real local acquisition and change only its observed commit.
+        # This proves the worker cannot substitute another source identity.
+        def mismatched_source(spec, destination):
+            return replace(acquire_target(spec, destination), source_commit="b" * 40)
+
+        monkeypatch.setattr(
+            "echo_certification_forge.run_worker.acquire_target", mismatched_source
+        )
+    request = SubmitRequest.model_validate(payload)
+    result = run(
+        run_id, org.organization_id, request.target.worker_spec(), store=store,
+        manifest=manifest, signer=Ed25519VerdictSigner.generate(),
+        subscribers=governance, journey=payload["journey"],
+    )
+    persisted = store.get_run(run_id, org.organization_id)
+    if drift:
+        assert result["error"] == "target_reconciliation_failed"
+        assert persisted["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+        assert not marker.exists()
+        assert store.latest_signed_verdict(run_id, org.organization_id) is None
+    else:
+        expected = TargetIdentity(
+            tenant_id=org.organization_id, target_type="local",
+            canonical_ref=acquired.canonical_ref,
+            artifact_sha256=acquired.artifact_sha256, source_commit=source_commit,
+        )
+        assert result["state"] == RunState.COMPLETED.value
+        assert result["signed"] is True
+        assert marker.exists()
+        assert json.loads(persisted["target_identity_json"]) == expected.to_dict()
+        assert persisted["target_identity_digest"] == expected.identity_digest
+
+
 def test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalizes(
     tmp_path, manifest
 ):
