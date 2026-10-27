@@ -15,6 +15,7 @@ from echo_certification_forge.deploy_gate import DeployGate
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
 from echo_certification_forge.models import SignedVerdictEnvelope
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from production_e2e_support import trusted_generic_production_e2e
 
 RUN = "cert-e2e"
 
@@ -46,6 +47,7 @@ def test_e2e_benign_target_certified_and_deploy_gate_allows(store, manifest, tar
         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
         journey=[sys.executable, "hello.py"],
         control_attestations={"runner_control_channel": True, "signing_authority_separation": True},
+        production_e2e_attestation=trusted_generic_production_e2e(target, environment),
     )
 
     # certified through the full path
