@@ -116,6 +116,8 @@ JourneyArgument = Annotated[str, Field(min_length=1, max_length=2048, pattern=r"
 class RuntimeEnvironmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     journey: list[JourneyArgument] | None = Field(default=None, min_length=1, max_length=32)
+    project_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+    target: SubmitTarget | None = None
 
     @field_validator("journey")
     @classmethod
@@ -541,21 +543,29 @@ def create_app(context: ServiceContext) -> FastAPI:
         x_tenant_id: str | None = Header(default=None),
         authorization: str | None = Header(default=None),
     ) -> RuntimeEnvironmentResponse:
-        subscriber_principal(x_tenant_id, authorization, Permission.RUN_READ, "runtime.environment.resolve")
+        principal = subscriber_principal(x_tenant_id, authorization, Permission.RUN_READ, "runtime.environment.resolve")
         profile = context.runtime_profile
         public = context.certification_environment
         if profile is None or public is None:
             raise HTTPException(status_code=503, detail="runtime_profile_unavailable")
+        if (request.project_id is None) != (request.target is None):
+            raise HTTPException(status_code=422, detail="runtime_project_target_pair_required")
         try:
+            if request.project_id is not None:
+                context.subscribers.get_project(principal, request.project_id, required_status="ACTIVE")
+                profile = profile.select(principal.organization_id, request.project_id, request.target.worker_spec())
             profile.check_execution(profile.sandbox, request.journey)
             environment = measured_environment(
                 manifest=context.manifest, sandbox=profile.sandbox, journey=request.journey,
                 adapter_set_sha256=public.get("adapter_set_sha256"),
                 adapter_execution_profile_sha256=public.get("adapter_execution_profile_sha256"),
+                runtime_binding_sha256=profile.binding.digest if profile.binding else None,
             )
+        except SubscriberError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
         except ValueError as exc:
             code = str(exc)
-            if code in {"runtime_profile_mismatch", "runtime_journey_invalid"}:
+            if code in {"runtime_profile_mismatch", "runtime_journey_invalid", "runtime_binding_target_mismatch"}:
                 raise HTTPException(status_code=422, detail=code) from exc
             raise HTTPException(status_code=503, detail="runtime_identity_unavailable") from exc
         return RuntimeEnvironmentResponse(

@@ -22,6 +22,7 @@ from .canonical import sha256_bytes, sha256_json
 from .models import EnvironmentIdentity
 from .policy import RuleManifest
 from .sandbox import DEFAULT_IMAGE, DockerSandbox
+from .runtime_admission import RuntimeBinding, parse_bindings
 
 _PACKAGE = Path(__file__).resolve().parent
 _LOG = logging.getLogger(__name__)
@@ -80,6 +81,23 @@ def _journey(value: object) -> tuple[str, ...] | None:
 class RuntimeProfile:
     sandbox: DockerSandbox
     journey: tuple[str, ...] | None = None
+    bindings: tuple[RuntimeBinding, ...] = ()
+    binding: RuntimeBinding | None = None
+
+    def select(self, tenant: str, project: str | None, target: dict) -> RuntimeProfile:
+        candidates = [b for b in self.bindings if b.tenant_id == tenant and b.project_id == project
+                      and b.repository == target.get("url")]
+        if not candidates:
+            return self
+        for binding in candidates:
+            try:
+                binding.check_target(target)
+            except ValueError:
+                continue
+            _LOG.info("runtime_binding_selected", extra={"binding_id": binding.binding_id,
+                      "binding_sha256": binding.digest, "source_commit": binding.source_commit})
+            return RuntimeProfile(binding.sandbox, binding.journey, binding=binding)
+        raise ValueError("runtime_binding_target_mismatch")
 
     def check_execution(self, sandbox: DockerSandbox | None, journey: list[str] | None) -> None:
         selected = _journey(journey)
@@ -100,9 +118,12 @@ def load_runtime_profile(
             raw = json.loads(Path(selected).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise ValueError("runtime_profile_unreadable") from exc
-        if not isinstance(raw, dict) or raw.get("schema_version") != _SCHEMA:
+        if not isinstance(raw, dict) or raw.get("schema_version") not in {_SCHEMA, "certforge.runtime.v2"}:
             raise ValueError("runtime_profile_schema_invalid")
-        if set(raw) - {"schema_version", "sandbox", "journey"}:
+        allowed = {"schema_version", "sandbox", "journey"}
+        if raw.get("schema_version") == "certforge.runtime.v2":
+            allowed.add("project_bindings")
+        if set(raw) - allowed:
             raise ValueError("runtime_profile_fields_invalid")
     config = raw.get("sandbox", {})
     if not isinstance(config, dict) or set(config) - _FIELDS:
@@ -115,7 +136,10 @@ def load_runtime_profile(
     command = docker or tuple(os.environ.get("ECHO_CERTFORGE_SANDBOX_DOCKER", "docker").split())
     sandbox = DockerSandbox(**config, docker=command)
     _sandbox_inputs(sandbox)
-    return RuntimeProfile(sandbox, _journey(raw.get("journey")))
+    bindings = parse_bindings(raw.get("project_bindings", []), docker=command,
+                              sandbox_fields=_FIELDS, validate_sandbox=_sandbox_inputs,
+                              validate_journey=_journey)
+    return RuntimeProfile(sandbox, _journey(raw.get("journey")), bindings)
 
 
 def _harness_digest(source_root: Path | None = None) -> str:
@@ -144,8 +168,13 @@ def measured_environment(
     adapter_set_sha256: str | None = None,
     adapter_execution_profile_sha256: str | None = None,
     source_root: Path | None = None,
+    runtime_binding_sha256: str | None = None,
 ) -> EnvironmentIdentity:
     config = _sandbox_inputs(sandbox)
+    if runtime_binding_sha256 is not None:
+        if not re.fullmatch(r"[0-9a-f]{64}", runtime_binding_sha256):
+            raise ValueError("runtime_binding_digest_invalid")
+        config = dict(config, operator_binding_sha256=runtime_binding_sha256)
     plan = _journey(journey)
     try:
         executable_sha256 = sha256_bytes(Path(sys.executable).read_bytes())

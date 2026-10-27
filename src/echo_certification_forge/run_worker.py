@@ -104,6 +104,7 @@ def _worker_environment(
     manifest: RuleManifest | None = None,
     sandbox: DockerSandbox | None = None,
     journey: list[str] | None = None,
+    runtime_binding_sha256: str | None = None,
 ) -> EnvironmentIdentity:
     """Compatibility entrypoint for the measured public runtime contract."""
     return measured_environment(
@@ -111,6 +112,7 @@ def _worker_environment(
         sandbox=sandbox, journey=journey,
         adapter_set_sha256=adapter_set_sha256,
         adapter_execution_profile_sha256=adapter_execution_profile_sha256,
+        runtime_binding_sha256=runtime_binding_sha256,
     )
 
 
@@ -163,16 +165,28 @@ def run(
 ) -> dict:
     if runtime_profile is not None:
         try:
+            if runtime_profile.bindings:
+                if subscribers is None:
+                    return {"run_id": run_id, "error": "subscriber_governance_required"}
+                declared = store.get_run(run_id, tenant)
+                # The launcher supplies only the operator default. Selection comes
+                # from the persisted tenant/project, never caller image fields.
+                runtime_profile.check_execution(sandbox, list(runtime_profile.journey) if runtime_profile.journey else None)
+                runtime_profile = runtime_profile.select(tenant, declared.get("project_id"), target_spec)
+                sandbox = runtime_profile.sandbox
             runtime_profile.check_execution(sandbox, journey)
-        except ValueError:
-            _LOGGER.warning("runtime_profile_rejected", extra={"run_id": run_id, "error_code": "runtime_profile_mismatch"})
-            return {"run_id": run_id, "error": "runtime_profile_mismatch"}
+        except (ValueError, KeyError) as exc:
+            code = "runtime_binding_target_mismatch" if str(exc) == "runtime_binding_target_mismatch" else "runtime_profile_mismatch"
+            _LOGGER.warning("runtime_profile_rejected", extra={"run_id": run_id, "error_code": code})
+            return {"run_id": run_id, "error": code}
+    binding = runtime_profile.binding if runtime_profile else None
     try:
         # Reject unmeasurable inputs before claiming work or acquiring a target.
         prepared = _worker_environment(
             adapter_set_digest(adapter_records) if adapter_records is not None else None,
             sha256_json(adapter_bundle_response.body) if adapter_bundle_response is not None else None,
             manifest=manifest, sandbox=sandbox, journey=journey,
+            runtime_binding_sha256=binding.digest if binding else None,
         )
         if runtime_profile is not None:
             try:
@@ -377,10 +391,15 @@ def run(
         # not merely the launcher's original selection, before any customer code.
         if runtime_profile is not None:
             runtime_profile.check_execution(sandbox_effective, journey)
+        if binding is not None:
+            runtime_error = "runtime_binding_source_mismatch"
+            binding.check_target(target_spec)
+            binding.check_source(acquired.source_root, acquired_source_commit)
         runtime_error = "runtime_identity_unavailable"
         environment = _worker_environment(
             adapter_digest, adapter_execution_profile_sha256,
             manifest=manifest, sandbox=sandbox_effective, journey=journey,
+            runtime_binding_sha256=binding.digest if binding else None,
         )
     except (ValueError, OSError):
         if heartbeat is not None:

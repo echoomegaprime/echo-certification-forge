@@ -1,5 +1,38 @@
 # Measured worker runtime identity
 
+## Source-bound project profiles
+
+An operator may select `certforge.runtime.v2` in the same public profile file and
+add `project_bindings`. Each binding requires a unique `binding_id`, exact
+`tenant_id`, `project_id`, HTTPS `repository`, 40-character `source_commit`, a
+nonempty `dependencies` map of repository-relative paths to SHA-256 hashes,
+an exact `journey`, and `sandbox` settings using the existing restricted fields.
+Image pins, non-root execution and all existing isolation checks remain required.
+The operator file is not accepted from target source or the subscriber request.
+Installing it still requires independent image qualification and release admission.
+
+The runtime resolver accepts optional `project_id` and `target` together, checks
+live project access, and resolves the operator binding for that tenant, project,
+repository and revision. It returns the measured environment using the existing
+`certforge.runtime.v1` response contract. Clients cannot choose a profile or image.
+Other tenants, projects and repositories keep the unchanged default sandbox;
+unadmitted revisions of a bound repository fail closed. This also preserves other
+repositories when an older App installation shares one subscriber project.
+
+The worker derives its project from the persisted run, selects the same binding,
+and verifies the declared environment before acquisition. After acquiring the
+exact revision it verifies the actual source commit and each dependency hash,
+rejecting missing, oversized, changed, escaping or symlinked files before execution.
+The complete operator binding digest is included in the measured environment;
+changing dependency expectations therefore invalidates the old commitment.
+All reservation, worker, lease, signer and final environment fences remain active.
+Selection logs include binding ID, source SHA and binding digest, with no secrets.
+
+Deploy the paired GitHub App resolver change and regenerated SDK schemas only
+through the governed release path. An old queued environment must not be silently
+rewritten or replayed as a new certification. No service, trust, queue, signing key,
+readiness report or production attestation is changed by this source implementation.
+
 The `certforge.runtime.v1` contract replaces fixed `certforge-worker-env:*` labels.
 An environment commits to the selected manifest digest, exact journey argv and
 mandatory rules, executable CertForge package bytes, dependency declarations,
