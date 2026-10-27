@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCHED_BASE = "sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111"
+PATCHED_BASE = "sha256:5789aa194f757888f41fa3d48e14b6feaa1b57c0af0b56fcb1372d6474d3bff0"
 VULNERABLE_BASE = "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
 ROLES = ("runner", "custody", "anchor", "signer", "worker", "verifier")
 
@@ -25,6 +25,8 @@ def test_every_role_image_uses_the_patched_base() -> None:
         assert dockerfile.startswith(f"FROM python:3.12-alpine@{PATCHED_BASE}\n"), role
         assert f'org.opencontainers.image.base.digest="{PATCHED_BASE}"' in dockerfile, role
         assert VULNERABLE_BASE not in dockerfile, role
+        assert "sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111" not in dockerfile, role
+        assert "RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 libuuid=2.42.3-r1" in dockerfile, role
 
 
 def test_sandbox_and_p4_gate_share_the_patched_base() -> None:

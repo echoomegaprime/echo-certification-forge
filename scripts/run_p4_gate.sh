@@ -25,7 +25,7 @@ set -Eeuo pipefail
 REPO_URL="${REPO_URL:-https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge}"
 BRANCH="${BRANCH:-feat/certforge-r5-negative-controls}"
 GIT_CRED_FILE="${GIT_CRED_FILE:-/home/forge/.config/echo/omega_git_creds}"
-BASE_DIGEST="${BASE_DIGEST:-sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111}"
+BASE_DIGEST="${BASE_DIGEST:-sha256:5789aa194f757888f41fa3d48e14b6feaa1b57c0af0b56fcb1372d6474d3bff0}"
 CLAMAV_IMAGE="${CLAMAV_IMAGE:-clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a}"
 COSIGN="${COSIGN:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign}"
 TRIVY="${TRIVY:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/trivy/trivy}"

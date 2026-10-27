@@ -1,4 +1,5 @@
-FROM python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111
+FROM python:3.12-alpine@sha256:5789aa194f757888f41fa3d48e14b6feaa1b57c0af0b56fcb1372d6474d3bff0
+RUN apk add --no-cache libcrypto3=3.5.9-r0 libssl3=3.5.9-r0 libuuid=2.42.3-r1
 
 ARG SOURCE_REVISION=unknown
 ARG IMAGE_VARIANT=unknown
@@ -9,7 +10,7 @@ LABEL org.opencontainers.image.title="Echo Certification Forge Custody" \
       org.opencontainers.image.source="https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.base.name="python:3.12-alpine" \
-      org.opencontainers.image.base.digest="sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111" \
+      org.opencontainers.image.base.digest="sha256:5789aa194f757888f41fa3d48e14b6feaa1b57c0af0b56fcb1372d6474d3bff0" \
       echo.certforge.image.role="custody" \
       echo.certforge.image.variant="${IMAGE_VARIANT}" \
       echo.certforge.admission.policy="${ADMISSION_POLICY_ID}" \
