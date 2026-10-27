@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] - 2026-08-30
+
+### Added
+
+- A pinned-key-signed production E2E gate required before any `PRODUCTION_READY` verdict.
+- Exact E2E bindings for source, deployment, target, environment, accounts, and clients.
+
 All notable changes to Echo Certification Forge are documented here. Versions follow Semantic
 Versioning; dates use ISO 8601.
 

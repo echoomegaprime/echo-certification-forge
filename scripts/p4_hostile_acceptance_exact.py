@@ -147,6 +147,10 @@ def enrich_report(
     if not output_path.is_file():
         raise RuntimeError(f"P4 harness did not produce an output report: {output_path}")
     report = json.loads(output_path.read_text(encoding="utf-8"))
+    # Enrichment is a further acceptance boundary; invalidate any earlier marker
+    # before parsing captured evidence, which can raise or be interrupted.
+    report.pop("completed_phase_gate", None)
+    output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     report["harness"] = {
         "path": str(HERE),
         "sha256": sha256_file(HERE),
@@ -205,6 +209,10 @@ def enrich_report(
         )
         return_code = 1
     report["wrapper_return_code"] = return_code
+    if return_code != 0:
+        report["passed"] = False
+        report["run_outcome"] = "INFRA_FAILED"
+        report["release_verdict"] = "NOT_READY"
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
 
@@ -213,6 +221,15 @@ def main(arguments: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if arguments is None else arguments)
     sealed_manifest_path, output_path = parse_wrapper_paths(argv)
     harness = load_harness()
+    publish_report = harness.write_acceptance_report
+
+    def write_pending_report(path: Path, report: dict[str, Any]) -> None:
+        report.pop("completed_phase_gate", None)
+        harness.write_json(path, report)
+
+    # The core can finish before the exact verifier evidence is enriched.
+    # Keep its on-disk result pending until every wrapper layer has returned.
+    harness.write_acceptance_report = write_pending_report
     artifacts = resolve_runner_artifacts(harness, sealed_manifest_path)
     capture: dict[str, Any] = {}
     harness.execute_container = make_execute_container_override(
@@ -234,6 +251,7 @@ def main(arguments: list[str] | None = None) -> int:
         return_code=return_code,
     )
     final_code = 0 if report.get("passed") is True and report.get("run_outcome") == "COMPLETE" else 1
+    publish_report(output_path, report)
     print(
         json.dumps(
             {

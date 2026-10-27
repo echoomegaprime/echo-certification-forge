@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 from .evidence import EvidenceStore
@@ -10,6 +11,7 @@ from .release_hooks import WebhookSecretRegistry
 from .runner import TrustedTransportRegistry
 from .adapters import adapter_set_digest
 from .run_worker import _worker_environment, load_adapter_execution_profile
+from .runtime_identity import RuntimeProfile, load_runtime_profile
 from .service import ServiceContext, create_app
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import SubscriberGovernance, SubscriberPolicy
@@ -62,9 +64,12 @@ _product_readiness_report = (
     Path(_product_readiness_report_value) if _product_readiness_report_value else None
 )
 _source_commit = os.environ.get("ECHO_CERTFORGE_SOURCE_COMMIT")
+_runtime_profile = (
+    load_runtime_profile() if os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending") == "required" else None
+)
 
 
-def _load_certification_environment() -> dict[str, str] | None:
+def _load_certification_environment(runtime: RuntimeProfile | None = None) -> dict[str, str] | None:
     adapter_mode = os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending")
     if adapter_mode != "required":
         return None
@@ -78,16 +83,24 @@ def _load_certification_environment() -> dict[str, str] | None:
         raise RuntimeError(
             "required adapter mode lacks public profile inputs: " + ", ".join(missing)
         )
-    records, _policy, _response, profile_sha256 = load_adapter_execution_profile(
+    records, _adapter_policy, _response, profile_sha256 = load_adapter_execution_profile(
         **{name: Path(value) for name, value in required.items() if value is not None}
     )
     adapter_sha256 = adapter_set_digest(records)
-    environment = _worker_environment(adapter_sha256, profile_sha256)
+    runtime = runtime or load_runtime_profile()
+    environment = _worker_environment(
+        adapter_sha256, profile_sha256, manifest=RuleManifest.load(_policy),
+        sandbox=runtime.sandbox,
+        journey=list(runtime.journey) if runtime.journey else None,
+    )
     return {
         "certification_environment_identity_digest": environment.identity_digest,
         "runner_image_digest": "sha256:" + environment.runner_image_sha256,
         "adapter_set_sha256": adapter_sha256,
         "adapter_execution_profile_sha256": profile_sha256,
+        "runtime_profile_schema": "certforge.runtime.v2" if runtime.bindings else "certforge.runtime.v1",
+        "runtime_journey_json": json.dumps(runtime.journey),
+        "runtime_journey_mode": "operator_pinned" if runtime.journey is not None else "per_job",
     }
 
 
@@ -109,7 +122,8 @@ app = create_app(
         deployment_credentials=WebhookSecretRegistry.from_file(_deployment_keys),
         transport_registry=_load_transport_registry(_transport_keys),
         adapter_mode=os.environ.get("ECHO_CERTFORGE_ADAPTER_MODE", "pending"),
-        certification_environment=_load_certification_environment(),
+        certification_environment=_load_certification_environment(_runtime_profile),
+        runtime_profile=_runtime_profile,
         product_readiness_report_path=_product_readiness_report,
         adapter_acceptance_report_path=_adapter_report,
         source_commit=_source_commit,

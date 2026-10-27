@@ -41,7 +41,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +64,12 @@ from echo_certification_forge.models import (  # noqa: E402
     VerdictLifecycleEvent,
 )
 from echo_certification_forge.policy import RuleManifest  # noqa: E402
+from echo_certification_forge.production_e2e import (  # noqa: E402
+    BASE_CHECKS,
+    GENERIC_PROFILE,
+    SCHEMA_VERSION,
+    verify_signed_attestation,
+)
 from echo_certification_forge.release_hooks import (  # noqa: E402
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
@@ -187,6 +193,9 @@ def main() -> int:
         signer = Ed25519VerdictSigner.generate()
         trusted = TrustedPublicKeyRegistry.empty()
         trusted.add_pem(signer.public_key_pem)
+        e2e_signer = Ed25519VerdictSigner.generate()
+        e2e_trusted = TrustedPublicKeyRegistry.empty()
+        e2e_trusted.add_pem(e2e_signer.public_key_pem)
 
         environment = EnvironmentIdentity(
             runner_image_sha256=digest("runner"),
@@ -205,6 +214,26 @@ def main() -> int:
             workdir = tmp_path / f"src-{run_id}"
             workdir.mkdir()
             (workdir / "hello.py").write_text("print('service ok')\n", encoding="utf-8")
+            observed_at = utc_now()
+            e2e_payload = {
+                "schema_version": SCHEMA_VERSION,
+                "attestation_id": f"p6-e2e-{target.identity_digest[:16]}",
+                "profile": GENERIC_PROFILE,
+                "target_identity_digest": target.identity_digest,
+                "environment_identity_digest": environment.identity_digest,
+                "source_commit": target.source_commit,
+                "deployment_sha": target.source_commit,
+                "canonical_target": target.canonical_ref,
+                "required_checks": sorted(BASE_CHECKS),
+                "checks": {name: True for name in sorted(BASE_CHECKS)},
+                "stability_probe_count": 3,
+                "observed_at": to_utc_iso(observed_at),
+                "expires_at": to_utc_iso(observed_at + timedelta(minutes=30)),
+                "signing_key_id": e2e_signer.key_id,
+            }
+            production_e2e = verify_signed_attestation(
+                e2e_signer.sign_payload(e2e_payload), e2e_trusted
+            )
             result = RunExecutor(store, manifest, signer).execute(
                 run_id,
                 target.tenant_id,
@@ -215,6 +244,7 @@ def main() -> int:
                     "runner_control_channel": True,
                     "signing_authority_separation": True,
                 },
+                production_e2e_attestation=production_e2e,
             )
             if result.release_verdict != "PRODUCTION_READY":
                 raise RuntimeError(f"certification failed: {result.blocking_findings}")
@@ -225,7 +255,7 @@ def main() -> int:
                 target_type="container",
                 canonical_ref=f"registry.echo/app@{label}",
                 artifact_sha256=digest(label),
-                source_commit="abc123def456",
+                source_commit=digest("source-commit")[:40],
                 dependency_sha256=digest("dependencies"),
                 configuration_sha256=digest("configuration"),
             )
