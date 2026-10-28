@@ -21,6 +21,11 @@ from typing import Any, Callable
 HERE = Path(__file__).resolve()
 ROOT = HERE.parents[1]
 LEGACY_HARNESS = ROOT / "scripts" / "p4_hostile_acceptance.py"
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from echo_certification_forge.p4_manifest import staged_public_verifier_artifacts  # noqa: E402
 
 
 def sha256_file(path: Path) -> str:
@@ -44,7 +49,11 @@ def parse_wrapper_paths(arguments: list[str]) -> tuple[Path, Path]:
     return parsed.sealed_manifest.resolve(strict=True), parsed.output.resolve()
 
 
-def resolve_runner_artifacts(harness: Any, sealed_manifest_path: Path) -> dict[str, Path]:
+def resolve_runner_artifacts(
+    harness: Any,
+    sealed_manifest_path: Path,
+    expected_sha256_out: dict[str, str] | None = None,
+) -> dict[str, Path]:
     document = harness.P4ImageManifest.model_validate_json(
         sealed_manifest_path.read_text(encoding="utf-8")
     )
@@ -76,6 +85,9 @@ def resolve_runner_artifacts(harness: Any, sealed_manifest_path: Path) -> dict[s
             raise RuntimeError(
                 f"public verifier artifact hash mismatch: {name}:expected={expected[name]}:observed={observed}"
             )
+    if expected_sha256_out is not None:
+        expected_sha256_out.clear()
+        expected_sha256_out.update(expected)
     return artifacts
 
 
@@ -84,6 +96,7 @@ def make_execute_container_override(
     *,
     artifacts: dict[str, Path],
     capture: dict[str, Any],
+    expected_sha256: dict[str, str] | None = None,
 ) -> Callable[..., dict[str, Any]]:
     targets = {
         "attestation": "/input/runner.attestation.json",
@@ -96,42 +109,41 @@ def make_execute_container_override(
     def execute_container_exact(**kwargs: Any) -> dict[str, Any]:
         if kwargs.get("role") != "verifier" or kwargs.get("case") != "public-verify":
             return original(**kwargs)
-        mounts = [
-            (artifacts[name].resolve(strict=True), target, True)
-            for name, target in targets.items()
-        ]
-        kwargs.update(
-            mounts=mounts,
-            timeout_seconds=60,
-            memory="256m",
-            pids=64,
-            workspace_size="8m",
-            nofile=256,
-        )
-        result = original(**kwargs)
-        capture.clear()
-        capture.update(
-            {
-                "result": result,
-                "artifacts": {
-                    name: {
-                        "source": str(artifacts[name]),
-                        "target": targets[name],
-                        "sha256": sha256_file(artifacts[name]),
-                        "read_only": True,
-                    }
-                    for name in targets
-                },
-                "execution_limits": {
-                    "timeout_seconds": 60,
-                    "memory": "256m",
-                    "pids": 64,
-                    "workspace_size": "8m",
-                    "nofile": 256,
-                },
-                "private_key_mounted": False,
-            }
-        )
+        with staged_public_verifier_artifacts(artifacts, expected_sha256=expected_sha256) as readable:
+            mounts = [(readable[name], target, True) for name, target in targets.items()]
+            kwargs.update(
+                mounts=mounts,
+                timeout_seconds=60,
+                memory="256m",
+                pids=64,
+                workspace_size="8m",
+                nofile=256,
+            )
+            result = original(**kwargs)
+            capture.clear()
+            capture.update(
+                {
+                    "result": result,
+                    "artifacts": {
+                        name: {
+                            "source": str(artifacts[name]),
+                            "target": targets[name],
+                            "sha256": sha256_file(readable[name]),
+                            "mount_mode": "0444",
+                            "read_only": True,
+                        }
+                        for name in targets
+                    },
+                    "execution_limits": {
+                        "timeout_seconds": 60,
+                        "memory": "256m",
+                        "pids": 64,
+                        "workspace_size": "8m",
+                        "nofile": 256,
+                    },
+                    "private_key_mounted": False,
+                }
+            )
         return result
 
     return execute_container_exact
@@ -213,12 +225,14 @@ def main(arguments: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if arguments is None else arguments)
     sealed_manifest_path, output_path = parse_wrapper_paths(argv)
     harness = load_harness()
-    artifacts = resolve_runner_artifacts(harness, sealed_manifest_path)
+    expected_sha256: dict[str, str] = {}
+    artifacts = resolve_runner_artifacts(harness, sealed_manifest_path, expected_sha256)
     capture: dict[str, Any] = {}
     harness.execute_container = make_execute_container_override(
         harness.execute_container,
         artifacts=artifacts,
         capture=capture,
+        expected_sha256=expected_sha256,
     )
     original_argv = sys.argv
     try:

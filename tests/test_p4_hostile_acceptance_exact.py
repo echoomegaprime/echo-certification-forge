@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -39,11 +40,17 @@ def test_override_uses_only_three_exact_read_only_artifacts(tmp_path: Path) -> N
     for name in ("attestation", "policy", "sbom"):
         path = tmp_path / f"{name}.json"
         path.write_text("{}", encoding="utf-8")
+        path.chmod(0o600)
         artifacts[name] = path
     observed: dict[str, object] = {}
 
     def original(**kwargs):
         observed.update(kwargs)
+        for path, _target, read_only in kwargs["mounts"]:
+            assert read_only is True
+            assert path.read_text(encoding="utf-8") == "{}"
+            assert stat.S_IMODE(path.stat().st_mode) == 0o444
+            assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755
         return {
             "exit_code": 0,
             "timed_out": False,
@@ -70,11 +77,13 @@ def test_override_uses_only_three_exact_read_only_artifacts(tmp_path: Path) -> N
     )
 
     assert result["exit_code"] == 0
-    assert observed["mounts"] == [
-        (artifacts["attestation"].resolve(), "/input/runner.attestation.json", True),
-        (artifacts["policy"].resolve(), "/input/runner.admission-policy.json", True),
-        (artifacts["sbom"].resolve(), "/input/runner.spdx.json", True),
+    assert [(path.name, target, readonly) for path, target, readonly in observed["mounts"]] == [
+        ("runner.attestation.json", "/input/runner.attestation.json", True),
+        ("runner.admission-policy.json", "/input/runner.admission-policy.json", True),
+        ("runner.spdx.json", "/input/runner.spdx.json", True),
     ]
+    assert all(not path.exists() for path, _target, _readonly in observed["mounts"])
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in artifacts.values())
     assert observed["timeout_seconds"] == 60
     assert observed["memory"] == "256m"
     assert observed["pids"] == 64
@@ -82,6 +91,30 @@ def test_override_uses_only_three_exact_read_only_artifacts(tmp_path: Path) -> N
     assert observed["nofile"] == 256
     assert capture["private_key_mounted"] is False
     assert all(item["read_only"] for item in capture["artifacts"].values())
+    assert all(item["mount_mode"] == "0444" for item in capture["artifacts"].values())
+
+
+def test_override_rejects_hash_drift_before_verifier_execution(tmp_path: Path) -> None:
+    wrapper = load_wrapper()
+    artifacts = {}
+    expected = {}
+    for name in ("attestation", "policy", "sbom"):
+        path = tmp_path / f"{name}.json"
+        path.write_text("{}", encoding="utf-8")
+        path.chmod(0o600)
+        artifacts[name] = path
+        expected[name] = wrapper.sha256_file(path)
+    expected["attestation"] = "0" * 64
+    calls = []
+    override = wrapper.make_execute_container_override(
+        lambda **kwargs: calls.append(kwargs),
+        artifacts=artifacts,
+        expected_sha256=expected,
+        capture={},
+    )
+    with pytest.raises(RuntimeError, match="source hash mismatch: attestation"):
+        override(role="verifier", case="public-verify", mounts=[])
+    assert calls == []
 
 
 def test_override_does_not_change_non_verifier_calls(tmp_path: Path) -> None:
