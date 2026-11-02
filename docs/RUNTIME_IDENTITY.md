@@ -1,5 +1,48 @@
 # Measured worker runtime identity
 
+## Source-bound project profiles
+
+An operator may select `certforge.runtime.v2` in the same public profile file and
+add `project_bindings`. Each binding requires a unique `binding_id`, exact
+`tenant_id`, `project_id`, HTTPS `repository`, 40-character `source_commit`, a
+nonempty `dependencies` map of repository-relative paths to SHA-256 hashes,
+an exact `journey`, and `sandbox` settings using the existing restricted fields.
+Image pins, non-root execution and all existing isolation checks remain required.
+The operator file is not accepted from target source or the subscriber request.
+Installing it still requires independent image qualification and release admission.
+
+The runtime resolver accepts optional `project_id` and `target` together, checks
+live project access, and resolves the operator binding for that tenant, project,
+repository and revision. It returns the measured environment using the existing
+`certforge.runtime.v1` response contract. Clients cannot choose a profile or image.
+Other tenants, projects and repositories keep the unchanged default sandbox;
+unadmitted revisions of a bound repository fail closed. This also preserves other
+repositories when an older App installation shares one subscriber project.
+
+The worker derives its project from the persisted run, selects the same binding,
+and verifies the declared environment before acquisition. After acquiring the
+exact revision it verifies the actual source commit and each dependency hash,
+rejecting missing, oversized, changed, escaping or symlinked files before execution.
+The complete operator binding digest is included in the measured environment;
+changing dependency expectations therefore invalidates the old commitment.
+All reservation, worker, lease, signer and final environment fences remain active.
+Selection logs include binding ID, source SHA and binding digest, with no secrets.
+
+Deploy the paired GitHub App resolver change and regenerated SDK schemas only
+through the governed release path. An old queued environment must not be silently
+rewritten or replayed as a new certification. No service, trust, queue, signing key,
+readiness report or production attestation is changed by this source implementation.
+
+Stage the matching API, dispatcher, worker, generated SDK contract and App caller
+before activating a source-bound profile. Preserve the previous admitted release,
+profile and caller configuration as one rollback unit: a v1-only binary rejects a
+v2 profile. Retain queued runs and submission checkpoints without rewriting their
+environment or replaying uncertain intents. A source, image or profile change
+requires fresh exact-identity evidence; prior readiness and image admission do not
+transfer to the new candidate. Connection cleanup retains transaction commit and
+rollback while explicitly closing the worker guard and telemetry handles; failure
+to remove an owned acceptance workspace still fails its cleanup check.
+
 The `certforge.runtime.v1` contract replaces fixed `certforge-worker-env:*` labels.
 An environment commits to the selected manifest digest, exact journey argv and
 mandatory rules, executable CertForge package bytes, dependency declarations,
@@ -116,7 +159,13 @@ secret-field rejection; service/dispatcher/worker identity agreement; and reject
 before acquisition, authenticated per-job resolution, caller-image rejection,
 and equivalent source/real-built-wheel harness commitments. Subscriber regression
 tests additionally verify that changed
-journey commitments cannot execute or receive a signed verdict. Full repository
+journey commitments cannot execute or receive a signed verdict. Exact-source
+project bindings retain the operator-input circuit fence before tenant selection.
+An unadmitted source uses the same bounded tenant retry delay as a journey or
+environment mismatch, without halting unrelated tenants. The project-binding
+tests verify API/worker agreement, altered or missing dependency rejection before
+execution, unchanged default isolation and the retained operator classification.
+Full repository
 and acceptance checks remain required before a release claim.
 
 Host Python and kernel measurements are intentional identity inputs. A host update

@@ -196,6 +196,25 @@ def test_tenant_runtime_mismatch_delays_retries_and_other_tenant_progresses(tmp_
         assert db.execute('SELECT count(*) FROM subscriber_usage_events WHERE organization_id=? AND quantity<0', (org.organization_id,)).fetchone() == (1,)
 
 
+def test_unadmitted_project_source_delays_retry_and_preserves_other_tenant(tmp_path, manifest):
+    from echo_certification_forge.dispatch_worker import dispatch_once
+    from echo_certification_forge.signing import Ed25519VerdictSigner
+
+    store, governance, client = _stack(tmp_path, manifest)
+    org, request, _ = reserve(governance, client, manifest, tmp_path, 'unadmitted-source')
+    other, _, _ = reserve(governance, client, manifest, tmp_path, 'unaffected-tenant')
+    _, result = dispatch_once(governance,
+        lambda *args, **kwargs: {'error': 'runtime_binding_target_mismatch'},
+        dispatcher_id='binding-rejection', organization_id=org.organization_id,
+        worker_options={'store': store, 'manifest': manifest, 'subscribers': governance,
+                        'signer': Ed25519VerdictSigner.generate()})
+    assert not result.get('dispatcher_halted')
+    assert governance.dispatch_status(request.run_id(manifest.digest), org.organization_id)['attempts'] == 1
+    if governance.claim_dispatch('immediate-binding-retry', organization_id=org.organization_id) is not None:
+        pytest.fail('unadmitted source was reclaimed without the existing tenant retry delay')
+    assert governance.claim_dispatch('unaffected-progress', organization_id=other.organization_id) is not None
+
+
 def test_post_claim_measurement_failure_halts_cleanly_without_reopening_terminal_run(tmp_path, manifest, monkeypatch):
     from echo_certification_forge import run_worker
     from echo_certification_forge.dispatch_worker import dispatch_once

@@ -4131,7 +4131,7 @@ class SubscriberGovernance:
             self._recover_expired_claims(connection, organization_id, now_value)
             self._recover_expired_dispatches(connection, now_value)
             filters = ["d.state = 'PENDING'", "r.state = 'BOUND'", "runs.state = 'QUEUED'",
-                       "(d.last_error IS NULL OR d.last_error NOT IN ('runtime_profile_mismatch', 'runtime_environment_mismatch') OR d.updated_at <= ?)"]
+                       "(d.last_error IS NULL OR d.last_error NOT IN ('runtime_profile_mismatch', 'runtime_environment_mismatch', 'runtime_binding_target_mismatch') OR d.updated_at <= ?)"]
             parameters: list[Any] = [to_utc_iso(now_value - timedelta(seconds=60))]
             if run_id is not None:
                 filters.append("d.run_id = ?")

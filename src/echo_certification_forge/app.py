@@ -98,7 +98,7 @@ def _load_certification_environment(runtime: RuntimeProfile | None = None) -> di
         "runner_image_digest": "sha256:" + environment.runner_image_sha256,
         "adapter_set_sha256": adapter_sha256,
         "adapter_execution_profile_sha256": profile_sha256,
-        "runtime_profile_schema": "certforge.runtime.v1",
+        "runtime_profile_schema": "certforge.runtime.v2" if runtime.bindings else "certforge.runtime.v1",
         "runtime_journey_json": json.dumps(runtime.journey),
         "runtime_journey_mode": "operator_pinned" if runtime.journey is not None else "per_job",
     }
