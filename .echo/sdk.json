@@ -29,6 +29,7 @@
     "echo.certforge.evidence",
     "echo.certforge.findings",
     "echo.certforge.governance.get",
+    "echo.certforge.governance.reconcile_reservation",
     "echo.certforge.governance.update",
     "echo.certforge.health",
     "echo.certforge.list_runs",

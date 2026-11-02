@@ -34,6 +34,7 @@
     "POST /v1/subscriber/subscription/cancel": "echo.certforge.subscription.cancel",
     "GET /v1/subscriber/governance": "echo.certforge.governance.get",
     "PUT /v1/subscriber/governance": "echo.certforge.governance.update",
+    "POST /v1/subscriber/certifications/{run_id}/reconcile-reservation": "echo.certforge.governance.reconcile_reservation",
     "POST /v1/subscriber/policy-packs": "echo.certforge.policy_packs.create",
     "GET /v1/subscriber/policy-packs": "echo.certforge.policy_packs.list",
     "POST /v1/subscriber/private-workers": "echo.certforge.private_workers.create",

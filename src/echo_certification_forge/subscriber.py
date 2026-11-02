@@ -3158,13 +3158,128 @@ class SubscriberGovernance:
         connection.execute(
             f"""
             UPDATE subscriber_run_reservations
-            SET state = 'RELEASED', updated_at = ?
+            SET state = 'RELEASED', claim_token = NULL,
+                lease_expires_at = NULL, updated_at = ?
             WHERE organization_id = ? AND state IN ('BOUND', 'EXECUTING', 'STARTED') AND run_id IN (
                 SELECT run_id FROM runs WHERE tenant_id = ? AND state IN ({",".join("?" for _ in _TERMINAL_RUN_STATES)})
             )
             """,
             (now, organization_id, organization_id, *_TERMINAL_RUN_STATES),
         )
+
+    def reconcile_released_reservation(
+        self, principal: SubscriberPrincipal, *, run_id: str, reason: str
+    ) -> dict[str, Any]:
+        """Clear expired residual ownership only for one already terminal run.
+
+        Existing governance authority is revalidated under the writer lock. No
+        execution, state transition, quota compensation or token read/export is
+        performed. Clean repeats return the same durable metadata without a
+        second reconciliation audit event.
+        """
+        try:
+            require_identifier(run_id, "run_id")
+            require_identifier(reason, "reason")
+        except ValueError as exc:
+            raise SubscriberError(422, "reservation_reconcile_input_invalid") from exc
+        with self._connection(immediate=True) as connection:
+            self._require_with_connection(
+                connection, principal, Permission.GOVERNANCE_MANAGE
+            )
+            now_value = self._now()
+            rows = connection.execute(
+                """
+                SELECT r.idempotency_key, r.state, r.updated_at,
+                       r.claim_token IS NOT NULL AS claim_present,
+                       r.lease_expires_at, x.state AS run_state
+                FROM subscriber_run_reservations r
+                JOIN runs x ON x.run_id = r.run_id
+                           AND x.tenant_id = r.organization_id
+                WHERE r.organization_id = ? AND r.run_id = ?
+                """,
+                (principal.organization_id, run_id),
+            ).fetchall()
+            if not rows:
+                raise SubscriberError(404, "run_reservation_not_found")
+            if len(rows) != 1:
+                raise SubscriberError(409, "run_reservation_not_unique")
+            row = rows[0]
+            if row["state"] != "RELEASED":
+                raise SubscriberError(409, "reservation_not_released")
+            if row["run_state"] not in _TERMINAL_RUN_STATES:
+                raise SubscriberError(409, "run_not_terminal")
+            dispatch = connection.execute(
+                """
+                SELECT state, claim_token IS NOT NULL AS claim_present,
+                       lease_owner IS NOT NULL AS owner_present, lease_expires_at
+                FROM subscriber_run_dispatches
+                WHERE run_id = ? AND organization_id = ?
+                """,
+                (run_id, principal.organization_id),
+            ).fetchone()
+            if dispatch is not None and (
+                dispatch["state"] not in ("COMPLETE", "FAILED", "CANCELLED")
+                or dispatch["claim_present"] or dispatch["owner_present"]
+                or dispatch["lease_expires_at"] is not None
+            ):
+                raise SubscriberError(409, "dispatch_not_terminal_and_unclaimed")
+            changed = bool(row["claim_present"] or row["lease_expires_at"] is not None)
+            updated_at = str(row["updated_at"])
+            if changed:
+                if row["lease_expires_at"] is None:
+                    raise SubscriberError(409, "released_claim_expiry_unproven")
+                try:
+                    expires = parse_utc_iso(str(row["lease_expires_at"]))
+                except ValueError as exc:
+                    raise SubscriberError(409, "released_claim_expiry_invalid") from exc
+                if expires > now_value:
+                    raise SubscriberError(409, "released_claim_not_expired")
+                updated_at = to_utc_iso(now_value)
+                cursor = connection.execute(
+                    """
+                    UPDATE subscriber_run_reservations
+                    SET claim_token = NULL, lease_expires_at = NULL, updated_at = ?
+                    WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                      AND state = 'RELEASED' AND lease_expires_at = ?
+                    """,
+                    (updated_at, principal.organization_id, run_id,
+                     row["idempotency_key"], row["lease_expires_at"]),
+                )
+                if cursor.rowcount != 1:
+                    raise SubscriberError(409, "released_reservation_reconcile_conflict")
+                self._append_audit(
+                    connection,
+                    organization_id=principal.organization_id,
+                    actor_ref=principal.user_id,
+                    action="certification.released_claim_reconcile",
+                    resource_type="certification",
+                    resource_id=run_id,
+                    outcome="allowed",
+                    details={"reason": reason, "run_state": str(row["run_state"]),
+                             "prior_claim_present": bool(row["claim_present"]),
+                             "prior_lease_present": True, "meter_compensated": False},
+                )
+            readback = connection.execute(
+                """
+                SELECT state, claim_token IS NOT NULL AS claim_present,
+                       lease_expires_at, updated_at
+                FROM subscriber_run_reservations
+                WHERE organization_id = ? AND run_id = ? AND idempotency_key = ?
+                """,
+                (principal.organization_id, run_id, row["idempotency_key"]),
+            ).fetchone()
+            if (readback is None or readback["state"] != "RELEASED"
+                    or readback["claim_present"] or readback["lease_expires_at"] is not None
+                    or readback["updated_at"] != updated_at):
+                raise SubscriberError(409, "released_reservation_readback_failed")
+            return {
+                "schema": "echo.certforge.released-reservation-reconciliation.v1",
+                "organization_id": principal.organization_id, "run_id": run_id,
+                "run_state": str(row["run_state"]), "reservation_state": "RELEASED",
+                "reconciled": changed, "residual_claim_present": False,
+                "lease_present": False, "reservation_updated_at": updated_at,
+                "meter_compensated": False,
+            }
 
     def reserve_certification_run(
         self,
