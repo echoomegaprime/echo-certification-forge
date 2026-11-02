@@ -1,0 +1,38 @@
+{
+  "schema": "foreman.runtime-recipe-inputs.v1",
+  "state": "UNBUILT_UNSIGNED_NOT_ADMITTED",
+  "recipe_repository": "https://github.com/echoomegaprime/echo-certification-forge",
+  "recipe_commit_binding": "Actual post-commit RECIPE_COMMIT build argument; bind separately in generated admission input lock after commit",
+  "foreman_target_repository": "https://github.com/echoomegaprime/build-tracker",
+  "foreman_target_commit": "cd088e2e07c756b8bc195ce3d1fa6253d845983f",
+  "target_source_baked": false,
+  "base_images": [
+    "docker.io/library/node:24.22.1-trixie-slim@sha256:c8c4a7483bb04544293c82a3eecc3081c37ff5dfedcaf819d60e6e4aaad35b12",
+    "docker.io/library/python:3.12-slim-trixie@sha256:1148dbb014615300fa7e713b2f94f550c0d1c69780c0805f84f093ceee34dd0b"
+  ],
+  "required_runtime": {
+    "node": "24.22.1",
+    "python": "3.12.16",
+    "implementation": "CPython",
+    "libc": [
+      "glibc",
+      "2.41"
+    ],
+    "node_components": {
+      "openssl": "3.5.9",
+      "undici": "7.30.1"
+    }
+  },
+  "copied_node_files": [
+    "/usr/local/bin/node",
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6*",
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+  ],
+  "npm_copied_or_required": false,
+  "requirements_sha256": "833deeef6101dfef02fe6cb36260c963f35226f067dbf1923d1a7e6fa9c4160c",
+  "resolved_wheel_count": 34,
+  "dockerfile_sha256": "953cb082fd08fa3da6c650f0ab104ee9dd0ab84843a77a19e155eef30c9df984",
+  "runtime_probe_sha256": "4195667ed07574d42fc3e85b0d4c0912e367a55cb63d54cce7c5b3670c037f2a",
+  "admission_input_lock": false,
+  "qualification_or_signing_authority": false
+}
