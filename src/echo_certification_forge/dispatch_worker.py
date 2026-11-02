@@ -3,16 +3,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any, Callable
 
+from pydantic import ValidationError
+
 from .evidence import EvidenceStore
+from .canonical import sha256_bytes
 from .intake import SubmitRequest
 from .policy import RuleManifest
+from .production_e2e import DirectoryProductionE2EProvider
 from .run_worker import _load_adapter_inputs, _load_signer, run
-from .sandbox import DEFAULT_IMAGE, DockerSandbox
+from .runtime_identity import load_runtime_profile
 from .subscriber import SubscriberDispatch, SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -24,22 +29,36 @@ def recover_pending_intake(
     manifest: RuleManifest,
 ) -> int:
     recovered = 0
-    for pending in governance.pending_intake_requests():
-        request = SubmitRequest.model_validate(pending.request)
-        governance.materialize_reserved_run(
-            pending.reservation,
-            run_id=request.run_id(manifest.digest),
-            target_type=request.target.target_type,
-            target_reference=request.target.reference,
-            target_identity_digest=request.target.identity_digest,
-            environment_identity_digest=request.environment.identity_digest,
-            environment_json=request.environment.model_dump(exclude_none=True),
-            manifest_id=manifest.manifest_id,
-            manifest_digest=manifest.digest,
-            target_spec=pending.target_spec,
-            journey=pending.journey,
-        )
-        recovered += 1
+    for pending in governance.pending_intake_requests(policy_version=manifest.manifest_id):
+        try:
+            request = SubmitRequest.model_validate(pending.request)
+            governance.materialize_reserved_run(
+                pending.reservation,
+                run_id=request.run_id(manifest.digest),
+                target_type=request.target.target_type,
+                target_reference=request.target.reference,
+                target_identity_digest=request.target.identity_digest,
+                environment_identity_digest=request.environment.identity_digest,
+                environment_json=request.environment.model_dump(exclude_none=True),
+                manifest_id=manifest.manifest_id,
+                manifest_digest=manifest.digest,
+                target_spec=pending.target_spec,
+                journey=pending.journey,
+            )
+            recovered += 1
+        except (SubscriberError, ValidationError) as exc:
+            code = exc.code if isinstance(exc, SubscriberError) else "pending_intake_invalid"
+            # Service/storage failures remain visible. Request-local permanent
+            # refusals cannot wedge dispatch for every other tenant.
+            if isinstance(exc, SubscriberError) and exc.status_code >= 500:
+                raise
+            governance.release_reservation(
+                pending.reservation, reason=code, compensate_meter=True, only_reserved=True,
+            )
+            logging.getLogger(__name__).warning(json.dumps({
+                "event": "pending_intake_rejected", "reason": code,
+                "reservation_ref": sha256_bytes(pending.reservation.idempotency_key.encode())[:32],
+            }))
     return recovered
 
 
@@ -117,6 +136,19 @@ def dispatch_once(
         )
         raise
     error = str(result.get("error")) if result.get("error") else None
+    if error in {"runtime_operator_profile_mismatch", "runtime_identity_unavailable"}:
+        try:
+            governance.defer_dispatch_runtime_failure(dispatch, error=error)
+        except SubscriberError as exc:
+            # Cancellation, lease fencing or post-claim failure may already have
+            # consumed this claim. Preserve that state and still stop cleanly.
+            if exc.code != "dispatch_claim_inactive":
+                raise
+        logging.getLogger(__name__).error(json.dumps({
+            "event": "dispatcher_runtime_circuit_open", "reason": error,
+            "run_ref": sha256_bytes(dispatch.run_id.encode())[:32],
+        }))
+        return dispatch, {**result, "dispatcher_halted": True, "retry_budget_consumed": False}
     try:
         governance.finish_dispatch(dispatch, error=error)
     except SubscriberError as exc:
@@ -182,10 +214,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--sandbox", action="store_true")
+    parser.add_argument("--runtime-profile", type=Path)
     parser.add_argument("--non-production-compat", action="store_true")
     parser.add_argument(
         "--sandbox-image",
-        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
+        default=None,
     )
     parser.add_argument(
         "--sandbox-docker",
@@ -241,6 +274,24 @@ def main(argv: list[str] | None = None) -> int:
         choices=("platform", "customer"),
         default=os.environ.get("ECHO_CERTFORGE_SIGNING_AUTHORITY", "platform"),
     )
+    parser.add_argument(
+        "--production-e2e-attestation-dir",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR"])
+            if os.environ.get("ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR")
+            else None
+        ),
+    )
+    parser.add_argument(
+        "--trusted-production-e2e-keys",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS"])
+            if os.environ.get("ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS")
+            else None
+        ),
+    )
     args = parser.parse_args(argv)
     if args.poll_seconds <= 0:
         parser.error("--poll-seconds must be positive")
@@ -270,25 +321,46 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     store = EvidenceStore(args.db, args.evidence_root)
     signer = _load_signer(args.signing_key)
-    sandbox = (
-        DockerSandbox(
-            image=args.sandbox_image,
+    production_e2e_paths = (
+        args.production_e2e_attestation_dir,
+        args.trusted_production_e2e_keys,
+    )
+    if sum(path is not None for path in production_e2e_paths) not in (0, 2):
+        print(json.dumps({"error": "production_e2e_trust_incomplete"}))
+        return 2
+    production_e2e_provider = None
+    if all(path is not None for path in production_e2e_paths):
+        try:
+            production_e2e_provider = DirectoryProductionE2EProvider(
+                args.production_e2e_attestation_dir,
+                args.trusted_production_e2e_keys,
+            )
+        except ValueError:
+            print(json.dumps({"error": "production_e2e_trust_unavailable"}))
+            return 2
+    try:
+        runtime = load_runtime_profile(
+            args.runtime_profile, image=args.sandbox_image,
             docker=tuple(args.sandbox_docker.split()),
         )
-        if args.sandbox
-        else None
-    )
+    except ValueError as exc:
+        print(json.dumps({"error": "runtime_profile_invalid", "detail": str(exc)}))
+        return 2
+    sandbox = runtime.sandbox if args.sandbox else None
     options = {
         "store": store,
         "manifest": manifest,
         "signer": signer,
         "subscribers": governance,
         "sandbox": sandbox,
+        "runtime_profile": runtime if not args.non_production_compat else None,
         "worker_id": args.worker_id,
         "worker_attestation_sha256": args.worker_attestation_sha256,
         "execution_location": args.execution_location,
         "signing_authority": args.signing_authority,
     }
+    if production_e2e_provider is not None:
+        options["production_e2e_provider"] = production_e2e_provider
     if supplied_count == len(adapter_paths):
         options["adapter_inputs"] = {
             "response_path": args.adapter_response,
@@ -307,6 +379,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         if dispatch is not None:
             print(json.dumps(result, sort_keys=True))
+        if result is not None and result.get("dispatcher_halted") is True:
+            return 2
         if args.once:
             return 0 if dispatch is not None else 3
         if dispatch is None:

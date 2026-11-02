@@ -1412,6 +1412,33 @@
         "type": "object"
       }
     },
+    "echo.certforge.publish": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/certifications/{run_id}/publish",
+      "output_schema": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      }
+    },
     "echo.certforge.r5.status": {
       "input_schema": {
         "additionalProperties": false,
@@ -1713,6 +1740,250 @@
           "tenant",
           "sandboxed",
           "poll_capability"
+        ],
+        "type": "object"
+      }
+    },
+    "echo.certforge.runtime_environment": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "journey": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00]*$",
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "artifact_sha256": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "identity_digest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "path": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2048,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ref": {
+                    "anyOf": [
+                      {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reference": {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_commit": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "minLength": 7,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "target_type": {
+                    "pattern": "^(local|git|archive|container|package|deployment|mcp|sdk|cli)$",
+                    "type": "string"
+                  },
+                  "url": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2048,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "target_type",
+                  "identity_digest",
+                  "reference"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/runtime/environment",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "environment": {
+            "additionalProperties": false,
+            "properties": {
+              "adapter_set_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "egress_policy_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "harness_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "model_route_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "os_runtime_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "policy_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "prompt_set_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "runner_image_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "test_plan_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "runner_image_sha256",
+              "adapter_set_sha256",
+              "test_plan_sha256",
+              "policy_sha256",
+              "harness_sha256",
+              "prompt_set_sha256",
+              "model_route_sha256",
+              "os_runtime_sha256",
+              "egress_policy_sha256"
+            ],
+            "type": "object"
+          },
+          "journey": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00]*$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "const": "certforge.runtime.v1",
+            "type": "string"
+          },
+          "submit_environment": {
+            "additionalProperties": false,
+            "properties": {
+              "identity_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "runner_image_digest": {
+                "anyOf": [
+                  {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "identity_digest"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "journey",
+          "environment",
+          "submit_environment"
         ],
         "type": "object"
       }
@@ -2295,7 +2566,7 @@
       }
     }
   },
-  "capability_count": 60,
+  "capability_count": 62,
   "policy": "Every Certification Forge SDK action has a command-bearing strict input schema and an output schema derived from its production route contract.",
   "schema_version": "1.0.0"
 }

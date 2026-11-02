@@ -18,6 +18,8 @@ target code — only the journey runs, and only inside the sandbox.
 """
 from __future__ import annotations
 
+import math
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -25,7 +27,7 @@ from pathlib import Path
 from typing import Callable
 
 # Pinned minimal Python base (same digest the P4 supply-chain pipeline pins). Override per policy.
-DEFAULT_IMAGE = "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+DEFAULT_IMAGE = "python:3.12-alpine@sha256:5789aa194f757888f41fa3d48e14b6feaa1b57c0af0b56fcb1372d6474d3bff0"
 
 
 class SandboxError(RuntimeError):
@@ -52,10 +54,28 @@ class DockerSandbox:
     docker: tuple[str, ...] = ("docker",)
     extra_env: dict[str, str] = field(default_factory=dict)
 
+    def validate_resources(self) -> None:
+        """Validate the stored types consumed by Docker argv and deadline arithmetic."""
+        for value in (self.memory, self.tmpfs_size):
+            if not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]*[kmg]?", value):
+                raise SandboxError("sandbox resource limit invalid")
+        if not isinstance(self.cpus, str) or type(self.timeout_s) not in (int, float):
+            raise SandboxError("sandbox resource limit invalid")
+        for value in (self.cpus, self.timeout_s):
+            try:
+                number = float(value)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise SandboxError("sandbox resource limit invalid") from exc
+            if not math.isfinite(number) or number <= 0:
+                raise SandboxError("sandbox resource limit invalid")
+        if type(self.pids_limit) is not int or self.pids_limit < 1:
+            raise SandboxError("sandbox resource limit invalid")
+
     def build_command(self, argv: list[str], workdir: Path) -> list[str]:
         """Construct the fully-hardened `docker run` argv. Pure — no side effects, unit-testable."""
         if not argv:
             raise SandboxError("empty journey argv")
+        self.validate_resources()
         cmd: list[str] = [
             *self.docker, "run", "--rm",
             "--network", "none",

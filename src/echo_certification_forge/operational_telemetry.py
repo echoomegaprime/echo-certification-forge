@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -70,8 +72,17 @@ class OperationalTelemetryRegistry:
         connection.execute("PRAGMA synchronous = FULL")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS authenticated_operational_reports (
@@ -231,7 +242,7 @@ class OperationalTelemetryRegistry:
 
     def hydrate_transport_registry(self, trusted: TrustedTransportRegistry) -> None:
         """Apply durable tenant trust state after static bootstrap keys are loaded."""
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT tenant_id, key_id, public_key_pem, state
@@ -287,7 +298,7 @@ class OperationalTelemetryRegistry:
             }
         )[:24]
         old_public_key_pem = trusted.public_key_pem(old_key_id)
-        with self._connect() as connection:
+        with self._connection() as connection:
             active = connection.execute(
                 "SELECT 1 FROM operational_key_rotations WHERE tenant_id = ? AND state = 'OVERLAP'",
                 (tenant_id,),
@@ -356,7 +367,7 @@ class OperationalTelemetryRegistry:
         }
 
     def key_rotation_status(self, tenant_id: str) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT rotation_id, old_key_id, new_key_id, state, reason,
@@ -422,7 +433,7 @@ class OperationalTelemetryRegistry:
     ) -> dict[str, Any]:
         """Retire the old key only after a new-key-authenticated operational report."""
         current = to_utc_iso(now or utc_now())
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 """
                 SELECT old_key_id, new_key_id, state, started_at, overlap_expires_at
@@ -494,7 +505,7 @@ class OperationalTelemetryRegistry:
         current = to_utc_iso(now)
         blocked: list[tuple[str, str]] = []
         finalized: list[str] = []
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT tenant_id, rotation_id, old_key_id, new_key_id, started_at
@@ -557,7 +568,7 @@ class OperationalTelemetryRegistry:
     ) -> dict[str, Any]:
         """Pin a known authenticated runner to its signing identity and image digest."""
         current = to_utc_iso(now or utc_now())
-        with self._connect() as connection:
+        with self._connection() as connection:
             source = connection.execute(
                 """
                 SELECT runner_key_id, worker_image_sha256
@@ -617,7 +628,7 @@ class OperationalTelemetryRegistry:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         current = to_utc_iso(now or utc_now())
-        with self._connect() as connection:
+        with self._connection() as connection:
             changed = connection.execute(
                 """
                 UPDATE operational_runner_enrollments
@@ -645,7 +656,7 @@ class OperationalTelemetryRegistry:
     ) -> dict[str, Any]:
         """Atomically quarantine every authenticated adapter that is not STABLE."""
         current = to_utc_iso(now or utc_now())
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT adapter_id, maturity FROM authenticated_adapter_inventory
@@ -699,7 +710,7 @@ class OperationalTelemetryRegistry:
             if subject_type == "runner"
             else ("authenticated_adapter_inventory", "adapter_id")
         )
-        with self._connect() as connection:
+        with self._connection() as connection:
             known = connection.execute(
                 f"SELECT 1 FROM {source_table} WHERE tenant_id = ? AND {source_column} = ?",
                 (tenant_id, subject_id),
@@ -763,7 +774,7 @@ class OperationalTelemetryRegistry:
     ) -> dict[str, Any]:
         """Restore eligibility while retaining the quarantine record and audit history."""
         current = to_utc_iso(now or utc_now())
-        with self._connect() as connection:
+        with self._connection() as connection:
             existing = connection.execute(
                 """
                 SELECT 1 FROM operational_quarantines
@@ -888,7 +899,7 @@ class OperationalTelemetryRegistry:
 
         received_at = to_utc_iso(current)
         observed_at = to_utc_iso(response.issued_at)
-        with self._connect() as connection:
+        with self._connection() as connection:
             policy = connection.execute(
                 "SELECT enforced FROM operational_enrollment_policy WHERE tenant_id=?",
                 (response.tenant_id,),
@@ -994,7 +1005,7 @@ class OperationalTelemetryRegistry:
 
         received_at = to_utc_iso(current)
         observed_at = to_utc_iso(response.issued_at)
-        with self._connect() as connection:
+        with self._connection() as connection:
             policy = connection.execute(
                 "SELECT enforced FROM operational_enrollment_policy WHERE tenant_id=?",
                 (claims.tenant_id,),
@@ -1094,7 +1105,7 @@ class OperationalTelemetryRegistry:
             raise OperationalTelemetryError("windows_package_result_body_invalid", 422) from exc
         received_at = to_utc_iso(current)
         observed_at = to_utc_iso(response.issued_at)
-        with self._connect() as connection:
+        with self._connection() as connection:
             binding = connection.execute(
                 """
                 SELECT r.state AS reservation_state, r.target_type,
@@ -1207,7 +1218,7 @@ class OperationalTelemetryRegistry:
 
     def windows_package_result(self, run_id: str, tenant_id: str) -> dict[str, Any] | None:
         """Return a verified stored result for the key-holding finalizer."""
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 """
                 SELECT runner_id, response_id, body_json, body_sha256,
@@ -1229,7 +1240,7 @@ class OperationalTelemetryRegistry:
         heartbeat_freshness: timedelta = timedelta(minutes=5),
     ) -> dict[str, Any]:
         current = now or utc_now()
-        with self._connect() as connection:
+        with self._connection() as connection:
             heartbeats = connection.execute(
                 """
                 SELECT runner_id, health, capacity_total, capacity_available,

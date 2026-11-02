@@ -4,6 +4,7 @@
   "capabilities": {
     "GET /healthz": "echo.certforge.health",
     "GET /v1/status": "echo.certforge.service_status",
+    "POST /v1/subscriber/runtime/environment": "echo.certforge.runtime_environment",
     "GET /v1/certifications": "echo.certforge.list_runs",
     "POST /v1/certifications": "echo.certforge.submit",
     "GET /v1/certifications/{run_id}": "echo.certforge.status",
