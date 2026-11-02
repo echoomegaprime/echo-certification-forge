@@ -33,6 +33,7 @@ INSERT INTO certforge_sdk_contract(id, input_schema_json, output_schema_json) VA
   ('echo.certforge.evidence', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"},"run_id":{"type":"string"}},"required":["command","run_id"],"type":"object"}'::jsonb, '{"additionalProperties":true,"type":"object"}'::jsonb),
   ('echo.certforge.findings', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"},"run_id":{"type":"string"}},"required":["command","run_id"],"type":"object"}'::jsonb, '{"additionalProperties":true,"type":"object"}'::jsonb),
   ('echo.certforge.governance.get', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"}},"required":["command"],"type":"object"}'::jsonb, '{"additionalProperties":true,"type":"object"}'::jsonb),
+  ('echo.certforge.governance.reconcile_reservation', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"},"reason":{"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$","type":"string"},"run_id":{"type":"string"}},"required":["command","reason","run_id"],"type":"object"}'::jsonb, '{"additionalProperties":true,"type":"object"}'::jsonb),
   ('echo.certforge.governance.update', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"},"config":{"additionalProperties":false,"properties":{"allowed_policy_ids":{"items":{"type":"string"},"type":"array"},"customer_managed_signing":{"type":"boolean"},"customer_signing_key_id":{"anyOf":[{"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$","type":"string"},{"type":"null"}]},"local_only_execution":{"type":"boolean"},"private_worker_only":{"type":"boolean"},"report_brand_name":{"anyOf":[{"type":"string"},{"type":"null"}]},"report_logo_url":{"anyOf":[{"type":"string"},{"type":"null"}]},"retention_days":{"type":"integer"}},"required":["allowed_policy_ids","retention_days","private_worker_only","report_brand_name","report_logo_url","customer_managed_signing","local_only_execution"],"type":"object"},"expected_version":{"minimum":1.0,"type":"integer"}},"required":["command","config","expected_version"],"type":"object"}'::jsonb, '{"additionalProperties":true,"type":"object"}'::jsonb),
   ('echo.certforge.health', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"}},"required":["command"],"type":"object"}'::jsonb, '{"additionalProperties":true,"type":"object"}'::jsonb),
   ('echo.certforge.list_runs', '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"}},"required":["command"],"type":"object"}'::jsonb, '{"items":{"additionalProperties":true,"type":"object"},"type":"array"}'::jsonb),
@@ -75,8 +76,8 @@ BEGIN
     FROM arcanum_sdk.sdk_capabilities
    WHERE id LIKE 'echo.certforge.%'
       OR id = 'echo.certification_forge.r5.run_negative_controls';
-  IF live_count <> 61 THEN
-    RAISE EXCEPTION 'Certification Forge SDK surface drift: live %, contract 61', live_count;
+  IF live_count <> 62 THEN
+    RAISE EXCEPTION 'Certification Forge SDK surface drift: live %, contract 62', live_count;
   END IF;
   IF EXISTS (
     SELECT 1 FROM certforge_sdk_contract c

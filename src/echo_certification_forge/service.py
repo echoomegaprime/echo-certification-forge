@@ -122,6 +122,12 @@ class RerunRequest(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
+class ReleasedReservationReconcileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    command: str | None = Field(default=None, min_length=1, max_length=64)
+    reason: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
 class ApiKeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     command: str | None = Field(default=None, min_length=1, max_length=64)
@@ -635,6 +641,21 @@ def create_app(context: ServiceContext) -> FastAPI:
             # already terminal / past the cancellable window — fail closed, never re-open
             raise HTTPException(status_code=409, detail="run_not_cancellable") from exc
         return project_run(context.store, context.store.get_run(run_id, tenant_id))
+
+    @app.post("/v1/subscriber/certifications/{run_id}/reconcile-reservation")
+    def reconcile_released_reservation(
+        run_id: str,
+        request: ReleasedReservationReconcileRequest,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        principal = subscriber_principal(
+            x_tenant_id, authorization, Permission.GOVERNANCE_MANAGE,
+            "certifications.reservations.reconcile",
+        )
+        return context.subscribers.reconcile_released_reservation(
+            principal, run_id=run_id, reason=request.reason
+        )
 
     @app.get("/v1/certifications/{run_id}/findings")
     def get_findings(

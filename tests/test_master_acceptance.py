@@ -6,6 +6,8 @@ import stat
 import sys
 from pathlib import Path
 
+import pytest
+
 from echo_certification_forge.master_acceptance import (
     MasterAcceptanceInspector,
     MasterAcceptanceRunner,
@@ -59,7 +61,7 @@ def test_master_fixture_discovery_and_defects_are_complete() -> None:
     assert by_code["vulnerable_dependency"].blocks_release is True
 
 
-def test_final_sdk_gate_accepts_checked_exact_60_capability_map() -> None:
+def test_final_sdk_gate_accepts_checked_exact_62_capability_map() -> None:
     contract = json.loads(
         (ROOT / "contracts" / "certforge-sdk-capabilities.v1.json").read_text(
             encoding="utf-8"
@@ -67,6 +69,20 @@ def test_final_sdk_gate_accepts_checked_exact_60_capability_map() -> None:
     )
 
     _master_script_module()._sdk(contract)
+
+
+@pytest.mark.parametrize("mutation", ["wrong_count", "missing_owner_route", "wrong_owner_operation"])
+def test_final_sdk_gate_rejects_owner_route_drift(mutation) -> None:
+    contract = json.loads((ROOT / "contracts/certforge-sdk-capabilities.v1.json").read_text(encoding="utf-8"))
+    name = "echo.certforge.governance.reconcile_reservation"
+    if mutation == "wrong_count":
+        contract["capability_count"] = 61
+    elif mutation == "missing_owner_route":
+        contract["capabilities"]["echo.certforge.unrelated"] = contract["capabilities"].pop(name)
+    else:
+        contract["capabilities"][name]["operation"] = "POST /v1/unrelated"
+    with pytest.raises(ValueError):
+        _master_script_module()._sdk(contract)
 
 
 def test_master_acceptance_full_chain_with_docker_protocol_stub(tmp_path: Path) -> None:

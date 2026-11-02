@@ -871,6 +871,36 @@
         "type": "object"
       }
     },
+    "echo.certforge.governance.reconcile_reservation": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "reason",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "POST /v1/subscriber/certifications/{run_id}/reconcile-reservation",
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
     "echo.certforge.governance.update": {
       "input_schema": {
         "additionalProperties": false,
@@ -2322,7 +2352,7 @@
       }
     }
   },
-  "capability_count": 61,
+  "capability_count": 62,
   "policy": "Every Certification Forge SDK action has a command-bearing strict input schema and an output schema derived from its production route contract.",
   "schema_version": "1.0.0"
 }
