@@ -13,12 +13,14 @@ from echo_certification_forge.supply_chain import (
     ImageAttestationAuthority,
     ImageIdentity,
     ImageRole,
+    ImageAdmissionDenied,
     build_spdx_document,
     container_link_escapes,
     contains_private_key_material,
     evaluate_image_admission,
     scan_build_context,
     scan_dockerfile,
+    pinned_dockerfile_base_digests,
     verify_image_attestation,
     verify_spdx_document,
 )
@@ -27,10 +29,67 @@ NOW = datetime(2026, 7, 16, 18, 0, tzinfo=UTC)
 IMAGE = "sha256:" + "1" * 64
 BASE = "sha256:" + "2" * 64
 SOURCE = "3" * 40
+PAIRED_DOCKERFILE = (
+    "FROM --platform=linux/amd64 node:24.22.1-alpine3.23@sha256:"
+    "47019ffab12a48f49795a8279603f87e91a64de017fb9aa874e64f489b686079 AS node_runtime\n"
+    "FROM --platform=linux/amd64 python:3.12.16-alpine3.23@sha256:"
+    "fe32c943235f1c5748d1106dbdfa25d206355c1be1ae1e167444a7ff9dfa9422\n"
+    "USER 65534:65534\n"
+)
 DOCKERFILE = "4" * 64
 LOCK = "5" * 64
 SBOM = "6" * 64
 PROVENANCE = "7" * 64
+
+
+def test_exact_amd64_multistage_bases_are_pinned_without_recipe_rewriting():
+    result = scan_dockerfile(PAIRED_DOCKERFILE)
+    assert result.valid, result.findings
+    assert result.sha256 == sha256_bytes(PAIRED_DOCKERFILE.encode())
+    assert pinned_dockerfile_base_digests(PAIRED_DOCKERFILE) == (
+        "sha256:47019ffab12a48f49795a8279603f87e91a64de017fb9aa874e64f489b686079",
+        "sha256:fe32c943235f1c5748d1106dbdfa25d206355c1be1ae1e167444a7ff9dfa9422",
+    )
+
+
+@pytest.mark.parametrize("prefix", [
+    "--platform=linux/arm64 ", "--platform=$TARGETPLATFORM ",
+    "--platform=${TARGETPLATFORM} ", "--platform=linux/AMD64 ",
+    "--PLATFORM=linux/amd64 ", "--platform linux/amd64 ",
+    "--platform=linux/amd64 --platform=linux/amd64 ", "--pull ",
+])
+def test_unsupported_or_variable_from_options_fail_both_parsers(prefix):
+    text = f"FROM {prefix}python@{BASE}\nUSER 65534\n"
+    assert not scan_dockerfile(text).valid
+    with pytest.raises(ImageAdmissionDenied):
+        pinned_dockerfile_base_digests(text)
+
+
+@pytest.mark.parametrize("reference", [
+    "python:latest", "${BASE}", "${BASE}@" + BASE, "$BASE@" + BASE,
+    "python@sha256:" + "A" * 64, "python@" + BASE + " unexpected",
+])
+def test_variable_unpinned_or_extra_from_material_fails_both_parsers(reference):
+    text = f"FROM --platform=linux/amd64 {reference}\nUSER 65534\n"
+    assert not scan_dockerfile(text).valid
+    with pytest.raises(ImageAdmissionDenied):
+        pinned_dockerfile_base_digests(text)
+
+
+def test_base_parser_shares_continuation_and_case_handling():
+    text = ("from --platform=linux/amd64 " + "\\" + "\n"
+            f"  registry.example:5000/team/python:3.12@{BASE} aS runtime\nUSER 65534\n")
+    assert scan_dockerfile(text).valid
+    assert pinned_dockerfile_base_digests(text) == (BASE,)
+
+
+@pytest.mark.parametrize("text", [
+    "\\" + "\n", "  \\" + "\n  \\" + "\n", "\\" + "\n# comment only\n",
+])
+def test_empty_continuation_instruction_is_missing_base_not_index_error(text):
+    assert not scan_dockerfile(text).valid
+    with pytest.raises(ImageAdmissionDenied, match="dockerfile_base_missing"):
+        pinned_dockerfile_base_digests(text)
 
 
 def identity(role: ImageRole = ImageRole.RUNNER, image_digest: str = IMAGE) -> ImageIdentity:
