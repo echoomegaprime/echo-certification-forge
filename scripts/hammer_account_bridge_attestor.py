@@ -11,6 +11,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -80,6 +81,28 @@ LOCK_ACQUISITION_CONTROLS = frozenset({
 })
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
+# E5 is a separate unsigned recipe, never admitted to the legacy key path.
+E5_SOURCE = "e5b8c7b7f3fd59c79cd9c436ef14ec40216da119"
+E5_BRANCH = "agent/innovator-provider-readiness-20261030"
+E5_VERSION = "1.1.0+codex.20261030230943"
+E5_MODEL = "huihui_ai/Qwen3.8-abliterated:27b"
+E5_ASSERTIONS = {
+    "repository_policy": 8, "account_continuity_core": 6,
+    "provider_auth_monitor": 5, "provider_content_import": 9,
+    "multiprovider_mcp": 35, "account_continuity_bridge": 22,
+    "provider_registry": 16, "node_regressions": 94,
+}
+E5_PS_TESTS = {
+    **POWERSHELL_TESTS,
+    "account_continuity_core": "tests/Test-AccountContinuityCore.ps1",
+    "account_continuity_bridge": "scripts/Test-AccountContinuityBridge.ps1",
+}
+E5_NODE_TESTS = (
+    "tests/Test-ProviderStatus.mjs", "tests/Test-RouterConcurrency.mjs",
+    "tests/Test-ProviderProcess.mjs", "tests/Test-ReceiptProvenance.mjs",
+    "tests/Test-RouterSafety.mjs", "tests/Test-Boundaries.mjs",
+)
+
 
 class AttestationError(RuntimeError):
     """A fail-closed rejection with no secret-bearing detail."""
@@ -127,6 +150,7 @@ def run(
         capture_output=True,
         timeout=timeout,
         check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     if completed.returncode != 0:
         raise AttestationError(
@@ -469,6 +493,249 @@ def atomic_write(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def e5_snapshot(repository: Path) -> dict[str, str]:
+    """Measure the reviewed first-party tree before executing any child."""
+    repository = repository.resolve(strict=True)
+    git_environment = os.environ.copy()
+    git_environment.update(GIT_NO_REPLACE_OBJECTS="1", GIT_OPTIONAL_LOCKS="0")
+
+    def git(*arguments: str) -> str:
+        return run(["git", "-c", "core.fsmonitor=false", "-C", str(repository), *arguments],
+                   env=git_environment).stdout.strip()
+
+    root = git("rev-parse", "--show-toplevel").replace("\\", "/")
+    if root.casefold() != repository.as_posix().casefold():
+        raise AttestationError("E5 source must be the repository root")
+    if git("rev-parse", "HEAD") != E5_SOURCE or git("branch", "--show-current") != E5_BRANCH:
+        raise AttestationError("E5 source or branch is not the reviewed candidate")
+    if git("remote", "get-url", "origin") not in {
+        "https://github.com/echoomegaprime/account-continuity-bridge.git",
+        "git@github.com:echoomegaprime/account-continuity-bridge.git",
+    } or git("status", "--porcelain"):
+        raise AttestationError("E5 source origin or clean-tree binding failed")
+    entries = [entry for entry in git("ls-tree", "-rz", "--full-tree", E5_SOURCE).split("\0") if entry]
+    if not entries or len(entries) > 10000:
+        raise AttestationError("E5 source inventory is invalid")
+    manifest = {}
+    for entry in sorted(entries):
+        header, relative = entry.split("\t", 1)
+        mode, kind, blob = header.split()
+        path = repository / relative
+        if (mode not in {"100644", "100755"} or kind != "blob" or not SHA40.fullmatch(blob)
+                or path.is_symlink() or not path.resolve().is_relative_to(repository)):
+            raise AttestationError("E5 inventory contains an unsafe path")
+        if not path.is_file() or path.stat().st_size > 16 * 1024 * 1024:
+            raise AttestationError("E5 inventory file is missing or oversized")
+        content = path.read_bytes()
+        # A clean index alone can conceal assume-unchanged/stat-cache edits.
+        # Bind actual bytes to the immutable tree, allowing only Windows CRLF
+        # checkout conversion for these reviewed text source types.
+        candidates = [content]
+        if path.suffix.lower() in {".md", ".ps1", ".psm1", ".mjs", ".json", ".yml", ".yaml"}:
+            candidates.append(content.replace(b"\r\n", b"\n"))
+        identities = {hashlib.sha1(b"blob " + str(len(value)).encode() + b"\0" + value,
+                                   usedforsecurity=False).hexdigest() for value in candidates}
+        if blob not in identities:
+            raise AttestationError("E5 working bytes differ from the immutable source blob")
+        manifest[relative] = sha256_bytes(content)
+    plugin, _ = read_json(repository / ".codex-plugin/plugin.json")
+    if plugin.get("version") != E5_VERSION:
+        raise AttestationError("E5 source plugin version is unexpected")
+    return manifest
+
+
+def e5_installed_snapshot(installed: Path | None, manifest: dict[str, str]) -> dict[str, Any]:
+    if installed is None:
+        return {"state": "MISSING", "reason": "installed_root_not_supplied"}
+    installed = installed.resolve(strict=True)
+    mismatches, actual = [], {}
+    for relative, expected in sorted(manifest.items()):
+        path = installed / relative
+        if (path.is_symlink() or not path.resolve().is_relative_to(installed)
+                or not path.is_file() or path.stat().st_size > 16 * 1024 * 1024):
+            mismatches.append(relative)
+            continue
+        actual[relative] = sha256_bytes(path.read_bytes())
+        if actual[relative] != expected:
+            mismatches.append(relative)
+    return {"state": "MATCH" if not mismatches else "MISMATCH",
+            "manifest_sha256": sha256_bytes(canonical_json(actual)),
+            "mismatch_count": len(mismatches), "mismatches": mismatches[:32],
+            "tracked_files": len(manifest), "scope": "tracked_bytes_only; native enablement unverified"}
+
+
+def e5_node_counts(completed: subprocess.CompletedProcess[str]) -> int:
+    metrics = {}
+    for line in completed.stdout.splitlines():
+        match = re.fullmatch(r"# (tests|pass|fail|cancelled|skipped|todo) (\d+)", line.strip())
+        if match:
+            if match[1] in metrics:
+                raise AttestationError("E5 Node summary is ambiguous")
+            metrics[match[1]] = int(match[2])
+    if (completed.returncode or set(metrics) != {"tests", "pass", "fail", "cancelled", "skipped", "todo"}
+            or metrics["tests"] != 94 or metrics["pass"] != 94
+            or any(metrics[key] for key in ("fail", "cancelled", "skipped", "todo"))):
+        raise AttestationError("E5 Node suite is incomplete or failing")
+    return metrics["pass"]
+
+
+def verify_e5_owner_evidence(path: Path, *, expected_sha256: str,
+                             installed: dict[str, Any]) -> dict[str, Any]:
+    """Validate custody and structure only; owner assertions never admit signing."""
+    if installed.get("state") != "MATCH":
+        raise AttestationError("E5 installed bytes were not independently matched")
+    if path.stat().st_size > 1024 * 1024:
+        raise AttestationError("E5 owner evidence exceeds the bounded input size")
+    document, digest = read_json(path, expected_sha256=expected_sha256)
+    if document.get("schema_version") != "echo.account-continuity.quench-evidence.e5.v1":
+        raise AttestationError("E5 owner evidence schema is invalid")
+    verify_current_time(document.get("observed_at"))
+    expected = {
+        "host": "QUENCH", "branch": E5_BRANCH, "pull_request": 7,
+        "installed_version": E5_VERSION, "installation_scope": "production",
+        "native_plugin_enabled": True, "fresh_native_session": True,
+        "installed_manifest_sha256": installed["manifest_sha256"],
+        "iterations": 3, "credentials_in_evidence": False, "private_key_exported": False,
+    }
+    for key in ("source_commit", "installed_cache_commit", "remote_branch_commit", "pull_request_head_commit"):
+        expected[key] = E5_SOURCE
+    for key, value in expected.items():
+        if type(document.get(key)) is not type(value) or document[key] != value:
+            raise AttestationError("E5 owner evidence identity or production boundary failed")
+    rows = document.get("test_runs")
+    if not isinstance(rows, list) or len(rows) != 3:
+        raise AttestationError("E5 requires three measured test passes")
+    for iteration, row in enumerate(rows, 1):
+        if (not isinstance(row, dict) or type(row.get("iteration")) is not int
+                or row["iteration"] != iteration or row.get("source_commit") != E5_SOURCE
+                or row.get("assertions") != E5_ASSERTIONS or row.get("total") != 195
+                or row.get("critical_journey") != "PASS"):
+            raise AttestationError("E5 detailed test evidence is incomplete")
+        verify_current_time(row.get("observed_at"))
+    seen, sessions = set(), set()
+    rows = document.get("live_runs")
+    if not isinstance(rows, list) or len(rows) != 3:
+        raise AttestationError("E5 requires three distinct governed live runs")
+    for row in rows:
+        if not isinstance(row, dict):
+            raise AttestationError("E5 live record is invalid")
+        verify_current_time(row.get("observed_at"))
+        nonce, session = row.get("canary_sha256"), row.get("session_id")
+        if (row.get("source_commit") != E5_SOURCE or row.get("governance") != "PASS"
+                or row.get("selected_provider") != "forge-qwen"
+                or row.get("selected_route") != "forge-qwen-worker" or row.get("model") != E5_MODEL
+                or row.get("selected_outcome") != "success" or row.get("exact_canary_match") is not True
+                or row.get("provenance") != "LIVE_PROVIDER_BRIDGE"
+                or row.get("credential_copied_or_exposed") is not False
+                or not isinstance(nonce, str) or not SHA256.fullmatch(nonce)
+                or nonce != row.get("response_sha256") or nonce in seen
+                or not isinstance(session, str) or not session or session in sessions):
+            raise AttestationError("E5 live route, nonce or session binding failed")
+        seen.add(nonce)
+        sessions.add(session)
+    rows = document.get("status_runs")
+    if not isinstance(rows, list) or len(rows) != 3:
+        raise AttestationError("E5 requires three non-spending installed status readbacks")
+    for row in rows:
+        if (not isinstance(row, dict) or row.get("source_commit") != E5_SOURCE
+                or row.get("status_nonspending") is not True
+                or row.get("server_name") != "account_continuity_multiprovider_mcp"
+                or row.get("server_version") != "0.5.0"
+                or row.get("provider_count") != 7 or row.get("tool_count") != 17):
+            raise AttestationError("E5 installed status identity is invalid")
+        verify_current_time(row.get("observed_at"))
+    return {"state": "STRUCTURE_VALIDATED_ONLY", "document_sha256": digest,
+            "authority": "owner_readback_not_independently_authenticated"}
+
+
+def measure_e5(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Unsigned exact-E5 measurement; no signing capability")
+    parser.add_argument("--source", type=Path, required=True)
+    parser.add_argument("--installed-root", type=Path)
+    parser.add_argument("--node", required=True)
+    parser.add_argument("--pwsh", required=True)
+    parser.add_argument("--iterations", type=int, choices=(1, 3), default=3)
+    parser.add_argument("--owner-evidence", type=Path)
+    parser.add_argument("--owner-evidence-sha256")
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
+    source, output = args.source.resolve(strict=True), args.output.resolve()
+    installed_root = args.installed_root.resolve(strict=True) if args.installed_root else None
+    if (output.exists() or output.is_relative_to(source)
+            or (installed_root and (output.is_relative_to(installed_root)
+                                   or installed_root.is_relative_to(source)
+                                   or source.is_relative_to(installed_root)))):
+        raise AttestationError("E5 source, install and new output paths must be separate")
+    if bool(args.owner_evidence) != bool(args.owner_evidence_sha256):
+        raise AttestationError("E5 owner evidence requires its independently retrieved custody hash")
+    if args.owner_evidence and (args.owner_evidence.resolve().is_relative_to(source)
+                               or (installed_root and args.owner_evidence.resolve().is_relative_to(installed_root))):
+        raise AttestationError("E5 owner evidence must be outside target and installed trees")
+    before = e5_snapshot(source)
+    installed = e5_installed_snapshot(installed_root, before)
+    environment = {key: value for key, value in os.environ.items() if key.upper() in {
+        "PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "USERPROFILE",
+        "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PSMODULEPATH", "PATHEXT",
+    }}
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    test_runs = []
+    commands = {label: [args.pwsh, "-NoLogo", "-NoProfile", "-File", relative]
+                for label, relative in E5_PS_TESTS.items()}
+    commands["provider_registry"] = [args.node, "tests/Test-ProviderRegistry.mjs"]
+    commands["node_regressions"] = [args.node, "--test", "--test-reporter=tap", *E5_NODE_TESTS]
+    for iteration in range(1, args.iterations + 1):
+        counts, receipts = {}, {}
+        for label, command in commands.items():
+            try:
+                completed = run(command, cwd=source, env=environment, timeout=300)
+                count = (e5_node_counts(completed) if label == "node_regressions"
+                         else parse_node_check(completed) if label == "provider_registry"
+                         else parse_test_json(completed, label))
+                if count != E5_ASSERTIONS[label]:
+                    raise AttestationError("E5 assertion count mismatch")
+            except (AttestationError, OSError, subprocess.SubprocessError) as exc:
+                print(json.dumps({"event": "e5_suite_rejected", "iteration": iteration,
+                                  "suite": label, "failure_kind": type(exc).__name__}), file=sys.stderr)
+                raise AttestationError("E5 fixed source suite failed: " + label) from exc
+            counts[label] = count
+            receipts[label] = {"stdout_sha256": sha256_bytes(completed.stdout.encode("utf-8")),
+                               "command": command[1:], "exit_code": completed.returncode}
+            print(json.dumps({"event": "e5_suite_measured", "iteration": iteration,
+                              "suite": label, "assertions": count}), file=sys.stderr)
+        test_runs.append({"iteration": iteration, "observed_at": datetime.now(UTC).isoformat(),
+                          "source_commit": E5_SOURCE, "assertions": counts,
+                          "total": sum(counts.values()), "receipts": receipts})
+    if e5_snapshot(source) != before or e5_installed_snapshot(installed_root, before) != installed:
+        raise AttestationError("E5 source or installed bytes changed during measurement")
+    owner = {"state": "MISSING"}
+    if args.owner_evidence:
+        owner = verify_e5_owner_evidence(args.owner_evidence,
+                                        expected_sha256=args.owner_evidence_sha256, installed=installed)
+    report = {
+        "schema_version": "echo.account-continuity.e5-measurement.v1",
+        "run_outcome": "COMPLETE", "release_verdict": "NOT_READY", "unsigned": True,
+        "repository": REPOSITORY, "source_commit": E5_SOURCE, "branch": E5_BRANCH,
+        "pull_request": 7, "plugin_version": E5_VERSION,
+        "observed_at": datetime.now(UTC).isoformat(), "host": socket.gethostname(),
+        "source_manifest_sha256": sha256_bytes(canonical_json(before)),
+        "installed": installed, "test_runs": test_runs, "owner_evidence": owner,
+        "missing_production_prerequisites": [
+            "independently_verified_native_enabled_fresh_session",
+            "three_installed_governed_qwen_live_runs_and_status_readbacks",
+            "current_exact_source_hosted_app_receipt_and_custody",
+            "current_public_collector_trust_and_independent_e5_recipe_admission",
+            "genuine_commander_acceptance",
+        ] + ([] if installed["state"] == "MATCH" else ["exact_production_installed_bytes"])
+          + ([] if args.iterations == 3 else ["three_source_stability_iterations"]),
+        "signing_available": False, "private_key_accessed": False, "inference_performed": False,
+    }
+    atomic_write(output, canonical_json(report) + b"\n")
+    print(json.dumps({"run_outcome": "COMPLETE", "release_verdict": "NOT_READY",
+                      "unsigned": True, "report_sha256": sha256_bytes(output.read_bytes()),
+                      "iterations": len(test_runs), "assertions_per_iteration": 195}))
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Attest Account Continuity Bridge from HAMMER")
     parser.add_argument("--bundle", type=Path, required=True)
@@ -754,6 +1021,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
+        if len(sys.argv) > 1 and sys.argv[1] == "measure-e5":
+            raise SystemExit(measure_e5(sys.argv[2:]))
         raise SystemExit(main())
     except (AttestationError, OSError, subprocess.SubprocessError, ValueError) as exc:
         print(json.dumps({"result": "NOT_READY", "error": str(exc)}, sort_keys=True))

@@ -1,5 +1,84 @@
 # Account Continuity Bridge production acceptance collector
 
+## E5 unsigned measurement recipe (PR 7)
+
+The separate `measure-e5` subcommand measures exact candidate
+`e5b8c7b7f3fd59c79cd9c436ef14ec40216da119`, branch
+`agent/innovator-provider-readiness-20261030`, plugin
+`1.1.0+codex.20261030230943`. The legacy production signer below remains pinned
+to its previously reviewed candidate and rejects E5 before key access.
+The new subcommand has no private-key argument, signing operation, installation,
+trust enrollment, live inference or remote admission operation.
+
+The recipe verifies the Git root, official origin, clean exact HEAD and branch,
+then hashes every tracked regular file before starting source tests. It runs
+six fixed PowerShell suites, registry assertions and all six Node test files.
+Default execution repeats them three times and rechecks the complete source
+and installed manifests afterward. A source or installed-byte race aborts output.
+Children receive an explicit Windows environment list including PATHEXT, with
+SDK/provider credentials excluded. Child windows are hidden. Diagnostics contain
+event, suite, iteration, count and failure category; captured output is represented
+by SHA256. Raw child output is not copied into ordinary diagnostic logs.
+
+E5's suite contract differs from the legacy 119-assertion contract:
+
+| Suite | Assertions |
+|---|---:|
+| Repository policy | 8 |
+| Account continuity core | 6 |
+| Provider auth monitor | 5 |
+| Provider content import | 9 |
+| Multiprovider MCP fixtures | 35 |
+| Account continuity bridge | 22 |
+| Provider registry | 16 |
+| Node regressions | 94 |
+| Total per source iteration | 195 |
+
+These are source/fixture assertions, not current provider health or native-client
+production acceptance. The Node suite includes current concurrency, process,
+receipt, safety and boundary regressions; all 94 must pass with zero failures,
+skips, cancellations or todos. Old standalone Windows control outputs cannot
+substitute for this changed suite. Legacy signed collection retains its existing
+Windows rename and acquisition controls.
+
+```powershell
+python scripts/hammer_account_bridge_attestor.py measure-e5 `
+  --source '<clean exact E5 source worktree>' `
+  --installed-root '<actual installed plugin cache root>' `
+  --node '<verified node executable>' --pwsh '<verified pwsh executable>' `
+  --output '<new path outside source and installed trees>'
+```
+
+`--iterations 1` explicitly records the missing three-pass stability prerequisite.
+Omitting the installed root records MISSING. Actual absent or different files
+record MISMATCH with at most 32 names. Source and installed roots must be separate.
+Outputs cannot overwrite source, installed files or previous evidence.
+
+Optional `--owner-evidence` plus `--owner-evidence-sha256` validates bounded schema
+`echo.account-continuity.quench-evidence.e5.v1`: exact four source identities,
+branch/PR/version, independently compared installed-manifest digest, production
+scope, native enabled/fresh-session flags, three current 195-assertion rows with
+critical journeys, three distinct governed Qwen nonce/session rows and three
+non-spending 17-tool/7-provider status rows. The source-pinned route is
+`forge-qwen-worker` and model `huihui_ai/Qwen3.8-abliterated:27b`. Identifying
+required evidence does not authorize inference or override fleet compute limits.
+A changed model route requires new review and evidence. Input files stay outside
+target and installed trees. Missing/expired/mixed identities, canary scope,
+route/model mismatch, replayed nonce/session, wrong counts and custody mismatch
+are rejected.
+
+Owner JSON is not authenticated by field validation. Its result is explicitly
+STRUCTURE_VALIDATED_ONLY and cannot clear native, live, hosted-receipt or signer
+admission. Report schema `echo.account-continuity.e5-measurement.v1` differs from
+a signed production envelope. Synthetic fixtures and successful real measurements
+always emit NOT_READY, unsigned=true, signing_available=false and outstanding
+prerequisites. Do not ingest these reports as production attestations. Trusted
+independent E5 collector admission, authentic hosted App revision receipt/custody,
+actual native/live production readback and genuine Commander acceptance remain
+separate gates. Source passes and metadata booleans cannot replace them.
+
+## Legacy admitted recipe and provenance
+
 `scripts/hammer_account_bridge_attestor.py` is an operator collector for the reviewed
 ACB candidate `d9ffe76ad63b71545d5378f154e15af10e4f7a9e`, PR 4, branch
 `agent/grok47-provider-recovery-20261003`, plugin version

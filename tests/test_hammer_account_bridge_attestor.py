@@ -15,6 +15,206 @@ SPEC = importlib.util.spec_from_file_location(
 collector = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(collector)
 SOURCE = "d9ffe76ad63b71545d5378f154e15af10e4f7a9e"
+
+
+def e5_fixture():
+    """Synthetic owner metadata, never a production admission."""
+    document = current_evidence()
+    document.update({
+        "schema_version": "echo.account-continuity.quench-evidence.e5.v1",
+        "branch": collector.E5_BRANCH, "pull_request": 7,
+        "installed_version": collector.E5_VERSION, "installed_manifest_sha256": "a" * 64,
+    })
+    for field in ("source_commit", "installed_cache_commit", "remote_branch_commit", "pull_request_head_commit"):
+        document[field] = collector.E5_SOURCE
+    for row in document["test_runs"]:
+        row.update(source_commit=collector.E5_SOURCE, total=195, assertions=dict(collector.E5_ASSERTIONS))
+    for row in document["live_runs"]:
+        row.update(source_commit=collector.E5_SOURCE, model=collector.E5_MODEL, selected_route="forge-qwen-worker")
+    for row in document["status_runs"]:
+        row["source_commit"] = collector.E5_SOURCE
+    return document
+
+
+def verify_e5_fixture(tmp_path, document, *, installed_state="MATCH", custody=None):
+    path = tmp_path / "synthetic-e5-owner.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return collector.verify_e5_owner_evidence(
+        path, expected_sha256=custody or hashlib.sha256(path.read_bytes()).hexdigest(),
+        installed={"state": installed_state, "manifest_sha256": "a" * 64})
+
+
+def test_e5_fixture_is_only_structure_validated(tmp_path):
+    result = verify_e5_fixture(tmp_path, e5_fixture())
+    assert result["state"] == "STRUCTURE_VALIDATED_ONLY"
+    assert result["authority"] == "owner_readback_not_independently_authenticated"
+    assert "signature" not in result
+
+
+@pytest.mark.parametrize("field,value", [
+    ("source_commit", SOURCE), ("installed_cache_commit", SOURCE),
+    ("remote_branch_commit", SOURCE), ("pull_request_head_commit", SOURCE),
+    ("pull_request", 4), ("pull_request", True), ("branch", "main"),
+    ("installed_version", "old"), ("installation_scope", "isolated_canary"),
+    ("native_plugin_enabled", False), ("fresh_native_session", False),
+    ("installed_manifest_sha256", "b" * 64), ("iterations", 1),
+    ("credentials_in_evidence", True), ("private_key_exported", True),
+    ("test_runs", []), ("live_runs", []), ("status_runs", []),
+    ("observed_at", "2000-01-01T00:00:00+00:00"),
+])
+def test_e5_rejects_missing_or_mixed_production_boundaries(tmp_path, field, value):
+    document = e5_fixture()
+    document[field] = value
+    with pytest.raises(collector.AttestationError):
+        verify_e5_fixture(tmp_path, document)
+
+
+@pytest.mark.parametrize("section,field,value", [
+    ("test_runs", "total", 119),
+    ("test_runs", "assertions", {"repository_policy": 8}),
+    ("test_runs", "critical_journey", "FAIL"),
+    ("test_runs", "source_commit", SOURCE),
+    ("live_runs", "selected_provider", "other"),
+    ("live_runs", "selected_route", "direct-api"),
+    ("live_runs", "model", "unreviewed-model"),
+    ("live_runs", "selected_outcome", "failure"),
+    ("live_runs", "response_sha256", "f" * 64),
+    ("live_runs", "provenance", "FIXTURE"),
+    ("live_runs", "credential_copied_or_exposed", True),
+    ("status_runs", "status_nonspending", False),
+    ("status_runs", "tool_count", 26),
+    ("status_runs", "source_commit", SOURCE),
+    ("live_runs", "observed_at", "2000-01-01T00:00:00+00:00"),
+])
+def test_e5_rejects_stale_or_fabricated_nested_metadata(tmp_path, section, field, value):
+    document = e5_fixture()
+    document[section][0][field] = value
+    with pytest.raises(collector.AttestationError):
+        verify_e5_fixture(tmp_path, document)
+
+
+@pytest.mark.parametrize("field", ["session_id", "canary_sha256"])
+def test_e5_rejects_replayed_live_identity(tmp_path, field):
+    document = e5_fixture()
+    document["live_runs"][1][field] = document["live_runs"][0][field]
+    if field == "canary_sha256":
+        document["live_runs"][1]["response_sha256"] = document["live_runs"][0][field]
+    with pytest.raises(collector.AttestationError):
+        verify_e5_fixture(tmp_path, document)
+
+
+def test_e5_requires_actual_installed_match_and_custody(tmp_path):
+    with pytest.raises(collector.AttestationError, match="independently matched"):
+        verify_e5_fixture(tmp_path, e5_fixture(), installed_state="MISMATCH")
+    with pytest.raises(collector.AttestationError, match="custody"):
+        verify_e5_fixture(tmp_path, e5_fixture(), custody="f" * 64)
+
+
+def test_e5_installed_bytes_are_measured_and_mismatches_bounded(tmp_path):
+    installed = tmp_path / "installed"
+    installed.mkdir()
+    (installed / "one").write_bytes(b"measured")
+    manifest = {"one": hashlib.sha256(b"measured").hexdigest()}
+    first = collector.e5_installed_snapshot(installed, manifest)
+    assert first["state"] == "MATCH"
+    (installed / "one").write_bytes(b"changed")
+    assert collector.e5_installed_snapshot(installed, manifest)["state"] == "MISMATCH"
+    missing = collector.e5_installed_snapshot(installed, {str(n): "a" * 64 for n in range(50)})
+    assert missing["mismatch_count"] == 50
+    assert len(missing["mismatches"]) == 32
+
+
+def test_e5_node_report_requires_all_tests_and_zero_skips():
+    valid = "# tests 94\n# pass 94\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n"
+    assert collector.e5_node_counts(subprocess.CompletedProcess([], 0, valid)) == 94
+    for output in (valid.replace("# skipped 0", "# skipped 1"),
+                   valid.replace("# pass 94", "# pass 93"), valid + "# tests 94\n", ""):
+        with pytest.raises(collector.AttestationError):
+            collector.e5_node_counts(subprocess.CompletedProcess([], 0, output))
+
+
+def test_e5_checks_immutable_blobs_despite_a_clean_index(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    (source / ".codex-plugin").mkdir(parents=True)
+    payload = json.dumps({"version": collector.E5_VERSION}).encode()
+    plugin = source / ".codex-plugin/plugin.json"
+    plugin.write_bytes(payload)
+    blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\0" + payload).hexdigest()
+
+    def metadata(command, **kwargs):
+        assert kwargs["env"]["GIT_NO_REPLACE_OBJECTS"] == "1"
+        if "--show-toplevel" in command:
+            text = source.as_posix()
+        elif "rev-parse" in command:
+            text = collector.E5_SOURCE
+        elif "branch" in command:
+            text = collector.E5_BRANCH
+        elif "remote" in command:
+            text = "https://github.com/echoomegaprime/account-continuity-bridge.git"
+        elif "ls-tree" in command:
+            text = f"100644 blob {blob}\t.codex-plugin/plugin.json\0"
+        else:
+            text = ""  # A falsely clean status cannot authorize changed bytes.
+        return subprocess.CompletedProcess(command, 0, text, "")
+
+    monkeypatch.setattr(collector, "run", metadata)
+    assert collector.e5_snapshot(source)[".codex-plugin/plugin.json"] == hashlib.sha256(payload).hexdigest()
+    plugin.write_bytes(payload + b" ")
+    with pytest.raises(collector.AttestationError, match="immutable source blob"):
+        collector.e5_snapshot(source)
+
+
+def test_e5_measurement_is_unsigned_even_with_matching_fixture_bytes(tmp_path, monkeypatch):
+    source, installed = tmp_path / "source", tmp_path / "installed"
+    source.mkdir()
+    installed.mkdir()
+    output = tmp_path / "unsigned.json"
+    monkeypatch.setenv("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+    monkeypatch.setattr(collector, "e5_snapshot", lambda path: {"fixture": "a" * 64})
+    monkeypatch.setattr(collector, "e5_installed_snapshot", lambda path, manifest: {
+        "state": "MATCH", "manifest_sha256": "a" * 64})
+    monkeypatch.setattr(collector, "verify_private_key",
+                        lambda *args, **kwargs: pytest.fail("unsigned E5 must never access a signing key"))
+    executed = []
+
+    def fixed_fixture_run(command, **kwargs):
+        assert not any("TOKEN" in key or "API_KEY" in key for key in kwargs["env"])
+        assert ".EXE" in kwargs["env"]["PATHEXT"]
+        executed.append(command)
+        if "--test-reporter=tap" in command:
+            text = "# tests 94\n# pass 94\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n"
+        elif command[-1] == "tests/Test-ProviderRegistry.mjs":
+            text = json.dumps({"ok": True, "assertions": 16})
+        else:
+            label = next(label for label, path in collector.E5_PS_TESTS.items() if path == command[-1])
+            text = json.dumps({"ok": True, "assertions": {
+                f"fixture-{n}": True for n in range(collector.E5_ASSERTIONS[label])}})
+        return subprocess.CompletedProcess(command, 0, text, "")
+
+    monkeypatch.setattr(collector, "run", fixed_fixture_run)
+    argv = ["--source", str(source), "--installed-root", str(installed), "--node", "node",
+            "--pwsh", "pwsh", "--iterations", "1", "--output", str(output)]
+    assert collector.measure_e5(argv) == 0
+    report = json.loads(output.read_text())
+    assert len(executed) == 8 and report["test_runs"][0]["total"] == 195
+    assert report["release_verdict"] == "NOT_READY" and report["unsigned"] is True
+    assert report["signing_available"] is False and report["private_key_accessed"] is False
+    assert "three_source_stability_iterations" in report["missing_production_prerequisites"]
+    with pytest.raises(collector.AttestationError, match="new output"):
+        collector.measure_e5(argv)
+    with pytest.raises(SystemExit):
+        collector.measure_e5(argv + ["--private-key", "forbidden"])
+
+
+def test_e5_cannot_enter_legacy_signer(monkeypatch):
+    monkeypatch.setattr(collector.socket, "gethostname", lambda: "HAMMER")
+    monkeypatch.setattr(collector, "parse_args", lambda: SimpleNamespace(
+        source_commit=collector.E5_SOURCE, base_commit="a" * 40,
+        target_identity_digest="b" * 64, environment_identity_digest="c" * 64))
+    monkeypatch.setattr(collector, "verify_private_key",
+                        lambda *args, **kwargs: pytest.fail("E5 is not admitted to legacy signing"))
+    with pytest.raises(collector.AttestationError, match="reviewed exact-source"):
+        collector.main()
 ASSERTIONS = {
     "repository_policy": 8, "account_continuity_core": 6,
     "provider_auth_monitor": 18, "provider_content_import": 9,
