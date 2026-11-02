@@ -19,7 +19,11 @@ from .canonical import canonical_json, require_sha256, sha256_bytes, to_utc_iso
 
 _IMAGE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_PINNED_FROM = re.compile(r"^FROM\s+[^\s]+@sha256:[0-9a-f]{64}(?:\s+AS\s+[A-Za-z0-9_.-]+)?$", re.IGNORECASE)
+_PINNED_FROM = re.compile(
+    r"^(?i:FROM)\s+(?:--platform=linux/amd64\s+)?"
+    r"[A-Za-z0-9][A-Za-z0-9._:/-]*@(?P<digest>sha256:[0-9a-f]{64})"
+    r"(?:\s+(?i:AS)\s+[A-Za-z0-9_.-]+)?$"
+)
 
 
 class ImageRole(StrEnum):
@@ -273,8 +277,8 @@ class DockerfileScanResult(BaseModel):
     sha256: str
 
 
-def scan_dockerfile(text: str) -> DockerfileScanResult:
-    findings: list[DockerfileFinding] = []
+def _dockerfile_instructions(text: str) -> list[tuple[int, str]]:
+    """Retain original line numbers while joining Dockerfile continuations."""
     logical_lines: list[tuple[int, str]] = []
     pending = ""
     pending_line = 0
@@ -290,13 +294,39 @@ def scan_dockerfile(text: str) -> DockerfileScanResult:
             pending = ""
     if pending:
         logical_lines.append((pending_line, pending.strip()))
+    return logical_lines
+
+
+def pinned_dockerfile_base_digests(text: str) -> tuple[str, ...]:
+    """Parse immutable FROM pins; only the literal linux/amd64 option is admitted."""
+    bases: list[str] = []
+    for _, line in _dockerfile_instructions(text):
+        if not line:
+            continue
+        if line.split(maxsplit=1)[0].upper() != "FROM":
+            continue
+        match = _PINNED_FROM.fullmatch(line)
+        if match is None:
+            raise ImageAdmissionDenied("dockerfile_base_not_pinned")
+        bases.append(match.group("digest"))
+    if not bases:
+        raise ImageAdmissionDenied("dockerfile_base_missing")
+    return tuple(bases)
+
+
+def scan_dockerfile(text: str) -> DockerfileScanResult:
+    findings: list[DockerfileFinding] = []
 
     from_count = 0
-    for line_number, line in logical_lines:
+    for line_number, line in _dockerfile_instructions(text):
+        if not line:
+            continue
         upper = line.upper()
-        if upper.startswith("FROM "):
+        if line.split(maxsplit=1)[0].upper() == "FROM":
             from_count += 1
-            if not _PINNED_FROM.fullmatch(line):
+            try:
+                pinned_dockerfile_base_digests(line)
+            except ImageAdmissionDenied:
                 findings.append(DockerfileFinding(line=line_number, rule="unpinned_base", detail=line))
         if upper.startswith("ADD "):
             findings.append(DockerfileFinding(line=line_number, rule="add_forbidden", detail=line))

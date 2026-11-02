@@ -86,6 +86,23 @@ def test_owner_seal_retains_trust_and_does_not_mutate_old_policy(prepared):
     assert kwargs['prior_policy'].model_dump_json() == before
 
 
+def test_admission_extracts_final_amd64_multistage_pin_without_recipe_rewriting(prepared):
+    kwargs, _ = prepared
+    kwargs['dockerfile'] = (
+        'FROM --platform=linux/amd64 node@sha256:' + '6' * 64 + ' AS node_runtime\n'
+        'FROM --platform=linux/amd64 python@sha256:' + '4' * 64 + '\n'
+        'USER 65534:65534\n'
+    ).encode()
+    kwargs['identity'] = kwargs['identity'].model_copy(update={
+        'dockerfile_sha256': hashlib.sha256(kwargs['dockerfile']).hexdigest()})
+    kwargs['qualification'] = kwargs['qualification'].model_copy(update={
+        'identity_digest': kwargs['identity'].digest})
+    request = prepare_admission_request(**kwargs)
+    assert request.identity.base_image_digest == 'sha256:' + '4' * 64
+    assert request.identity.dockerfile_sha256 == hashlib.sha256(kwargs['dockerfile']).hexdigest()
+    assert request.state == 'UNSIGNED_NOT_ADMITTED'
+
+
 @pytest.mark.parametrize('field',['dockerfile','lockfile','sbom','provenance'])
 def test_material_drift_rejected(prepared,field):
     kwargs,_=prepared

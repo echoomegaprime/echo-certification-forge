@@ -23,6 +23,7 @@ from .supply_chain import (
     ImageIdentity,
     ImageRole,
     evaluate_image_admission,
+    pinned_dockerfile_base_digests,
     scan_dockerfile,
     verify_spdx_document,
 )
@@ -154,8 +155,7 @@ def prepare_admission_request(
     scan = scan_dockerfile(dockerfile.decode("utf-8"))
     if not scan.valid:
         raise ImageAdmissionDenied("dockerfile_policy_failed")
-    bases = [line.split()[1].split("@", 1)[1] for line in dockerfile.decode("utf-8").splitlines()
-             if line.strip().upper().startswith("FROM ")]
+    bases = pinned_dockerfile_base_digests(dockerfile.decode("utf-8"))
     if identity.base_image_digest != bases[-1]:
         raise ImageAdmissionDenied("final_base_mismatch")
     lock = json.loads(lockfile)
