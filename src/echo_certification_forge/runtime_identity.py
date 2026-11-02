@@ -10,7 +10,6 @@ import dataclasses
 import importlib.metadata
 import json
 import logging
-import math
 import os
 import platform
 import re
@@ -21,7 +20,7 @@ from pathlib import Path
 from .canonical import sha256_bytes, sha256_json
 from .models import EnvironmentIdentity
 from .policy import RuleManifest
-from .sandbox import DEFAULT_IMAGE, DockerSandbox
+from .sandbox import DEFAULT_IMAGE, DockerSandbox, SandboxError
 from .runtime_admission import RuntimeBinding, parse_bindings
 
 _PACKAGE = Path(__file__).resolve().parent
@@ -38,18 +37,10 @@ def _sandbox_inputs(sandbox: DockerSandbox | None) -> dict:
         raise ValueError("runtime_extra_env_not_supported")
     if not isinstance(sandbox.image, str) or not _IMAGE.fullmatch(sandbox.image):
         raise ValueError("runtime_image_requires_exact_digest")
-    for value in (sandbox.memory, sandbox.tmpfs_size):
-        if not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]*[kmg]?", value):
-            raise ValueError("runtime_resource_limit_invalid")
-    for value in (sandbox.cpus, sandbox.timeout_s):
-        try:
-            number = float(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("runtime_resource_limit_invalid") from exc
-        if isinstance(value, bool) or not math.isfinite(number) or number <= 0:
-            raise ValueError("runtime_resource_limit_invalid")
-    if type(sandbox.pids_limit) is not int or sandbox.pids_limit < 1:
-        raise ValueError("runtime_resource_limit_invalid")
+    try:
+        sandbox.validate_resources()
+    except SandboxError as exc:
+        raise ValueError("runtime_resource_limit_invalid") from exc
     if not isinstance(sandbox.user, str) or not re.fullmatch(r"[1-9][0-9]*:[1-9][0-9]*", sandbox.user):
         raise ValueError("runtime_nonroot_user_required")
     return {

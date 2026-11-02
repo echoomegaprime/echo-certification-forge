@@ -75,6 +75,12 @@ limits use `DockerSandbox` defaults. Image selection may also come from
 `ECHO_CERTFORGE_SANDBOX_IMAGE` or `--sandbox-image`; a conflicting profile pin is
 rejected. The Docker command must agree between API and worker configuration.
 
+Resource types must match their execution consumers: `cpus` is a positive finite
+numeric string, `timeout_s` is a positive finite JSON number, and `pids_limit` is
+a positive integer. Boolean values and string timeouts are rejected. The same
+checks run before identity measurement and before constructing a Docker command,
+including direct sandbox calls, so malformed limits cannot reach process launch.
+
 The profile must contain no secrets, credentials, or private data. Arbitrary
 environment variables and signing files are never scanned or hashed. Sandbox
 `extra_env` is unsupported by this version and fails closed rather than excluding
