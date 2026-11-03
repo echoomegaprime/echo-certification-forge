@@ -353,7 +353,11 @@ class SubscriberGovernance:
                 connection.execute(f'ALTER TABLE "{table}" RENAME TO "{archive}"')
             connection.execute("COMMIT")
         except BaseException:
-            connection.execute("ROLLBACK")
+            # Roll back only an open transaction. If BEGIN IMMEDIATE itself failed (for example
+            # "database is locked" after the busy timeout), a bare ROLLBACK raised "cannot rollback -
+            # no transaction is active" and hid the real cause (Echo fleet #46912).
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
             raise
         finally:
             connection.close()
@@ -2897,20 +2901,39 @@ class SubscriberGovernance:
         key_prefix: str = "claim-crash",
         reason: str = "expired_worker_claim_after_execution_start",
     ) -> None:
+        # Old releases used caller-key prefixes in the charge namespace. A valid
+        # second submission could occupy that key and silently suppress a credit.
+        # Honor historical credits by run identity, including other crash paths.
+        # Callers hold BEGIN IMMEDIATE, so this check and insert are serialized.
+        existing = connection.execute(
+            """
+            SELECT 1 FROM subscriber_usage_events
+            WHERE organization_id = ? AND meter = 'certification_runs'
+              AND quantity = -1 AND json_extract(metadata_json, '$.run_id') = ?
+            LIMIT 1
+            """,
+            (organization_id, run_id),
+        ).fetchone()
+        if existing is not None:
+            return
         connection.execute(
             """
-            INSERT OR IGNORE INTO subscriber_usage_events(
+            INSERT INTO subscriber_usage_events(
                 organization_id, meter, quantity, idempotency_key,
                 metadata_json, occurred_at
             ) VALUES (?, 'certification_runs', -1, ?, ?, ?)
             """,
             (
                 organization_id,
-                f"{key_prefix}:{idempotency_key}",
+                # API charge keys always end in @manifest; this key cannot be
+                # produced by intake. Unexpected internal collisions must roll
+                # back the repair, never be mistaken for successful compensation.
+                f"run-compensation:{run_id}",
                 canonical_json(
                     {
                         "reason": reason,
                         "run_id": run_id,
+                        "source": key_prefix,
                     }
                 ),
                 occurred_at,
@@ -3955,6 +3978,61 @@ class SubscriberGovernance:
                 outcome="allowed",
             )
 
+    def _terminalize_unstarted_run(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        organization_id: str,
+        idempotency_key: str,
+        metered_at: str,
+        now_text: str,
+        actor: str,
+        reason: str,
+    ) -> None:
+        """Finish a QUEUED run whose dispatch gave up before execution started (fleet #49604).
+
+        Same outcome as lease-expiry exhaustion in _recover_expired_dispatches: the run becomes
+        INFRASTRUCTURE_FAILURE / INFRA_FAILED, its BOUND reservation is released and the metered
+        run is compensated. Compensation is keyed by run identity and recognizes historical
+        crash credits, so retry and recovery paths cannot compensate the same run twice.
+        """
+        self._transition_run_with_connection(
+            connection,
+            run_id,
+            organization_id,
+            "QUEUED",
+            "INFRASTRUCTURE_FAILURE",
+            actor,
+            reason,
+            "p7.subscriber",
+            now_text,
+        )
+        connection.execute(
+            """
+            UPDATE runs SET run_outcome = 'INFRA_FAILED', updated_at = ?
+            WHERE run_id = ? AND tenant_id = ?
+            """,
+            (now_text, run_id, organization_id),
+        )
+        connection.execute(
+            """
+            UPDATE subscriber_run_reservations
+            SET state = 'RELEASED', updated_at = ?
+            WHERE run_id = ? AND organization_id = ? AND state = 'BOUND'
+            """,
+            (now_text, run_id, organization_id),
+        )
+        self._compensate_crash_meter(
+            connection,
+            organization_id,
+            idempotency_key,
+            run_id,
+            metered_at,
+            key_prefix="dispatch-crash",
+            reason="dispatch_attempts_exhausted_before_execution_start",
+        )
+
     def _recover_expired_dispatches(
         self, connection: sqlite3.Connection, now: datetime
     ) -> int:
@@ -4094,7 +4172,61 @@ class SubscriberGovernance:
                     "meter_compensated": next_state == "FAILED",
                 },
             )
-        return terminalized + len(rows)
+        # Runs orphaned before fleet #49604: dispatch FAILED, run still QUEUED, reservation BOUND.
+        # Once terminalized they no longer match, so this pass is idempotent.
+        orphans = connection.execute(
+            """
+            SELECT d.run_id, d.organization_id, d.idempotency_key, d.attempts, d.last_error,
+                   COALESCE(
+                       (
+                           SELECT u.occurred_at
+                           FROM subscriber_usage_events u
+                           WHERE u.organization_id = d.organization_id
+                             AND u.meter = 'certification_runs'
+                             AND u.idempotency_key = d.idempotency_key
+                             AND u.quantity > 0
+                           LIMIT 1
+                       ),
+                       d.created_at
+                   ) AS metered_at
+            FROM subscriber_run_dispatches AS d
+            JOIN subscriber_run_reservations AS r
+              ON r.run_id = d.run_id
+             AND r.organization_id = d.organization_id
+            JOIN runs
+              ON runs.run_id = d.run_id
+             AND runs.tenant_id = d.organization_id
+            WHERE d.state = 'FAILED'
+              AND r.state = 'BOUND'
+              AND runs.state = 'QUEUED'
+            """
+        ).fetchall()
+        for row in orphans:
+            self._terminalize_unstarted_run(
+                connection,
+                run_id=str(row["run_id"]),
+                organization_id=str(row["organization_id"]),
+                idempotency_key=str(row["idempotency_key"]),
+                metered_at=str(row["metered_at"]),
+                now_text=now_text,
+                actor="certforge.dispatch-recovery",
+                reason="dispatch_failed_run_orphaned",
+            )
+            self._append_audit(
+                connection,
+                organization_id=str(row["organization_id"]),
+                actor_ref="certforge.dispatch-recovery",
+                action="certification.dispatch_orphan_reconciled",
+                resource_type="certification",
+                resource_id=str(row["run_id"]),
+                outcome="allowed",
+                details={
+                    "attempts": int(row["attempts"]),
+                    "last_error": row["last_error"],
+                    "meter_compensated": True,
+                },
+            )
+        return terminalized + len(rows) + len(orphans)
 
     def claim_dispatch(
         self,
@@ -4291,6 +4423,21 @@ class SubscriberGovernance:
                 state = "FAILED"
             elif error is not None and int(row["attempts"]) < self.policy.max_dispatch_attempts:
                 state = "PENDING"
+            elif error is not None and run_state == "QUEUED" and row["reservation_state"] == "BOUND":
+                # Last attempt failed before execution started (for example
+                # subscriber_worker_claim_denied). Marking only the dispatch FAILED left the run
+                # QUEUED forever and uncompensated (fleet #49604).
+                self._terminalize_unstarted_run(
+                    connection,
+                    run_id=dispatch.run_id,
+                    organization_id=dispatch.organization_id,
+                    idempotency_key=str(row["idempotency_key"]),
+                    metered_at=str(row["metered_at"]),
+                    now_text=now,
+                    actor="certforge.dispatcher",
+                    reason="dispatch_attempts_exhausted",
+                )
+                state = "FAILED"
             else:
                 state = "FAILED"
             connection.execute(

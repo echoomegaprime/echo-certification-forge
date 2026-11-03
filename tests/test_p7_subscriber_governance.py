@@ -2431,11 +2431,12 @@ def test_worker_lease_heartbeat_and_started_crash_recovery(tmp_path, manifest):
             """
             SELECT COUNT(*), COALESCE(SUM(quantity), 0)
             FROM subscriber_usage_events
-            WHERE organization_id = ? AND idempotency_key = ?
+            WHERE organization_id = ? AND quantity < 0
+              AND json_extract(metadata_json, '$.run_id') = ?
             """,
             (
                 org.organization_id,
-                f"claim-crash:lease-recovery-0001@{manifest.digest[:16]}",
+                run_id,
             ),
         ).fetchone()
     assert compensation == (1, -1)
