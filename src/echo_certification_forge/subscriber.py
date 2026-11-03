@@ -353,7 +353,11 @@ class SubscriberGovernance:
                 connection.execute(f'ALTER TABLE "{table}" RENAME TO "{archive}"')
             connection.execute("COMMIT")
         except BaseException:
-            connection.execute("ROLLBACK")
+            # Roll back only an open transaction. If BEGIN IMMEDIATE itself failed (for example
+            # "database is locked" after the busy timeout), a bare ROLLBACK raised "cannot rollback -
+            # no transaction is active" and hid the real cause (Echo fleet #46912).
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
             raise
         finally:
             connection.close()
