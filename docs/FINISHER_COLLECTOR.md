@@ -168,9 +168,11 @@ The ordered fronts are `auto`, `cauto`, `gauto`, `grauto`, `CFauto`, `CFcauto`,
    have fresh `observed_at >= submitted_at`, verified installation/readback,
    and `controller.last_control_id` equal to the exact native request ID.
    The actual paused/halted flags must agree with the action. Pause/resume
-   require active service and fresh heartbeat. Halt permits a fresh independently
-   established `terminal_halt_verified` observation after process exit without
-   pretending that the exited controller still has a live heartbeat. A stale
+   require active service and fresh heartbeat. Halt requires a fresh independently
+   established `terminal_halt_verified: true`, `lifecycle: halted` and
+   `online: false` observation after process exit without pretending that the
+   exited controller still has a live heartbeat. A live controller setting its
+   halted flag before cleanup is insufficient. A stale
    observation, replayed native ID, other run/installation, accepted write,
    pending journal or unavailable terminal readback must fail.
 2. Immediately after **each** halt, `restoration/<front>` requires
