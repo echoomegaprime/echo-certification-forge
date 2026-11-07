@@ -161,9 +161,18 @@ The ordered fronts are `auto`, `cauto`, `gauto`, `grauto`, `CFauto`, `CFcauto`,
    the real UI snapshot, with no top-level accepted/applied/request ID. It must
    be fresh, online, installation/resource/heartbeat/service verified, and bound
    to the actual full Cloudflare target and transport source. `controls` contains
-   exactly pause/resume/halt, each with a distinct actual request ID, accepted
-   and applied proof, and independently observed paused/running/halted state.
-   An accepted write, pending journal or unavailable terminal readback must fail.
+   exactly pause/resume/halt, each with distinct actual `request_id` and
+   `native_request_id`, matching `action`, exact full `target` including run,
+   `submitted_at`, accepted/applied proof and paused/running/halted `state`.
+   Each `readback` must independently match that target and transport source,
+   have fresh `observed_at >= submitted_at`, verified installation/readback,
+   and `controller.last_control_id` equal to the exact native request ID.
+   The actual paused/halted flags must agree with the action. Pause/resume
+   require active service and fresh heartbeat. Halt permits a fresh independently
+   established `terminal_halt_verified` observation after process exit without
+   pretending that the exited controller still has a live heartbeat. A stale
+   observation, replayed native ID, other run/installation, accepted write,
+   pending journal or unavailable terminal readback must fail.
 2. Immediately after **each** halt, `restoration/<front>` requires
    `method: admitted_owner_operation`, the same admission ID, previous run ID,
    a new actual owner operation ID, and a fresh healthy exact-target snapshot.
