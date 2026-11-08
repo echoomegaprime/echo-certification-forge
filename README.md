@@ -135,3 +135,9 @@ the candidate passes staging smoke, production smoke, and—when adapters are re
 real subscriber-to-dispatcher customer journey. Capability-surface drift, a missing cap,
 a missing `command`, or an empty output schema aborts deployment and preserves the prior
 production release.
+
+## Echo workspace observer
+
+The bounded [Echo workspace observer](docs/ECHO_WORKSPACE_OBSERVER.md) exercises actual
+owner API journeys against a pinned isolated canary. Its unsigned observations retain
+`NOT_READY` and the remaining production admission requirements.
