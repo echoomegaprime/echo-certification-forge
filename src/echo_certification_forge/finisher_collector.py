@@ -357,10 +357,11 @@ class FinisherCollector:
                     "halt": controller["halted"]}
         require(expected[action], "control_readback_state")
         live = checks.get("service_active") is True and checks.get("heartbeat_fresh") is True
-        terminal = action == "halt" and observed.get("terminal_halt_verified") is True
+        terminal = (observed.get("terminal_halt_verified") is True
+                    and observed.get("lifecycle") == "halted" and observed.get("online") is False)
         # A legitimate fresh terminal observation proves process exit through
         # the owner observer. It must not fabricate a live controller heartbeat.
-        require(live or terminal, "control_readback_unavailable")
+        require(terminal if action == "halt" else live, "control_readback_unavailable")
 
     def _front(self, name: str, result: dict[str, Any]) -> None:
         provider = FRONTS[name]

@@ -119,6 +119,8 @@ class OwnerFixture:
                                                "target": self.snapshot(name)["target"],
                                                "source_sha": self.config["bindings"]["transport_source_commit"],
                                                "readback_verified": True, "terminal_halt_verified": action == "halt",
+                                               "lifecycle": "halted" if action == "halt" else "running",
+                                               "online": action != "halt",
                                                "checks": {"installation_verified": True,
                                                           "service_active": action != "halt", "heartbeat_fresh": action != "halt"},
                                                "controller": {"paused": action == "pause", "halted": action == "halt",
@@ -448,4 +450,20 @@ def test_native_control_id_cannot_be_replayed_with_new_front_request_id():
         return data
     owner.modify = change
     with pytest.raises(CollectorError, match="control_replay"):
+        collect(fixture=owner)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda d: d.update(terminal_halt_verified=False, checks={"installation_verified": True, "service_active": True, "heartbeat_fresh": True}),
+    lambda d: d.update(lifecycle="running"),
+    lambda d: d.update(online=True),
+])
+def test_terminal_halt_requires_actual_stopped_cleanup_proof(mutation):
+    owner = OwnerFixture(policy())
+    def change(data):
+        if data["kind"] == "front":
+            mutation(data["result"]["controls"]["halt"]["readback"])
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError):
         collect(fixture=owner)
