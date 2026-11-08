@@ -141,3 +141,8 @@ production release.
 The bounded [Echo workspace observer](docs/ECHO_WORKSPACE_OBSERVER.md) exercises actual
 owner API journeys against a pinned isolated canary. Its unsigned observations retain
 `NOT_READY` and the remaining production admission requirements.
+
+The [production E2E owner intake](docs/PRODUCTION_E2E_INTAKE.md) verifies an
+independently signed, exact-identity envelope and publishes it atomically to the
+existing provider directory. It preserves signing custody, trust roots and the
+deterministic release authority.
