@@ -111,7 +111,18 @@ class OwnerFixture:
                     "start": {"state": "singleton_observed", "already_running": True,
                               "readback_verified": True, "target": self.snapshot(name)["target"]},
                     "controls": {action: {"request_id": name + "-" + action, "accepted": True,
-                                           "applied": True, "state": state}
+                                           "applied": True, "state": state, "action": action,
+                                           "native_request_id": "native-" + name + "-" + action,
+                                           "submitted_at": self.time.isoformat(),
+                                           "target": self.snapshot(name)["target"],
+                                           "readback": {"observed_at": self.time.isoformat(),
+                                               "target": self.snapshot(name)["target"],
+                                               "source_sha": self.config["bindings"]["transport_source_commit"],
+                                               "readback_verified": True, "terminal_halt_verified": action == "halt",
+                                               "checks": {"installation_verified": True,
+                                                          "service_active": action != "halt", "heartbeat_fresh": action != "halt"},
+                                               "controller": {"paused": action == "pause", "halted": action == "halt",
+                                                              "last_control_id": "native-" + name + "-" + action}}}
                                  for action, state in {"pause": "paused", "resume": "running", "halt": "halted"}.items()},
                     "cleanup_verified": True,
                 }
@@ -401,3 +412,40 @@ def test_cli_refuses_missing_authority_or_bad_policy_without_output(tmp_path, ca
     assert process.returncode == 2
     assert json.loads(process.stdout) == {"status": "HELD", "release_verdict": "NOT_READY", "reason": reason}
     assert not output.exists()
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda c: c["pause"]["target"].update(run_id="another-run"),
+    lambda c: c["pause"]["readback"]["target"].update(durable_object_id="f" * 64),
+    lambda c: c["pause"]["readback"].update(source_sha="f" * 40),
+    lambda c: c["resume"]["readback"]["controller"].update(last_control_id="different-request"),
+    lambda c: c["resume"]["readback"]["controller"].update(paused=True),
+    lambda c: c["halt"]["readback"]["controller"].update(halted=False),
+    lambda c: c["halt"]["readback"].update(terminal_halt_verified=False),
+    lambda c: c["pause"]["readback"]["checks"].update(heartbeat_fresh=False),
+    lambda c: c["pause"]["readback"].update(observed_at=(NOW - timedelta(seconds=31)).isoformat()),
+    lambda c: c["pause"].update(submitted_at=(NOW + timedelta(minutes=5)).isoformat()),
+    lambda c: c["resume"].update(action="pause"),
+])
+def test_action_readback_cannot_cross_target_run_time_or_actual_state(mutation):
+    owner = OwnerFixture(policy())
+    def change(data):
+        if data["kind"] == "front":
+            mutation(data["result"]["controls"])
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError):
+        collect(fixture=owner)
+
+
+def test_native_control_id_cannot_be_replayed_with_new_front_request_id():
+    owner = OwnerFixture(policy())
+    def change(data):
+        if data["kind"] == "front":
+            control = data["result"]["controls"]["pause"]
+            control["native_request_id"] = "reused-native-id"
+            control["readback"]["controller"]["last_control_id"] = "reused-native-id"
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError, match="control_replay"):
+        collect(fixture=owner)

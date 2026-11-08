@@ -233,6 +233,7 @@ class FinisherCollector:
         self.ids: set[str] = set()
         self.invocations: set[str] = set()
         self.control_ids: set[str] = set()
+        self.native_control_ids: set[str] = set()
         self.restoration_ids: set[str] = set()
         self.evidence: list[dict[str, str]] = []
 
@@ -306,6 +307,16 @@ class FinisherCollector:
                 and identifier(target.get("run_id")) and (run_id is None or target["run_id"] == run_id),
                 "snapshot_target")
 
+    def _observation_time(self, stamp: Any) -> datetime:
+        if type(stamp) in (int, float):
+            require(0 <= stamp <= 253402300799, "status_snapshot_time")
+            stamp = datetime.fromtimestamp(stamp, UTC)
+        else:
+            stamp = timestamp(stamp)
+        require(self.started <= stamp <= self.clock() and (self.clock() - stamp).total_seconds() <= 30,
+                "status_snapshot_time")
+        return stamp
+
     def _snapshot(self, value: Any, run_id: str | None = None) -> None:
         require(isinstance(value, dict) and value.get("schema") == "echo.finisher.ui.snapshot.v1"
                 and not any(key in value for key in ("accepted", "applied", "request_id")), "status_snapshot_invalid")
@@ -316,14 +327,40 @@ class FinisherCollector:
         checks = value.get("checks")
         require(isinstance(checks, dict) and all(checks.get(key) is True for key in
                 ("service_active", "installation_verified", "heartbeat_fresh", "resource_admitted")), "status_snapshot_unhealthy")
-        stamp = value.get("observed_at")
-        if type(stamp) in (int, float):
-            require(0 <= stamp <= 253402300799, "status_snapshot_time")
-            stamp = datetime.fromtimestamp(stamp, UTC)
-        else:
-            stamp = timestamp(stamp)
-        require(self.started <= stamp <= self.clock() and (self.clock() - stamp).total_seconds() <= 30,
-                "status_snapshot_time")
+        self._observation_time(value.get("observed_at"))
+
+    def _control(self, action: str, control: Any, run_id: str) -> None:
+        require(isinstance(control, dict) and identifier(control.get("request_id"))
+                and identifier(control.get("native_request_id")) and control.get("action") == action,
+                "front_control_invalid")
+        require(control["request_id"] not in self.control_ids
+                and control["native_request_id"] not in self.native_control_ids, "control_replay")
+        self.control_ids.add(control["request_id"])
+        self.native_control_ids.add(control["native_request_id"])
+        self._target(control.get("target"), run_id)
+        require(control.get("accepted") is True and control.get("applied") is True
+                and control.get("state") == CONTROL_STATES[action], "front_control_not_applied")
+        submitted = self._observation_time(control.get("submitted_at"))
+        observed = control.get("readback")
+        require(isinstance(observed, dict) and observed.get("target") == control["target"]
+                and observed.get("source_sha") == self.policy["bindings"]["transport_source_commit"]
+                and observed.get("readback_verified") is True, "control_readback_binding")
+        require(self._observation_time(observed.get("observed_at")) >= submitted, "control_readback_stale")
+        checks, controller = observed.get("checks"), observed.get("controller")
+        require(isinstance(checks, dict) and checks.get("installation_verified") is True
+                and isinstance(controller, dict) and controller.get("last_control_id") == control["native_request_id"],
+                "control_readback_identity")
+        require(type(controller.get("paused")) is bool and type(controller.get("halted")) is bool,
+                "control_readback_state")
+        expected = {"pause": controller["paused"] and not controller["halted"],
+                    "resume": not controller["paused"] and not controller["halted"],
+                    "halt": controller["halted"]}
+        require(expected[action], "control_readback_state")
+        live = checks.get("service_active") is True and checks.get("heartbeat_fresh") is True
+        terminal = action == "halt" and observed.get("terminal_halt_verified") is True
+        # A legitimate fresh terminal observation proves process exit through
+        # the owner observer. It must not fabricate a live controller heartbeat.
+        require(live or terminal, "control_readback_unavailable")
 
     def _front(self, name: str, result: dict[str, Any]) -> None:
         provider = FRONTS[name]
@@ -346,13 +383,8 @@ class FinisherCollector:
         self._target(start.get("target"), result["run_id"])
         controls = result.get("controls")
         require(isinstance(controls, dict) and set(controls) == set(CONTROL_STATES), "front_controls_missing")
-        for action, expected in CONTROL_STATES.items():
-            control = controls[action]
-            require(isinstance(control, dict) and identifier(control.get("request_id")), "front_control_invalid")
-            require(control["request_id"] not in self.control_ids, "control_replay")
-            self.control_ids.add(control["request_id"])
-            require(control.get("accepted") is True and control.get("applied") is True and control.get("state") == expected,
-                    "front_control_not_applied")
+        for action in CONTROL_STATES:
+            self._control(action, controls[action], result["run_id"])
 
     def _restoration(self, name: str, previous_run_id: str) -> None:
         result, _ = self._observe("restoration", name)
