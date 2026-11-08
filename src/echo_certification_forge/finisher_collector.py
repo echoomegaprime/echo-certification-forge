@@ -222,6 +222,11 @@ class FinisherCollector:
         require(isinstance(p.get("rollback_source_commit"), str)
                 and COMMIT.fullmatch(p["rollback_source_commit"])
                 and p["rollback_source_commit"] != bindings["source_commit"], "policy_rollback")
+        # The approved immutable baseline and recovered candidate must pin their
+        # actual checkpoint/config identities before any rollback evidence is read.
+        require(all(digest(p.get(key)) for key in
+                    ("rollback_checkpoint_sha256", "rollback_configuration_sha256",
+                     "recovered_checkpoint_sha256", "recovered_configuration_sha256")), "policy_rollback_identity")
         require(isinstance(p.get("providers"), dict) and set(p["providers"]) == set(FRONTS.values()), "policy_providers")
         for provider in p["providers"].values():
             require(isinstance(provider, dict) and set(provider) == {"model", "account_sha256"}
@@ -407,8 +412,12 @@ class FinisherCollector:
                 and rollback.get("restored_checkpoint_source_commit") == self.policy["rollback_source_commit"]
                 and rollback.get("recovered_source_commit") == self.policy["bindings"]["source_commit"]
                 and rollback.get("recovered_checkpoint_source_commit") == self.policy["bindings"]["source_commit"]
-                and all(digest(rollback.get(key)) for key in ("restored_checkpoint_sha256", "recovered_checkpoint_sha256",
-                        "restored_configuration_sha256", "recovered_configuration_sha256")), "rollback_failed")
+                and all(rollback.get(observed) == self.policy[expected] for observed, expected in {
+                    "restored_checkpoint_sha256": "rollback_checkpoint_sha256",
+                    "restored_configuration_sha256": "rollback_configuration_sha256",
+                    "recovered_checkpoint_sha256": "recovered_checkpoint_sha256",
+                    "recovered_configuration_sha256": "recovered_configuration_sha256",
+                }.items()), "rollback_failed")
 
     def collect(self) -> dict[str, Any]:
         require(not self.evidence, "collector_already_used")
@@ -433,9 +442,18 @@ class FinisherCollector:
             result, observed = self._observe("stability", str(index))
             require(all(result.get(key) is True for key in ("healthy", "resource_admitted", "heartbeat_verified"))
                     and type(result.get("unexpected_restarts")) is int and result["unexpected_restarts"] == 0, "stability_failed")
-            snapshots = result.get("snapshots")
-            require(isinstance(snapshots, dict) and set(snapshots) == set(FRONTS), "stability_fronts_missing")
-            for snapshot in snapshots.values():
+            # Aggregate health is not eight-front evidence. Each route requires
+            # its own fresh, owner-issued and independently recalled observation.
+            require("snapshots" not in result, "stability_snapshots_unadmitted")
+            for front, provider in FRONTS.items():
+                route, _ = self._observe("stability-front", f"{index}:{front}")
+                snapshot = route.get("snapshot")
+                require(route.get("front") == front and route.get("provider") == provider
+                        and route.get("route_readback_verified") is True
+                        and digest(route.get("snapshot_sha256"))
+                        and route["snapshot_sha256"] == sha256_json(snapshot), "stability_route_binding")
+                # The Cloudflare singleton run_id may legitimately be shared
+                # across fronts; identity is the independently recalled route.
                 self._snapshot(snapshot)
             probes.append(observed)
         require(probes[0] < probes[1] < probes[2] and (probes[2] - probes[0]).total_seconds() >= 30, "stability_interval")

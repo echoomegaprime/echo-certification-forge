@@ -87,11 +87,20 @@ Policy fields:
 | `bindings.account_id`, `application_id`, `durable_object_id` | Complete actual Cloudflare tuple; 32 hex account and 64 hex DO IDs |
 | `bindings.installation_id`, `owner_id`, `cloudflare_origin` | Exact installation, admitted owner and HTTPS origin without userinfo/query |
 | `rollback_artifact_sha256`, `rollback_source_commit` | Actual distinct compatible prior artifact/source |
+| `rollback_checkpoint_sha256`, `rollback_configuration_sha256` | Owner-approved immutable prior checkpoint/configuration digest pins |
+| `recovered_checkpoint_sha256`, `recovered_configuration_sha256` | Owner-approved recovered candidate checkpoint/configuration digest pins |
 | `providers` | Exactly claude/codex/gemini/grok, each with exact `model` and nonpersonal `account_sha256` |
 | `probe.command` | Exactly `[ABSOLUTE_INTERPRETER, ABSOLUTE_REVIEWED_PROBE_SCRIPT]` |
 | `probe.sha256` | Exact SHA256 pins for those two files in the same order |
 | `probe.dependencies` | Absolute dependency paths mapped to immutable SHA256 pins |
 | `probe.timeout` | Whole process deadline from 1 to 120 seconds, default 120 |
+
+The four checkpoint/configuration pins must come from the owner's reviewed,
+immutable prior-baseline and recovered-candidate manifests **before** collection,
+not from a candidate's self-reported readback. Mutable runtime checkpoints must
+be deliberately frozen or version-addressed for meaningful exact comparison.
+The owner admission verifies these immutable policy values as part of the
+canonical policy hash; arbitrary well-formed digests are not rollback evidence.
 
 The transport runs the interpreter in isolated mode, accepts no shell text or
 provider flags, bounds stdin to 8192 bytes and stdout to 128 KiB, discards stderr,
@@ -131,8 +140,10 @@ For `admission`, result must contain `allowed: true`, `independent: true`, exact
 policy hash, all request identities/bindings, an expiry in the next hour,
 `operations: ["observe", "recall"]`, and `restoration_allowed: true`. The actual
 admission must cover the complete finite journey including its controls,
-negative checks, prior snapshot/config rollback, and owner restoration. The
-collector rechecks admission before every observe and recall, and at completion.
+negative checks, prior snapshot/config rollback, owner restoration, and all
+24 separately recalled `stability-front/<index>:<front>` route observations.
+The collector rechecks admission before every observe and recall, and at
+completion. An aggregate health result is not authority for a named route.
 
 For `observe`, result contains a new actual `receipt_id`. The collector then
 requests `recall`; recall result contains the identical ID, exact `content`, and
@@ -188,13 +199,23 @@ The ordered fronts are `auto`, `cauto`, `gauto`, `grauto`, `CFauto`, `CFcauto`,
    Credentials and personal identity never enter the receipt. A redirect check
    must refuse rather than follow an unadmitted destination.
 4. `rollback/restore-and-recover` requires actual prior and recovered artifact
-   and source readbacks, both checkpoint source matches, actual checkpoint and
-   configuration SHA256 values, and verified restored/recovered state. It runs
-   **before** final stability. The prior source and candidate source are pinned;
-   container replacement alone does not meet this check.
-5. `stability/0`, `/1`, `/2` require healthy, resource-admitted, fresh heartbeat,
-   zero unexpected restarts and healthy exact-target snapshots for **all eight
-   fronts**. The first-to-third observation interval must be at least 30 seconds.
+   and source readbacks, both checkpoint source matches, and verified restored
+   and recovered state. All four actual checkpoint/configuration SHA256 readbacks
+   must **equal their separately owner-approved immutable policy pins**. A digest
+   of the right length, a truthful-looking boolean, or only a Worker image
+   replacement is insufficient. It runs **before** final stability.
+5. `stability/0`, `/1`, `/2` establish aggregate health, resource admission,
+   fresh heartbeat and zero unexpected restarts only. Legacy aggregate
+   `snapshots` are rejected; they cannot count as eight-front evidence.
+   Each aggregate probe is followed by **eight separate** owner-issued,
+   independently recalled `stability-front/<index>:<front>` receipts, each
+   bound to its exact challenge/kind/name, front and expected provider. Each
+   route result requires `route_readback_verified: true`, a fresh healthy
+   `snapshot`, and `snapshot_sha256` equal to the canonical digest of that
+   snapshot. Reusing another route's receipt/result fails named-route binding.
+   All routes may legitimately share the single Cloudflare singleton `run_id`;
+   route receipt provenance, not distinct run IDs, proves eight-front coverage.
+   The first-to-third aggregate observation interval must be at least 30 seconds.
 6. `external/acceptance` requires a distinct independent reviewer, actual Access
    session, immutable UI assets, exact HTTPS origin and accepted live behavior.
 

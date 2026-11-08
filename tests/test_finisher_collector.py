@@ -37,6 +37,10 @@ def policy():
                      "cloudflare_origin": "https://finisher.example.test"},
         "rollback_artifact_sha256": "8" * 64,
         "rollback_source_commit": "9" * 40,
+        "rollback_checkpoint_sha256": "1" * 64,
+        "rollback_configuration_sha256": "3" * 64,
+        "recovered_checkpoint_sha256": "2" * 64,
+        "recovered_configuration_sha256": "4" * 64,
         "providers": {v: {"model": v + "-fixture-model", "account_sha256": "a" * 64}
                       for v in set(FRONTS.values())},
     }
@@ -52,6 +56,10 @@ class OwnerFixture:
         self.modify = lambda value: value
         self.admitted = True
         self.nonce_override = None
+        self.shared_run_id = False
+
+    def run_id(self, name):
+        return "run-shared-singleton" if self.shared_run_id else "run-" + name
 
     def clock(self):
         return self.time
@@ -65,7 +73,7 @@ class OwnerFixture:
                                                   "heartbeat_fresh", "resource_admitted")},
                 "target": {"provider": "cloudflare", **{key: binding[key] for key in
                            ("account_id", "application_id", "durable_object_id", "installation_id")},
-                           "source_sha": binding["transport_source_commit"], "run_id": "run-" + name}}
+                           "source_sha": binding["transport_source_commit"], "run_id": self.run_id(name)}}
 
     def call(self, request):
         self.calls.append(deepcopy(request))
@@ -101,7 +109,7 @@ class OwnerFixture:
                     "provider": provider, **self.config["providers"][provider],
                     "provider_invocation_id": "invoke-" + name,
                     "model_observed": True, "account_verified": True, "subscription_auth": True,
-                    "run_id": "run-" + name, "worker_id": "worker-" + name,
+                    "run_id": self.run_id(name), "worker_id": "worker-" + name,
                     "session_id": "session-" + name, "resumed_session_id": "session-" + name,
                     "heartbeat_verified": True, "scoped_mcp_verified": True,
                     "hook_receipt_id": "hook-" + name, "capture_receipt_id": "capture-" + name,
@@ -131,14 +139,20 @@ class OwnerFixture:
             elif kind == "restoration":
                 data["result"] = {"method": "admitted_owner_operation", "operation_id": "restore-" + name,
                                   "admission_id": self.config["admission_id"],
-                                  "previous_run_id": "run-" + name, "snapshot": self.snapshot(name)}
+                                  "previous_run_id": self.run_id(name), "snapshot": self.snapshot(name)}
             elif kind == "negative":
                 data["result"] = {"denied": True, "side_effects": False,
                                   "before_sha256": "d" * 64, "after_sha256": "d" * 64}
             elif kind == "stability":
                 data["result"] = {"healthy": True, "resource_admitted": True,
-                                  "heartbeat_verified": True, "unexpected_restarts": 0,
-                                  "snapshots": {front: self.snapshot(front) for front in FRONTS}}
+                                  "heartbeat_verified": True, "unexpected_restarts": 0}
+            elif kind == "stability-front":
+                probe_index, front = name.split(":", 1)
+                assert probe_index in ("0", "1", "2")
+                snapshot = self.snapshot(front)
+                data["result"] = {"front": front, "provider": FRONTS[front],
+                                  "route_readback_verified": True, "snapshot": snapshot,
+                                  "snapshot_sha256": sha256_json(snapshot)}
             elif kind == "external":
                 data["result"] = {"accepted": True, "reviewer_id": "other-reviewer",
                                   "ui_assets_verified": True, "access_session_verified": True,
@@ -183,11 +197,24 @@ def test_all_eight_fronts_are_observed_then_independently_recalled():
     assert {x["name"] for x in owner.calls if x["operation"] == "observe" and x["kind"] == "front"} == set(FRONTS)
     observed = [x for x in owner.calls if x["operation"] == "observe"]
     recalled = [x for x in owner.calls if x["operation"] == "recall"]
-    assert len(observed) == len(recalled) == 16 + len(NEGATIVE_CONTROLS) + 3 + 2
+    assert len(observed) == len(recalled) == 16 + len(NEGATIVE_CONTROLS) + 3 + 3 * len(FRONTS) + 2
     journey = [(x["kind"], x["name"]) for x in observed]
     for index, name in enumerate(FRONTS):
         assert journey[index * 2:index * 2 + 2] == [("front", name), ("restoration", name)]
     assert journey.index(("rollback", "restore-and-recover")) < journey.index(("stability", "0"))
+    assert [(kind, name) for kind, name in journey if kind == "stability-front"] == [
+        ("stability-front", f"{index}:{front}") for index in range(3) for front in FRONTS
+    ]
+
+
+def test_all_eight_routes_may_share_one_authorized_cloudflare_singleton_run():
+    config = policy()
+    owner = OwnerFixture(config)
+    owner.shared_run_id = True
+    result = collect(config, owner)
+    assert result["status"] == "UNSIGNED_CANDIDATE"
+    assert result["release_verdict"] == "NOT_READY"
+    assert len([x for x in owner.calls if x["operation"] == "recall"]) == 16 + len(NEGATIVE_CONTROLS) + 3 + 3 * len(FRONTS) + 2
 
 
 def test_missing_admission_stops_before_any_observation():
@@ -272,6 +299,32 @@ def test_negative_stability_external_and_rollback_fail_closed(kind, field, value
         collect(fixture=owner)
 
 
+@pytest.mark.parametrize("field", [
+    "rollback_checkpoint_sha256", "rollback_configuration_sha256",
+    "recovered_checkpoint_sha256", "recovered_configuration_sha256",
+])
+def test_missing_owner_approved_rollback_digest_pin_fails_before_observation(field):
+    config = policy()
+    del config[field]
+    with pytest.raises(CollectorError, match="policy_rollback_identity"):
+        collect(config)
+
+
+@pytest.mark.parametrize("field", [
+    "restored_checkpoint_sha256", "restored_configuration_sha256",
+    "recovered_checkpoint_sha256", "recovered_configuration_sha256",
+])
+def test_well_formed_but_wrong_rollback_digest_fails_closed(field):
+    owner = OwnerFixture(policy())
+    def change(data):
+        if data["kind"] == "rollback":
+            data["result"][field] = "f" * 64
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError, match="rollback_failed"):
+        collect(fixture=owner)
+
+
 def test_sensitive_receipt_content_is_rejected_without_echoing_value():
     owner = OwnerFixture(policy())
     owner.modify = lambda data: {**data, "authorization": "test-sensitive-value"}
@@ -344,14 +397,58 @@ def test_probe_output_overflow_is_bounded(tmp_path):
         probe.call({"request": "fixture"})
 
 
-def test_healthy_boolean_cannot_replace_all_fronts_stability_readback():
+def test_healthy_boolean_cannot_replace_per_route_stability_readback():
+    owner = OwnerFixture(policy())
+    def change(data):
+        if data["kind"] == "stability-front" and data["name"] == "2:CFgrauto":
+            snapshot = data["result"]["snapshot"]
+            snapshot["online"] = False
+            # A correct route digest cannot turn an unhealthy snapshot into health.
+            data["result"]["snapshot_sha256"] = sha256_json(snapshot)
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError, match="status_snapshot_unhealthy"):
+        collect(fixture=owner)
+
+
+def test_cloned_owner_route_result_is_rejected_for_another_front():
+    owner = OwnerFixture(policy())
+    first = {}
+    def change(data):
+        if data["kind"] == "stability-front" and data["name"] == "0:auto":
+            first["result"] = deepcopy(data["result"])
+        if data["kind"] == "stability-front" and data["name"] == "0:cauto":
+            # The singleton target may match; route provenance still must not.
+            data["result"] = deepcopy(first["result"])
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError, match="stability_route_binding"):
+        collect(fixture=owner)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("front", "auto"), ("provider", "claude"), ("route_readback_verified", False),
+    ("snapshot_sha256", "f" * 64),
+])
+def test_stability_route_provenance_tampering_fails_closed(field, value):
+    owner = OwnerFixture(policy())
+    def change(data):
+        if data["kind"] == "stability-front" and data["name"] == "0:cauto":
+            data["result"][field] = value
+        return data
+    owner.modify = change
+    with pytest.raises(CollectorError, match="stability_route_binding"):
+        collect(fixture=owner)
+
+
+def test_legacy_aggregate_snapshots_cannot_count_as_route_receipts():
     owner = OwnerFixture(policy())
     def change(data):
         if data["kind"] == "stability":
-            data["result"]["snapshots"]["CFgrauto"]["online"] = False
+            data["result"]["snapshots"] = {front: owner.snapshot(front) for front in FRONTS}
         return data
     owner.modify = change
-    with pytest.raises(CollectorError):
+    with pytest.raises(CollectorError, match="stability_snapshots_unadmitted"):
         collect(fixture=owner)
 
 
