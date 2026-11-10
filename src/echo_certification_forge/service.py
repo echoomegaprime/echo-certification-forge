@@ -34,6 +34,7 @@ from .intake import (
     project_run,
     submit,
 )
+from .identity_export import CanonicalIdentityExport, IdentityExportError, export_canonical_identities
 from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
 from .openapi_auth import install_openapi_auth
 from .policy import RuleManifest
@@ -610,6 +611,42 @@ def create_app(context: ServiceContext) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         return project_run(context.store, row)
+
+    @app.get(
+        "/v1/certifications/{run_id}/identities",
+        response_model=CanonicalIdentityExport,
+    )
+    def get_canonical_identities(
+        run_id: str,
+        x_tenant_id: str | None = Header(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        principal = subscriber_principal(
+            x_tenant_id, authorization, Permission.RUN_READ,
+            "certifications.identities.export",
+        )
+        try:
+            row = context.store.get_run(run_id, principal.organization_id)
+            exported = export_canonical_identities(row, principal.organization_id)
+            # Reauthorizes the live principal and commits the metadata-only audit
+            # before returning any canonical object. Audit failure fails closed.
+            context.subscribers.audit_resource_event(
+                principal,
+                action="certifications.identities.exported",
+                resource_type="certification_run",
+                resource_id=run_id,
+                details={key: exported[key] for key in (
+                    "export_sha256", "identities_sha256", "target_identity_digest",
+                    "environment_identity_digest",
+                )},
+            )
+            return exported
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except IdentityExportError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
 
     @app.post("/v1/certifications/{run_id}/cancel")
     def cancel_certification(
