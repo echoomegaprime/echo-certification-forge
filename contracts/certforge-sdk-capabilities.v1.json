@@ -983,6 +983,209 @@
         "type": "object"
       }
     },
+    "echo.certforge.identities": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "operation": "GET /v1/certifications/{run_id}/identities",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "environment_identity_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "export_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "identities": {
+            "additionalProperties": false,
+            "properties": {
+              "environment": {
+                "additionalProperties": false,
+                "properties": {
+                  "adapter_set_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "egress_policy_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "harness_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "model_route_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "os_runtime_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "policy_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "prompt_set_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "runner_image_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "test_plan_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "runner_image_sha256",
+                  "adapter_set_sha256",
+                  "test_plan_sha256",
+                  "policy_sha256",
+                  "harness_sha256",
+                  "prompt_set_sha256",
+                  "model_route_sha256",
+                  "os_runtime_sha256",
+                  "egress_policy_sha256"
+                ],
+                "type": "object"
+              },
+              "target": {
+                "additionalProperties": false,
+                "properties": {
+                  "artifact_sha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "canonical_ref": {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "configuration_sha256": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dependency_sha256": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source_commit": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "target_type": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "target_type",
+                  "canonical_ref",
+                  "artifact_sha256",
+                  "source_commit",
+                  "dependency_sha256",
+                  "configuration_sha256"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "target",
+              "environment"
+            ],
+            "type": "object"
+          },
+          "identities_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "rule_manifest_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "rule_manifest_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          },
+          "run_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "certforge.canonical-identities.v1",
+            "type": "string"
+          },
+          "target_identity_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "tenant_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "run_id",
+          "tenant_id",
+          "target_identity_digest",
+          "environment_identity_digest",
+          "rule_manifest_id",
+          "rule_manifest_digest",
+          "identities",
+          "identities_sha256",
+          "export_sha256"
+        ],
+        "type": "object"
+      }
+    },
     "echo.certforge.list_runs": {
       "input_schema": {
         "additionalProperties": false,
@@ -2295,7 +2498,7 @@
       }
     }
   },
-  "capability_count": 60,
+  "capability_count": 61,
   "policy": "Every Certification Forge SDK action has a command-bearing strict input schema and an output schema derived from its production route contract.",
   "schema_version": "1.0.0"
 }
