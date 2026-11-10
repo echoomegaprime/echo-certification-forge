@@ -31,6 +31,7 @@
     "echo.certforge.governance.get",
     "echo.certforge.governance.update",
     "echo.certforge.health",
+    "echo.certforge.identities",
     "echo.certforge.list_runs",
     "echo.certforge.members.activate",
     "echo.certforge.members.deactivate",
