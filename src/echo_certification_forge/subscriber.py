@@ -4203,7 +4203,18 @@ class SubscriberGovernance:
                 outcome="allowed",
                 details={
                     "attempts": int(row["attempts"]),
-                    "last_error": row["last_error"],
+                    # Dispatch error text may originate from a worker or remote failure.
+                    # Audit entries are immutable: retain only known machine reason codes,
+                    # never an unbounded/raw exception or message that might include secrets.
+                    "last_error": (
+                        row["last_error"]
+                        if row["last_error"] in (
+                            "subscriber_worker_claim_denied",
+                            "dispatch_attempts_exhausted",
+                            "dispatch_lease_expired",
+                        )
+                        else "redacted" if row["last_error"] else None
+                    ),
                     "meter_compensated": True,
                 },
             )
