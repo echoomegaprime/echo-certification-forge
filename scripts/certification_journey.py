@@ -45,7 +45,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    require(__version__ == "1.1.0", "package version is not synchronized")
+    require(__version__ == "1.2.0", "package version is not synchronized")
     python_files = sorted(SRC.rglob("*.py"))
     require(bool(python_files), "source tree contains no Python modules")
     for path in python_files:
@@ -62,8 +62,8 @@ def main() -> int:
 
     sdk = json.loads((ROOT / ".echo" / "sdk.json").read_text(encoding="utf-8"))
     capabilities = sdk.get("capabilities", [])
-    require(len(capabilities) == 60, "SDK capability declaration must contain exactly 60 entries")
-    require(len(set(capabilities)) == 60, "SDK capability declaration contains duplicates")
+    require(len(capabilities) == 61, "SDK capability declaration must contain exactly 61 entries")
+    require(len(set(capabilities)) == 61, "SDK capability declaration contains duplicates")
     require(all(isinstance(item, str) and item.startswith("echo.") for item in capabilities),
             "SDK capability declaration contains an invalid identifier")
 

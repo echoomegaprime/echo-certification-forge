@@ -10,6 +10,7 @@ from .release_hooks import WebhookSecretRegistry
 from .runner import TrustedTransportRegistry
 from .adapters import adapter_set_digest
 from .run_worker import _worker_environment, load_adapter_execution_profile
+from .sandbox import DEFAULT_IMAGE, DEFAULT_MEMORY, DockerSandbox
 from .service import ServiceContext, create_app
 from .signing import TrustedPublicKeyRegistry
 from .subscriber import SubscriberGovernance, SubscriberPolicy
@@ -82,7 +83,11 @@ def _load_certification_environment() -> dict[str, str] | None:
         **{name: Path(value) for name, value in required.items() if value is not None}
     )
     adapter_sha256 = adapter_set_digest(records)
-    environment = _worker_environment(adapter_sha256, profile_sha256)
+    sandbox = DockerSandbox(
+        image=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
+        memory=os.environ.get("ECHO_CERTFORGE_SANDBOX_MEMORY", DEFAULT_MEMORY),
+    )
+    environment = _worker_environment(adapter_sha256, profile_sha256, sandbox)
     return {
         "certification_environment_identity_digest": environment.identity_digest,
         "runner_image_digest": "sha256:" + environment.runner_image_sha256,

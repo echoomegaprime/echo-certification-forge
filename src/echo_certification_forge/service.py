@@ -38,6 +38,11 @@ from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
 from .openapi_auth import install_openapi_auth
 from .policy import RuleManifest
 from .product_readiness import verify_product_readiness
+from .production_e2e import RULE_ID as PRODUCTION_E2E_RULE_ID
+from .public_verification import (
+    public_production_e2e_identity,
+    public_target_identity,
+)
 from .release_hooks import WebhookSecretRegistry
 from .operational_telemetry import (
     OperationalTelemetryError,
@@ -1096,12 +1101,26 @@ def create_app(context: ServiceContext) -> FastAPI:
     def public_verification(verification_id: str) -> dict[str, Any]:
         try:
             published = context.subscribers.public_verification(verification_id)
+            run = context.store.get_run(
+                published["run_id"], published["organization_id"]
+            )
             row = context.store.latest_signed_verdict(
                 published["run_id"], published["organization_id"]
             )
             if row is None:
                 raise SubscriberError(404, "verification_not_found")
             payload = json.loads(row["payload_json"])
+            private_target_identity = json.loads(str(run["target_identity_json"]))
+            target_identity = public_target_identity(private_target_identity)
+            environment_identity = json.loads(str(run["environment_identity_json"]))
+            production_result = context.store.list_rule_results(
+                published["run_id"], published["organization_id"]
+            ).get(PRODUCTION_E2E_RULE_ID)
+            production_e2e = (
+                public_production_e2e_identity(production_result.details)
+                if production_result is not None and production_result.passed
+                else {}
+            )
             gate = DeployGate(context.store, context.trusted_keys).evaluate(
                 tenant_id=published["organization_id"],
                 run_id=published["run_id"],
@@ -1111,11 +1130,29 @@ def create_app(context: ServiceContext) -> FastAPI:
                 evidence_merkle_root=payload["evidence_merkle_root"],
                 signing_key_id=payload["signing_key_id"],
             )
+            identity_reasons: list[str] = []
+            if sha256_json(private_target_identity) != payload["target_identity_digest"]:
+                identity_reasons.append("private_target_identity_serialization_mismatch")
+            if sha256_json(target_identity) != payload.get("public_target_identity_sha256"):
+                identity_reasons.append("public_target_identity_digest_mismatch")
+            if sha256_json(environment_identity) != payload["environment_identity_digest"]:
+                identity_reasons.append("environment_identity_serialization_mismatch")
+            if sha256_json(production_e2e) != payload.get(
+                "production_e2e_identity_sha256"
+            ):
+                identity_reasons.append("production_e2e_identity_digest_mismatch")
+            reasons = sorted(set(gate.reasons).union(identity_reasons))
             return {
                 "verification_id": verification_id,
-                "valid": gate.allowed,
-                "reasons": list(gate.reasons),
+                "valid": gate.allowed and not identity_reasons,
+                "reasons": reasons,
                 "payload": payload,
+                # These identities are safe public verification material. They are not
+                # trusted merely because they are returned here: their canonical SHA-256
+                # digests are committed inside the independently signed verdict above.
+                "target_identity": target_identity,
+                "environment_identity": environment_identity,
+                "production_e2e": production_e2e,
                 "signature_b64": row["signature_b64"],
                 "key_id": row["key_id"],
                 "public_key_pem": row["public_key_pem"],

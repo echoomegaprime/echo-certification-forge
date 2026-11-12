@@ -46,6 +46,7 @@
     "echo.certforge.projects.create",
     "echo.certforge.projects.list",
     "echo.certforge.public_verification",
+    "echo.certforge.publish",
     "echo.certforge.r5.status",
     "echo.certforge.r5.submit_async",
     "echo.certforge.run",

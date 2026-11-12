@@ -18,6 +18,7 @@ from echo_certification_forge.deploy_gate import DeployGate
 from echo_certification_forge.models import SignedVerdictEnvelope
 from echo_certification_forge.run_worker import run
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
+from production_e2e_support import trusted_generic_production_e2e
 
 
 def _benign(tmp_path: Path) -> Path:
@@ -45,6 +46,31 @@ def test_acquire_rejects_unknown_type_and_bad_git(tmp_path):
     with pytest.raises(AcquisitionError):
         acquire_target({"type": "git", "url": "https://invalid.invalid/nope.git"},
                        tmp_path / "d", clone_timeout_s=15.0)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@github.com/example/project.git",
+        "https://token@github.com/example/project.git",
+        "https://github.com/example/project.git?access_token=secret",
+        "token@github.com:example/project.git",
+    ],
+)
+def test_acquire_git_rejects_credential_bearing_urls_before_execution(
+    tmp_path, monkeypatch, url
+):
+    called = False
+
+    def unexpected_run(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("git must not execute for a credential-bearing URL")
+
+    monkeypatch.setattr("echo_certification_forge.acquisition.subprocess.run", unexpected_run)
+    with pytest.raises(AcquisitionError, match="credentials|non-secret"):
+        acquire_target({"type": "git", "url": url}, tmp_path / "credential-target")
+    assert called is False
 
 
 def test_acquire_git_exact_commit_fetches_and_verifies_sha(tmp_path, monkeypatch):
@@ -99,7 +125,8 @@ def _run_worker(store, manifest, tenant, source, journey):
     signer = Ed25519VerdictSigner.generate()
     result = run("cert-live", tenant, {"type": "local", "path": str(source)},
                  store=store, manifest=manifest, signer=signer,
-                 entitled=frozenset({tenant}), journey=journey)
+                 entitled=frozenset({tenant}), journey=journey,
+                 production_e2e_provider=trusted_generic_production_e2e)
     return result, signer
 
 
