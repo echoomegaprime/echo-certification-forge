@@ -298,3 +298,93 @@ def test_expired_claim_without_ownership_preserves_existing_policy(
     governance.claim_dispatch("dispatcher-b", organization_id=org.organization_id)
     assert store.get_run(run_id, org.organization_id)["state"] == expected_state
     assert _usage(governance, org)["meters"]["certification_runs"] == expected_meter
+
+
+def test_expired_owned_dispatch_preserves_nonsecret_claim_custody(tmp_path, manifest):
+    # Disposable SQLite fixture only: no production mutation or artificial heartbeat.
+    import hashlib
+    import json
+
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "expired-custody", max_attempts=3
+    )
+    dispatch = governance.claim_dispatch(
+        "dispatcher-a", run_id=run_id, organization_id=org.organization_id
+    )
+    assert dispatch is not None
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            "UPDATE subscriber_run_reservations SET consumed_at = ? WHERE run_id = ?",
+            ("2026-11-12T12:00:00Z", run_id),
+        )
+        connection.execute(
+            "UPDATE subscriber_run_dispatches SET lease_expires_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00Z", run_id),
+        )
+    assert governance.claim_dispatch(
+        "dispatcher-b", organization_id=org.organization_id
+    ) is None
+    with sqlite3.connect(governance.db_path) as connection:
+        row = connection.execute(
+            "SELECT details_json FROM subscriber_audit_events "
+            "WHERE organization_id = ? AND resource_id = ? "
+            "AND action = 'certification.dispatch_recovered' "
+            "ORDER BY event_id DESC LIMIT 1",
+            (org.organization_id, run_id),
+        ).fetchone()
+        state = connection.execute(
+            "SELECT state, claim_token, lease_owner, lease_expires_at "
+            "FROM subscriber_run_dispatches WHERE run_id = ?", (run_id,)
+        ).fetchone()
+    assert row is not None
+    details = json.loads(row[0])
+    assert details["ownership_review_required"] is True
+    assert details["meter_compensated"] is False
+    assert details["previous_lease_owner"] == "dispatcher-a"
+    assert details["previous_lease_expires_at"] == "2000-01-01T00:00:00Z"
+    assert details["previous_claim_token_sha256"] == hashlib.sha256(
+        dispatch.claim_token.encode("utf-8")
+    ).hexdigest()
+    assert dispatch.claim_token not in row[0]
+    assert state == ("FAILED", None, None, None)
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    assert _usage(governance, org)["meters"]["certification_runs"] == 1
+    principal = _owner(
+        governance, org.organization_id, org.bootstrap_api_key, Permission.AUDIT_READ
+    )
+    verification = governance.verify_audit(principal)
+    assert verification["valid"] is True
+    assert verification["invalid_event_ids"] == []
+
+
+def test_expired_unstarted_dispatch_does_not_expose_claim_token_in_audit(tmp_path, manifest):
+    import json
+
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "unstarted-custody", max_attempts=1
+    )
+    dispatch = governance.claim_dispatch(
+        "dispatcher-a", run_id=run_id, organization_id=org.organization_id
+    )
+    assert dispatch is not None
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            "UPDATE subscriber_run_dispatches SET lease_expires_at = ? WHERE run_id = ?",
+            ("2000-01-01T00:00:00Z", run_id),
+        )
+    governance.claim_dispatch("dispatcher-b", organization_id=org.organization_id)
+    with sqlite3.connect(governance.db_path) as connection:
+        row = connection.execute(
+            "SELECT details_json FROM subscriber_audit_events "
+            "WHERE organization_id = ? AND resource_id = ? "
+            "AND action = 'certification.dispatch_recovered' "
+            "ORDER BY event_id DESC LIMIT 1",
+            (org.organization_id, run_id),
+        ).fetchone()
+    assert row is not None
+    details = json.loads(row[0])
+    assert details["ownership_review_required"] is False
+    assert "previous_claim_token_sha256" not in details
+    assert dispatch.claim_token not in row[0]
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert _usage(governance, org)["meters"]["certification_runs"] == 0
