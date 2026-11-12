@@ -20,13 +20,13 @@ import re
 import shutil
 import subprocess
 import tarfile
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
+from uuid import uuid4
 
 from .canonical import sha256_bytes
 from .models import is_exact_git_commit
@@ -195,10 +195,12 @@ def _oci_write_member(
         with handle:
             if expected_size < 0 or expected_size > budget[0]:
                 raise AcquisitionError("oci rootfs exceeds the extraction size budget")
-            with tempfile.NamedTemporaryFile(
-                mode="wb", dir=dest.parent, prefix=".certforge-oci-", delete=False
-            ) as output:
-                temporary = Path(output.name)
+            candidate = dest.parent / f".certforge-oci-{uuid4().hex}"
+            # Exclusive normal file creation retains the process umask, unlike
+            # NamedTemporaryFile's forced 0600 mode on POSIX workers. Record
+            # ownership only after creation so a collision is never removed.
+            with candidate.open("xb") as output:
+                temporary = candidate
                 remaining = budget[0]
                 while True:
                     chunk = handle.read(min(_OCI_COPY_CHUNK_BYTES, remaining + 1))

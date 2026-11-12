@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
+import stat
 import tarfile
+from uuid import UUID
 
 import pytest
 
@@ -158,3 +161,28 @@ def test_failed_replace_preserves_prior_regular_file(tmp_path, monkeypatch):
     assert destination.read_bytes() == b"original"
     assert budget == [4]
     assert sorted(path.name for path in tmp_path.iterdir()) == ["existing"]
+
+
+def test_temporary_name_collision_preserves_unowned_file(tmp_path, monkeypatch):
+    import echo_certification_forge.acquisition as acquisition
+
+    fixed = UUID(int=1)
+    monkeypatch.setattr(acquisition, "uuid4", lambda: fixed)
+    collision = tmp_path / f".certforge-oci-{fixed.hex}"
+    collision.write_bytes(b"unrelated")
+    destination = tmp_path / "existing"
+    destination.write_bytes(b"original")
+    budget = [4]
+    with pytest.raises(AcquisitionError, match="extraction failed"):
+        _oci_apply_layer(layer({"existing": b"four"}), tmp_path, budget)
+    assert collision.read_bytes() == b"unrelated"
+    assert destination.read_bytes() == b"original"
+    assert budget == [4]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX creation-mode acceptance requires a POSIX worker")
+def test_materialization_preserves_normal_file_creation_permissions(tmp_path):
+    reference = tmp_path / "reference"
+    reference.write_bytes(b"reference")
+    _oci_apply_layer(layer({"member": b"four"}), tmp_path, [4])
+    assert stat.S_IMODE((tmp_path / "member").stat().st_mode) == stat.S_IMODE(reference.stat().st_mode)

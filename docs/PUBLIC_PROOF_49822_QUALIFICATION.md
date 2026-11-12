@@ -24,6 +24,14 @@ directory replacement still removes the existing owned directory after copying;
 that directory-removal step is not claimed to be atomic. Structured debug events
 contain byte counts or exception type, not archive content or credentials.
 
+Final inspection of the first candidate `bc3aec6` found that
+`NamedTemporaryFile` forces mode 0600 on POSIX. The follow-up uses exclusive
+normal file creation with a random sibling name, retaining the process umask
+used by the previous materialization path. Ownership is recorded only after
+creation succeeds; a name collision leaves the unrelated file untouched. A
+POSIX permission regression is explicitly skipped on Windows and still requires
+an independent POSIX-worker run. No Linux runtime acceptance is inferred.
+
 The 1 GiB total expanded-byte limit and existing path, device, whiteout, inert
 symlink and digest checks are retained. This repairs member materialization;
 it does not make the entire OCI pipeline constant-memory. Registry blob buffering
@@ -66,6 +74,14 @@ dependencies in an isolated environment and supply the pinned consumer export.
 | Exact consumer interop | 15 passed | `cert49822-consumer-interop.log` |
 | `python -m pytest -q` | 768 passed, 1 skipped | `cert49822-pytest-final.log` |
 | `python scripts/p1_acceptance.py` | passed, exit 0; all 3 scenarios passed | `cert49822-p1-acceptance.log`, `cert49822-p1-acceptance-report.json` |
+
+The permission-preserving follow-up reran the full suite through SOL strict:
+**769 passed, 2 skipped, 0 failures/errors**, with counts retained in
+`cert49822-final-followup-junit.xml` and the passing strict report in
+`cert49822-sol-strict-followup.log`. The additional skip is the explicitly POSIX
+permission check. The focused follow-up returned 16 passed, 1 skipped, 23
+deselected (`cert49822-permissions-focused.log`). P1 passed all three scenarios
+again (`cert49822-p1-followup.log`, `cert49822-p1-followup-report.json`).
 
 P1 explicitly preserves `NOT_READY` for default and source-only evidence and
 rejects tampering; its passing result is not a production-ready verdict. The
