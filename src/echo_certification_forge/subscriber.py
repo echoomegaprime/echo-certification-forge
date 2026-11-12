@@ -4083,6 +4083,17 @@ class SubscriberGovernance:
         rows = connection.execute(
             """
             SELECT d.run_id, d.organization_id, d.idempotency_key, d.attempts,
+                   CASE WHEN r.execution_started_at IS NULL
+                             AND r.consumed_at IS NULL
+                             AND r.worker_id IS NULL
+                             AND r.worker_attestation_sha256 IS NULL
+                             AND r.execution_location IS NULL
+                             AND r.signing_authority IS NULL
+                             AND r.signing_key_id IS NULL
+                             AND r.claim_token IS NULL
+                             AND r.lease_expires_at IS NULL
+                             AND r.last_heartbeat_at IS NULL
+                        THEN 1 ELSE 0 END AS unstarted_without_ownership,
                    COALESCE(
                        (
                            SELECT u.occurred_at
@@ -4111,7 +4122,14 @@ class SubscriberGovernance:
             (now_text,),
         ).fetchall()
         for row in rows:
-            if int(row["attempts"]) >= self.policy.max_dispatch_attempts:
+            ownership_review_required = int(row["unstarted_without_ownership"]) != 1
+            meter_compensated = False
+            if ownership_review_required:
+                # Expired dispatcher lease cannot prove that live worker work stopped.
+                # Hold the run and reservation for independent ownership review.
+                next_state = "FAILED"
+                error = "dispatch_lease_expired_ownership_review"
+            elif int(row["attempts"]) >= self.policy.max_dispatch_attempts:
                 self._transition_run_with_connection(
                     connection,
                     str(row["run_id"]),
@@ -4149,6 +4167,7 @@ class SubscriberGovernance:
                 )
                 next_state = "FAILED"
                 error = "dispatch_attempts_exhausted"
+                meter_compensated = True
             else:
                 next_state = "PENDING"
                 error = "dispatch_lease_expired"
@@ -4172,7 +4191,8 @@ class SubscriberGovernance:
                 details={
                     "recovery": next_state.lower(),
                     "attempts": int(row["attempts"]),
-                    "meter_compensated": next_state == "FAILED",
+                    "meter_compensated": meter_compensated,
+                    "ownership_review_required": ownership_review_required,
                 },
             )
         # Runs orphaned before fleet #49604: dispatch FAILED, run still QUEUED, reservation BOUND.
@@ -4202,6 +4222,22 @@ class SubscriberGovernance:
             WHERE d.state = 'FAILED'
               AND r.state = 'BOUND'
               AND runs.state = 'QUEUED'
+              -- Legacy recovery may only compensate work with no execution or
+              -- ownership evidence. Inconsistent state is held for human review.
+              AND r.execution_started_at IS NULL
+              -- A previously consumed reservation is not proven unstarted.
+              AND r.consumed_at IS NULL
+              AND r.worker_id IS NULL
+              AND r.worker_attestation_sha256 IS NULL
+              AND r.execution_location IS NULL
+              AND r.signing_authority IS NULL
+              AND r.signing_key_id IS NULL
+              AND r.claim_token IS NULL
+              AND r.lease_expires_at IS NULL
+              AND r.last_heartbeat_at IS NULL
+              AND d.claim_token IS NULL
+              AND d.lease_owner IS NULL
+              AND d.lease_expires_at IS NULL
             """
         ).fetchall()
         for row in orphans:
@@ -4371,6 +4407,17 @@ class SubscriberGovernance:
                 """
                 SELECT d.state, d.attempts, d.idempotency_key,
                        runs.state AS run_state, r.state AS reservation_state,
+                       CASE WHEN r.execution_started_at IS NULL
+                             AND r.consumed_at IS NULL
+                             AND r.worker_id IS NULL
+                             AND r.worker_attestation_sha256 IS NULL
+                             AND r.execution_location IS NULL
+                             AND r.signing_authority IS NULL
+                             AND r.signing_key_id IS NULL
+                             AND r.claim_token IS NULL
+                             AND r.lease_expires_at IS NULL
+                             AND r.last_heartbeat_at IS NULL
+                            THEN 1 ELSE 0 END AS unstarted_without_ownership,
                        COALESCE(
                            (
                                SELECT u.occurred_at
@@ -4436,8 +4483,14 @@ class SubscriberGovernance:
                 )
                 state = "FAILED"
             elif error is not None and int(row["attempts"]) < self.policy.max_dispatch_attempts:
-                state = "PENDING"
-            elif error is not None and run_state == "QUEUED" and row["reservation_state"] == "BOUND":
+                # Never requeue if the worker may already have started execution.
+                state = "PENDING" if int(row["unstarted_without_ownership"]) == 1 else "FAILED"
+            elif (
+                error is not None
+                and run_state == "QUEUED"
+                and row["reservation_state"] == "BOUND"
+                and int(row["unstarted_without_ownership"]) == 1
+            ):
                 # Last attempt failed before execution started (for example
                 # subscriber_worker_claim_denied). Marking only the dispatch FAILED left the run
                 # QUEUED forever and uncompensated (fleet #49604).
@@ -4454,6 +4507,22 @@ class SubscriberGovernance:
                 state = "FAILED"
             else:
                 state = "FAILED"
+            if (
+                error is not None
+                and run_state == "QUEUED"
+                and row["reservation_state"] == "BOUND"
+                and int(row["unstarted_without_ownership"]) != 1
+            ):
+                self._append_audit(
+                    connection,
+                    organization_id=dispatch.organization_id,
+                    actor_ref="certforge.dispatcher",
+                    action="certification.dispatch_ownership_review_required",
+                    resource_type="certification",
+                    resource_id=dispatch.run_id,
+                    outcome="denied",
+                    details={"attempts": int(row["attempts"]), "meter_compensated": False},
+                )
             connection.execute(
                 """
                 UPDATE subscriber_run_dispatches
