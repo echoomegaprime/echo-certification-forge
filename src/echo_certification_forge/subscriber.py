@@ -4387,6 +4387,17 @@ class SubscriberGovernance:
                 """
                 SELECT d.state, d.attempts, d.idempotency_key,
                        runs.state AS run_state, r.state AS reservation_state,
+                       CASE WHEN r.execution_started_at IS NULL
+                             AND r.consumed_at IS NULL
+                             AND r.worker_id IS NULL
+                             AND r.worker_attestation_sha256 IS NULL
+                             AND r.execution_location IS NULL
+                             AND r.signing_authority IS NULL
+                             AND r.signing_key_id IS NULL
+                             AND r.claim_token IS NULL
+                             AND r.lease_expires_at IS NULL
+                             AND r.last_heartbeat_at IS NULL
+                            THEN 1 ELSE 0 END AS unstarted_without_ownership,
                        COALESCE(
                            (
                                SELECT u.occurred_at
@@ -4453,7 +4464,12 @@ class SubscriberGovernance:
                 state = "FAILED"
             elif error is not None and int(row["attempts"]) < self.policy.max_dispatch_attempts:
                 state = "PENDING"
-            elif error is not None and run_state == "QUEUED" and row["reservation_state"] == "BOUND":
+            elif (
+                error is not None
+                and run_state == "QUEUED"
+                and row["reservation_state"] == "BOUND"
+                and int(row["unstarted_without_ownership"]) == 1
+            ):
                 # Last attempt failed before execution started (for example
                 # subscriber_worker_claim_denied). Marking only the dispatch FAILED left the run
                 # QUEUED forever and uncompensated (fleet #49604).
