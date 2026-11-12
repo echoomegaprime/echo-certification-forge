@@ -15,15 +15,18 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import re
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 from .canonical import sha256_bytes
 from .models import is_exact_git_commit
@@ -55,6 +58,8 @@ _OCI_MANIFEST_ACCEPT = ", ".join(
 _OCI_MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 _OCI_MAX_BLOB_BYTES = 512 * 1024 * 1024
 _OCI_MAX_EXTRACT_BYTES = 1024 * 1024 * 1024  # expanded-rootfs budget (decompression-bomb guard)
+_OCI_COPY_CHUNK_BYTES = 1024 * 1024
+_LOGGER = logging.getLogger(__name__)
 _OCI_SYMLINK_PLACEHOLDER = "@certforge-symlink:"
 _OCI_INDEX_MEDIA_TYPES = frozenset(
     (
@@ -176,6 +181,59 @@ def _oci_remove(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+def _oci_write_member(
+    handle: BinaryIO, dest: Path, budget: list[int], *, expected_size: int
+) -> None:
+    """Close the input and replace one owned member only after a bounded copy.
+
+    The rootfs-wide allowance is a byte limit, never a read-buffer size. A
+    sibling temporary file preserves an existing destination if reading fails.
+    """
+    temporary: Path | None = None
+    copied = 0
+    try:
+        with handle:
+            if expected_size < 0 or expected_size > budget[0]:
+                raise AcquisitionError("oci rootfs exceeds the extraction size budget")
+            with tempfile.NamedTemporaryFile(
+                mode="wb", dir=dest.parent, prefix=".certforge-oci-", delete=False
+            ) as output:
+                temporary = Path(output.name)
+                remaining = budget[0]
+                while True:
+                    chunk = handle.read(min(_OCI_COPY_CHUNK_BYTES, remaining + 1))
+                    if not chunk:
+                        break
+                    if len(chunk) > remaining:
+                        raise AcquisitionError("oci rootfs exceeds the extraction size budget")
+                    output.write(chunk)
+                    copied += len(chunk)
+                    remaining -= len(chunk)
+                if copied != expected_size:
+                    raise AcquisitionError("oci layer member size does not match its declaration")
+        # Both handles must be closed before replacement, including self-hardlinks
+        # on Windows where an open source handle prevents removing the old file.
+        if dest.is_dir() and not dest.is_symlink():
+            _oci_remove(dest)
+        temporary.replace(dest)
+        budget[0] -= copied
+        _LOGGER.debug(
+            "oci_member_materialized",
+            extra={"event": "oci_member_materialized", "member_bytes": copied,
+                   "remaining_budget_bytes": budget[0]},
+        )
+    except (OSError, tarfile.TarError, EOFError) as exc:
+        _LOGGER.debug(
+            "oci_member_extraction_failed",
+            extra={"event": "oci_member_extraction_failed", "error_type": type(exc).__name__,
+                   "copied_bytes": copied},
+        )
+        raise AcquisitionError("oci layer member extraction failed") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def _oci_apply_layer(blob: bytes, rootfs: Path, budget: list[int]) -> None:
     """Apply ONE image layer diff onto the rootfs — safely.
 
@@ -219,6 +277,7 @@ def _oci_apply_layer(blob: bytes, rootfs: Path, budget: list[int]) -> None:
                 continue
             if member.issym():
                 data = (_OCI_SYMLINK_PLACEHOLDER + member.linkname).encode("utf-8")
+                _oci_write_member(io.BytesIO(data), dest, budget, expected_size=len(data))
             elif member.islnk():
                 link_rel = _oci_safe_rel(member.linkname, kind="hardlink target")
                 source = rootfs.joinpath(*link_rel.parts) if link_rel is not None else None
@@ -226,21 +285,17 @@ def _oci_apply_layer(blob: bytes, rootfs: Path, budget: list[int]) -> None:
                     raise AcquisitionError(
                         f"oci layer hardlink target missing or unsafe: {member.linkname!r}"
                     )
-                data = source.read_bytes()
+                source_size = source.stat().st_size
+                _oci_write_member(source.open("rb"), dest, budget, expected_size=source_size)
             elif member.isreg():
                 handle = archive.extractfile(member)
                 if handle is None:
                     raise AcquisitionError(f"oci layer member is unreadable: {member.name!r}")
-                data = handle.read(_OCI_MAX_EXTRACT_BYTES + 1)
+                _oci_write_member(handle, dest, budget, expected_size=member.size)
             else:
                 raise AcquisitionError(
                     f"oci layer member has an unsupported type: {member.name!r}"
                 )
-            budget[0] -= len(data)
-            if budget[0] < 0:
-                raise AcquisitionError("oci rootfs exceeds the extraction size budget")
-            _oci_remove(dest)
-            dest.write_bytes(data)
 
 
 def _acquire_oci(spec: dict, dest: Path, timeout_s: float) -> AcquiredTarget:
