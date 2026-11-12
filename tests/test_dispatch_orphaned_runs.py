@@ -126,6 +126,7 @@ import pytest
     ("table", "column", "value"),
     [
         ("subscriber_run_reservations", "execution_started_at", "2026-11-12T12:00:00Z"),
+        ("subscriber_run_reservations", "consumed_at", "2026-11-12T12:01:00Z"),
         ("subscriber_run_reservations", "worker_id", "synthetic-test-worker"),
         ("subscriber_run_reservations", "worker_attestation_sha256", "1" * 64),
         ("subscriber_run_reservations", "execution_location", "synthetic-test-location"),
