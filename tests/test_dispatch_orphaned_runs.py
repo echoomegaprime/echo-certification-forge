@@ -115,3 +115,54 @@ def test_a_failed_dispatch_whose_run_already_finished_is_left_alone(tmp_path, ma
     before = _usage(governance, org)["meters"]["certification_runs"]
     assert governance.claim_dispatch("dispatcher-b", organization_id=org.organization_id) is None
     assert _usage(governance, org)["meters"]["certification_runs"] == before == 0
+
+
+# Synthetic contradictory records must not lose live execution ownership,
+# immutable evidence or metered reservations during historical recovery.
+import pytest
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "value"),
+    [
+        ("subscriber_run_reservations", "execution_started_at", "2026-11-12T12:00:00Z"),
+        ("subscriber_run_reservations", "worker_id", "synthetic-test-worker"),
+        ("subscriber_run_reservations", "worker_attestation_sha256", "1" * 64),
+        ("subscriber_run_reservations", "execution_location", "synthetic-test-location"),
+        ("subscriber_run_reservations", "signing_authority", "synthetic-test-authority"),
+        ("subscriber_run_reservations", "signing_key_id", "synthetic-test-key"),
+        ("subscriber_run_reservations", "claim_token", "synthetic-test-claim"),
+        ("subscriber_run_reservations", "lease_expires_at", "2026-11-12T13:00:00Z"),
+        ("subscriber_run_reservations", "last_heartbeat_at", "2026-11-12T12:00:00Z"),
+        ("subscriber_run_dispatches", "claim_token", "synthetic-test-dispatch-claim"),
+        ("subscriber_run_dispatches", "lease_owner", "synthetic-test-dispatch-owner"),
+        ("subscriber_run_dispatches", "lease_expires_at", "2026-11-12T13:00:00Z"),
+    ],
+)
+def test_orphan_recovery_preserves_conflicting_ownership(
+    tmp_path, manifest, table, column, value
+) -> None:
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "contradictory-owner", max_attempts=3
+    )
+    _orphan_the_old_way(governance, org, run_id)
+    # Only disposable test SQLite, never production. Parameters are test constants.
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            f"UPDATE {table} SET {column} = ? WHERE run_id = ? AND organization_id = ?",
+            (value, run_id, org.organization_id),
+        )
+    assert governance.claim_dispatch(
+        "dispatcher-reconciler", organization_id=org.organization_id
+    ) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+    with sqlite3.connect(governance.db_path) as connection:
+        state = connection.execute(
+            "SELECT state FROM subscriber_run_reservations "
+            "WHERE run_id = ? AND organization_id = ?",
+            (run_id, org.organization_id),
+        ).fetchone()[0]
+        assert state == "BOUND"

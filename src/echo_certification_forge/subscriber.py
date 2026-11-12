@@ -4202,6 +4202,20 @@ class SubscriberGovernance:
             WHERE d.state = 'FAILED'
               AND r.state = 'BOUND'
               AND runs.state = 'QUEUED'
+              -- Legacy recovery may only compensate work with no execution or
+              -- ownership evidence. Inconsistent state is held for human review.
+              AND r.execution_started_at IS NULL
+              AND r.worker_id IS NULL
+              AND r.worker_attestation_sha256 IS NULL
+              AND r.execution_location IS NULL
+              AND r.signing_authority IS NULL
+              AND r.signing_key_id IS NULL
+              AND r.claim_token IS NULL
+              AND r.lease_expires_at IS NULL
+              AND r.last_heartbeat_at IS NULL
+              AND d.claim_token IS NULL
+              AND d.lease_owner IS NULL
+              AND d.lease_expires_at IS NULL
             """
         ).fetchall()
         for row in orphans:
