@@ -206,3 +206,95 @@ def test_final_dispatch_error_preserves_conflicting_execution_evidence(
     # No historical reconcile may reinterpret the contradictory record as unstarted.
     assert governance.claim_dispatch("dispatcher-b", organization_id=org.organization_id) is None
     assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+
+
+@pytest.mark.parametrize("max_attempts", [1, 3])
+@pytest.mark.parametrize(("column", "value"), [
+    ("consumed_at", "2026-11-12T12:00:00Z"),
+    ("execution_started_at", "2026-11-12T12:00:00Z"),
+    ("worker_id", "synthetic-worker"),
+])
+def test_expired_claim_with_ownership_requires_review(
+    tmp_path, manifest, max_attempts, column, value
+):
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "expired-dispatch-owner", max_attempts=max_attempts
+    )
+    dispatch = governance.claim_dispatch(
+        "dispatcher-a", run_id=run_id, organization_id=org.organization_id
+    )
+    assert dispatch is not None
+    # Deliberate contradictory state exists only in this disposable test database.
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            f"UPDATE subscriber_run_reservations SET {column} = ? WHERE run_id = ?",
+            (value, run_id),
+        )
+        connection.execute(
+            "UPDATE subscriber_run_dispatches "
+            "SET lease_expires_at = '2000-01-01T00:00:00Z', attempts = ? "
+            "WHERE run_id = ?", (max_attempts, run_id)
+        )
+    assert governance.claim_dispatch(
+        "dispatcher-b", organization_id=org.organization_id
+    ) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "FAILED"
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+
+@pytest.mark.parametrize(("column", "value"), [
+    ("consumed_at", "2026-11-12T12:00:00Z"),
+    ("worker_id", "synthetic-worker"),
+])
+def test_retryable_dispatch_with_ownership_is_not_requeued(
+    tmp_path, manifest, column, value
+):
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "retryable-dispatch-owner", max_attempts=3
+    )
+    dispatch = governance.claim_dispatch(
+        "dispatcher-a", run_id=run_id, organization_id=org.organization_id
+    )
+    assert dispatch is not None
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            f"UPDATE subscriber_run_reservations SET {column} = ? WHERE run_id = ?",
+            (value, run_id),
+        )
+    assert governance.finish_dispatch(
+        dispatch, error="subscriber_worker_claim_denied"
+    ) == "FAILED"
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+    assert governance.claim_dispatch(
+        "dispatcher-b", organization_id=org.organization_id
+    ) is None
+
+
+@pytest.mark.parametrize("max_attempts,expected_state,expected_meter", [
+    (1, RunState.INFRASTRUCTURE_FAILURE.value, 0),
+    (3, RunState.QUEUED.value, 1),
+])
+def test_expired_claim_without_ownership_preserves_existing_policy(
+    tmp_path, manifest, max_attempts, expected_state, expected_meter
+):
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "expired-unstarted-proof", max_attempts=max_attempts
+    )
+    dispatch = governance.claim_dispatch(
+        "dispatcher-a", run_id=run_id, organization_id=org.organization_id
+    )
+    assert dispatch is not None
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            "UPDATE subscriber_run_dispatches "
+            "SET lease_expires_at = '2000-01-01T00:00:00Z' WHERE run_id = ?",
+            (run_id,)
+        )
+    governance.claim_dispatch("dispatcher-b", organization_id=org.organization_id)
+    assert store.get_run(run_id, org.organization_id)["state"] == expected_state
+    assert _usage(governance, org)["meters"]["certification_runs"] == expected_meter
