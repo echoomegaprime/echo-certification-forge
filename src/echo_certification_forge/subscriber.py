@@ -31,6 +31,20 @@ from .models import declared_target_identity_digest, is_exact_git_commit
 _ZERO_HASH = "0" * 64
 _TERMINAL_RUN_STATES = ("COMPLETED", "CANCELLED", "INFRASTRUCTURE_FAILURE")
 
+# Worker exception text is untrusted; retain only documented machine reasons.
+# Also redact API responses from legacy rows with previously stored raw errors.
+def _bounded_dispatch_error(error: str | None) -> str | None:
+    if error is None:
+        return None
+    if error in (
+        "subscriber_worker_claim_denied",
+        "dispatch_attempts_exhausted",
+        "dispatch_lease_expired",
+    ):
+        return error
+    return "redacted"
+
+
 
 class OrganizationStatus(StrEnum):
     TRIALING = "TRIALING"
@@ -4441,7 +4455,7 @@ class SubscriberGovernance:
                 """,
                 (
                     state,
-                    error,
+                    _bounded_dispatch_error(error),
                     now,
                     dispatch.run_id,
                     dispatch.organization_id,
@@ -4465,7 +4479,9 @@ class SubscriberGovernance:
             ).fetchone()
         if row is None:
             raise SubscriberError(404, "dispatch_not_found")
-        return dict(row)
+        result = dict(row)
+        result["last_error"] = _bounded_dispatch_error(result["last_error"])
+        return result
 
     def _resolve_worker_governance(
         self,
