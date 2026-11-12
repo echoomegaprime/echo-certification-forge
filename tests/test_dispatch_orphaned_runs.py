@@ -342,7 +342,10 @@ def test_expired_owned_dispatch_preserves_nonsecret_claim_custody(tmp_path, mani
     assert details["meter_compensated"] is False
     assert details["previous_lease_owner"] == "dispatcher-a"
     assert details["previous_lease_expires_at"] == "2000-01-01T00:00:00Z"
-    assert details["previous_claim_token_sha256"] == hashlib.sha256(
+    assert details["previous_claim_token_hmac_sha256"] == governance._token_digest(
+        dispatch.claim_token
+    )
+    assert details["previous_claim_token_hmac_sha256"] != hashlib.sha256(
         dispatch.claim_token.encode("utf-8")
     ).hexdigest()
     assert dispatch.claim_token not in row[0]
@@ -384,7 +387,7 @@ def test_expired_unstarted_dispatch_does_not_expose_claim_token_in_audit(tmp_pat
     assert row is not None
     details = json.loads(row[0])
     assert details["ownership_review_required"] is False
-    assert "previous_claim_token_sha256" not in details
+    assert "previous_claim_token_hmac_sha256" not in details
     assert dispatch.claim_token not in row[0]
     assert store.get_run(run_id, org.organization_id)["state"] == RunState.INFRASTRUCTURE_FAILURE.value
     assert _usage(governance, org)["meters"]["certification_runs"] == 0

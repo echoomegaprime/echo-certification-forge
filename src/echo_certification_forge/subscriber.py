@@ -4196,8 +4196,8 @@ class SubscriberGovernance:
                 recovery_details.update({
                     "previous_lease_owner": row["previous_lease_owner"],
                     "previous_lease_expires_at": row["previous_lease_expires_at"],
-                    "previous_claim_token_sha256": (
-                        hashlib.sha256(str(previous_claim).encode("utf-8")).hexdigest()
+                    "previous_claim_token_hmac_sha256": (
+                        self._token_digest(str(previous_claim))
                         if previous_claim is not None else None
                     ),
                 })
