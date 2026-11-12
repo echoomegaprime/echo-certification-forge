@@ -55,9 +55,34 @@ service_owns_port() {
     ss -H -ltnp "sport = :$port" | grep -q "pid=$service_pid,"
 }
 
+[[ "$GIT_ACQUISITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || {
+  echo "!! ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS must be an integer"
+  exit 1
+}
+if (( GIT_ACQUISITION_TIMEOUT_SECONDS < 30 || GIT_ACQUISITION_TIMEOUT_SECONDS > 1800 )); then
+  echo "!! ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS must be between 30 and 1800"
+  exit 1
+fi
+command -v timeout >/dev/null 2>&1 || {
+  echo "!! GNU timeout is required for bounded source acquisition"
+  exit 1
+}
 cd "$SOURCE_REPO"
 echo "== [1/9] fetch immutable source ($BRANCH) =="
-git "${GITC[@]}" fetch --quiet origin "$BRANCH"
+# timeout controls the git process group, including credential and transport helpers.
+# An unresponsive fetch cannot enter the release build or promotion stages.
+if timeout --signal=TERM --kill-after=5s "${GIT_ACQUISITION_TIMEOUT_SECONDS}s" \
+    git "${GITC[@]}" fetch --quiet origin "$BRANCH"; then
+  :
+else
+  fetch_status=$?
+  if [ "$fetch_status" -eq 124 ] || [ "$fetch_status" -eq 137 ]; then
+    echo "!! source fetch exceeded the configured acquisition deadline"
+  else
+    echo "!! source fetch failed (status $fetch_status)"
+  fi
+  exit "$fetch_status"
+fi
 NEW_SHA="$(git rev-parse "origin/$BRANCH^{commit}")"
 if [ -n "$EXPECTED_COMMIT_SHA" ] && [ "$NEW_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
   echo "!! fetched commit does not match the hosted-CI-approved commit"
@@ -107,14 +132,6 @@ case "$ADAPTER_MODE" in
   required|pending) ;;
   *) echo "!! CERTFORGE_ADAPTER_MODE must be required or pending"; exit 1 ;;
 esac
-[[ "$GIT_ACQUISITION_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || {
-  echo "!! ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS must be an integer"
-  exit 1
-}
-if (( GIT_ACQUISITION_TIMEOUT_SECONDS < 30 || GIT_ACQUISITION_TIMEOUT_SECONDS > 1800 )); then
-  echo "!! ECHO_CERTFORGE_GIT_ACQUISITION_TIMEOUT_SECONDS must be between 30 and 1800"
-  exit 1
-fi
 ADAPTER_RESPONSE=""
 ADAPTER_POLICY=""
 ADAPTER_REGISTRY=""
