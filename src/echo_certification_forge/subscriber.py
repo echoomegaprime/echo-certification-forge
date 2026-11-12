@@ -4083,6 +4083,9 @@ class SubscriberGovernance:
         rows = connection.execute(
             """
             SELECT d.run_id, d.organization_id, d.idempotency_key, d.attempts,
+                   d.lease_owner AS previous_lease_owner,
+                   d.lease_expires_at AS previous_lease_expires_at,
+                   d.claim_token AS previous_claim_token,
                    CASE WHEN r.execution_started_at IS NULL
                              AND r.consumed_at IS NULL
                              AND r.worker_id IS NULL
@@ -4180,6 +4183,24 @@ class SubscriberGovernance:
                 """,
                 (next_state, error, now_text, row["run_id"]),
             )
+            recovery_details = {
+                "recovery": next_state.lower(),
+                "attempts": int(row["attempts"]),
+                "meter_compensated": meter_compensated,
+                "ownership_review_required": ownership_review_required,
+            }
+            if ownership_review_required:
+                # Preserve non-secret lease provenance in the append-only audit
+                # before mutable claim fields are cleared. Never persist a replayable token.
+                previous_claim = row["previous_claim_token"]
+                recovery_details.update({
+                    "previous_lease_owner": row["previous_lease_owner"],
+                    "previous_lease_expires_at": row["previous_lease_expires_at"],
+                    "previous_claim_token_sha256": (
+                        hashlib.sha256(str(previous_claim).encode("utf-8")).hexdigest()
+                        if previous_claim is not None else None
+                    ),
+                })
             self._append_audit(
                 connection,
                 organization_id=str(row["organization_id"]),
@@ -4188,12 +4209,7 @@ class SubscriberGovernance:
                 resource_type="certification",
                 resource_id=str(row["run_id"]),
                 outcome="allowed",
-                details={
-                    "recovery": next_state.lower(),
-                    "attempts": int(row["attempts"]),
-                    "meter_compensated": meter_compensated,
-                    "ownership_review_required": ownership_review_required,
-                },
+                details=recovery_details,
             )
         # Runs orphaned before fleet #49604: dispatch FAILED, run still QUEUED, reservation BOUND.
         # Once terminalized they no longer match, so this pass is idempotent.
