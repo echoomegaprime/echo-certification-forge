@@ -167,3 +167,42 @@ def test_orphan_recovery_preserves_conflicting_ownership(
             (run_id, org.organization_id),
         ).fetchone()[0]
         assert state == "BOUND"
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("consumed_at", "2026-11-12T14:00:00Z"),
+        ("execution_started_at", "2026-11-12T14:00:00Z"),
+        ("worker_id", "synthetic-live-worker"),
+    ],
+)
+def test_final_dispatch_error_preserves_conflicting_execution_evidence(
+    tmp_path, manifest, column, value
+) -> None:
+    """An exhausted claimed dispatch cannot erase contradictory ownership."""
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "final-attempt-owner", max_attempts=1
+    )
+    dispatch = governance.claim_dispatch(
+        "dispatcher-a", run_id=run_id, organization_id=org.organization_id
+    )
+    assert dispatch is not None
+    # Synthetic state mutation is confined to the disposable test fixture DB.
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            f"UPDATE subscriber_run_reservations SET {column} = ? "
+            "WHERE run_id = ? AND organization_id = ?",
+            (value, run_id, org.organization_id),
+        )
+    assert governance.finish_dispatch(
+        dispatch, error="subscriber_worker_claim_denied"
+    ) == "FAILED"
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "FAILED"
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+    # No historical reconcile may reinterpret the contradictory record as unstarted.
+    assert governance.claim_dispatch("dispatcher-b", organization_id=org.organization_id) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
