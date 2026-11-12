@@ -17,6 +17,7 @@ from echo_certification_forge.executor import RunExecutor, StaticEntitlement
 from echo_certification_forge.models import EnvironmentIdentity
 from echo_certification_forge.policy import RuleManifest
 from echo_certification_forge.signing import Ed25519VerdictSigner
+from production_e2e_support import trusted_generic_production_e2e
 
 RUN = "cert-p5-executor"
 
@@ -89,7 +90,8 @@ def manifest_v2() -> RuleManifest:
 
 def execute(store, target, tmp_path: Path, *, records, adapter_policy, adapter_digest: str):
     manifest = manifest_v2()
-    store.register_run(RUN, target, environment(adapter_digest), manifest.manifest_id, manifest.digest)
+    run_environment = environment(adapter_digest)
+    store.register_run(RUN, target, run_environment, manifest.manifest_id, manifest.digest)
     executor = RunExecutor(store, manifest, Ed25519VerdictSigner.generate())
     return executor.execute(
         RUN,
@@ -103,6 +105,7 @@ def execute(store, target, tmp_path: Path, *, records, adapter_policy, adapter_d
         },
         adapter_records=records,
         adapter_policy=adapter_policy,
+        production_e2e_attestation=trusted_generic_production_e2e(target, run_environment),
     )
 
 

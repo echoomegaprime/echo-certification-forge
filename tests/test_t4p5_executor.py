@@ -11,6 +11,7 @@ from pathlib import Path
 from echo_certification_forge.canonical import to_utc_iso, utc_now
 from echo_certification_forge.executor import RunExecutor, StaticEntitlement
 from echo_certification_forge.signing import Ed25519VerdictSigner
+from production_e2e_support import trusted_generic_production_e2e
 
 RUN = "cert-exec"
 
@@ -140,7 +141,10 @@ def test_retention_purge_removes_expired_content_but_keeps_signed_verdict(
                         entitlement=StaticEntitlement(frozenset({target.tenant_id})),
                         journey=[sys.executable, "hello.py"],
                         control_attestations={"runner_control_channel": True,
-                                              "signing_authority_separation": True})
+                                              "signing_authority_separation": True},
+                        production_e2e_attestation=trusted_generic_production_e2e(
+                            target, environment
+                        ))
     assert result.release_verdict == "PRODUCTION_READY", result.blocking_findings
 
     verdict_before = store.latest_signed_verdict(RUN, target.tenant_id)
