@@ -30,6 +30,14 @@ from .models import declared_target_identity_digest, is_exact_git_commit
 
 _ZERO_HASH = "0" * 64
 _TERMINAL_RUN_STATES = ("COMPLETED", "CANCELLED", "INFRASTRUCTURE_FAILURE")
+# Known machine codes observed at worker failure call sites. Unknown identifier-form
+# strings must not enter durable state, audit chains, or tenant-visible responses.
+_SAFE_WORKER_FAILURE_REASONS = frozenset({
+    "oci_journey_requires_sandbox",
+    "target_reconciliation_failed",
+    "windows_package_finalization_failed",
+    "worker_run_claim_inactive",
+})
 
 # Worker exception text is untrusted; retain only documented machine reasons.
 # Also redact API responses from legacy rows with previously stored raw errors.
@@ -5063,6 +5071,9 @@ class SubscriberGovernance:
 
     def fail_worker_execution(self, claim: WorkerRunClaim, *, reason: str) -> None:
         require_identifier(reason, "reason")
+        # Even identifier-shaped inputs may contain sensitive untrusted data.
+        # Use one sanitized reason for dispatch state, run history and immutable audit.
+        reason = reason if reason in _SAFE_WORKER_FAILURE_REASONS else "redacted"
         now_value = self._now()
         now = to_utc_iso(now_value)
         with self._connection(immediate=True) as connection:
