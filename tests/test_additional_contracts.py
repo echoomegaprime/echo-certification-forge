@@ -22,10 +22,12 @@ from echo_certification_forge.policy import RuleManifest
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.verdict import DeterministicVerdictEngine
+from production_e2e_support import trusted_generic_production_e2e
 
 
 def complete_run(store, manifest, target, environment, run_id="cert-extra"):
     store.register_run(run_id, target, environment, manifest.manifest_id, manifest.digest)
+    production_e2e = trusted_generic_production_e2e(target, environment).result_details()
     for index, rule in enumerate(manifest.rules, start=1):
         artifact_id = f"extra-{index:02d}"
         store.append_artifact(
@@ -34,7 +36,12 @@ def complete_run(store, manifest, target, environment, run_id="cert-extra"):
         )
         store.record_rule_result(
             run_id, target.tenant_id,
-            RuleResult(rule.id, True, (artifact_id,), {"verified": True}),
+            RuleResult(
+                rule.id,
+                True,
+                (artifact_id,),
+                production_e2e if rule.id == "production_e2e" else {"verified": True},
+            ),
         )
     store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
     return run_id

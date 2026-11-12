@@ -40,6 +40,7 @@ from echo_certification_forge.subscriber import (
     SubscriberGovernance,
     SubscriberPolicy,
 )
+from production_e2e_support import trusted_generic_production_e2e
 
 PEPPER = b"p7-acceptance-pepper-material-32-bytes-minimum"
 
@@ -1166,6 +1167,7 @@ def test_run_worker_enforces_live_subscriber_entitlement(
         entitled=frozenset({org.organization_id}),
         subscribers=governance,
         journey=[sys.executable, "journey.py"],
+        production_e2e_provider=trusted_generic_production_e2e,
     )
 
     assert result["error"] == "subscriber_worker_claim_denied"
@@ -3578,6 +3580,7 @@ def test_legal_hold_lifecycle_and_public_verification_use_hardened_subscriber_au
         entitled=frozenset({owner.organization_id}),
         subscribers=governance,
         journey=[sys.executable, "journey.py"],
+        production_e2e_provider=trusted_generic_production_e2e,
     )
     assert result["state"] == RunState.COMPLETED.value
     headers = _headers(owner.organization_id, owner.bootstrap_api_key)
