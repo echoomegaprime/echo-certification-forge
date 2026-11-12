@@ -353,7 +353,10 @@ class SubscriberGovernance:
                 connection.execute(f'ALTER TABLE "{table}" RENAME TO "{archive}"')
             connection.execute("COMMIT")
         except BaseException:
-            connection.execute("ROLLBACK")
+            # A failed BEGIN leaves no active transaction. Preserve the original
+            # sqlite3.OperationalError rather than masking it with ROLLBACK.
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
             raise
         finally:
             connection.close()
