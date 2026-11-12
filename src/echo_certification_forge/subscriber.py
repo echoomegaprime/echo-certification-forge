@@ -44,7 +44,7 @@ _SAFE_WORKER_FAILURE_REASONS = frozenset({
 def _bounded_dispatch_error(error: str | None) -> str | None:
     if error is None:
         return None
-    if error in (
+    if error in _SAFE_WORKER_FAILURE_REASONS or error in (
         "subscriber_worker_claim_denied",
         "dispatch_attempts_exhausted",
         "dispatch_lease_expired",
