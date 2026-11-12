@@ -4205,6 +4205,8 @@ class SubscriberGovernance:
               -- Legacy recovery may only compensate work with no execution or
               -- ownership evidence. Inconsistent state is held for human review.
               AND r.execution_started_at IS NULL
+              -- A previously consumed reservation is not proven unstarted.
+              AND r.consumed_at IS NULL
               AND r.worker_id IS NULL
               AND r.worker_attestation_sha256 IS NULL
               AND r.execution_location IS NULL
