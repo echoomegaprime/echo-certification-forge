@@ -419,3 +419,33 @@ def test_legacy_failed_dispatch_with_retries_remaining_is_not_compensated(tmp_pa
             "WHERE resource_id = ? AND action = 'certification.dispatch_orphan_reconciled'",
             (run_id,),
         ).fetchone()[0] == 0
+
+
+
+def test_legacy_failed_dispatch_with_unknown_reason_is_held_for_review(tmp_path, manifest) -> None:
+    """Unknown error categories cannot trigger automatic legacy compensation."""
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "unknown-error-hold", max_attempts=3
+    )
+    _orphan_the_old_way(governance, org, run_id)
+    # A disposable SQLite fixture only: production records are never edited.
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            "UPDATE subscriber_run_dispatches SET last_error = ? "
+            "WHERE run_id = ? AND organization_id = ?",
+            ("unclassified_remote_failure", run_id, org.organization_id),
+        )
+    assert governance.claim_dispatch(
+        "recovery-auditor", organization_id=org.organization_id
+    ) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "FAILED"
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+    with sqlite3.connect(governance.db_path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM subscriber_audit_events "
+            "WHERE resource_id = ? AND action = 'certification.dispatch_orphan_reconciled'",
+            (run_id,),
+        ).fetchone()[0] == 0
