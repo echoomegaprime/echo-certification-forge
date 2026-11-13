@@ -391,3 +391,31 @@ def test_expired_unstarted_dispatch_does_not_expose_claim_token_in_audit(tmp_pat
     assert dispatch.claim_token not in row[0]
     assert store.get_run(run_id, org.organization_id)["state"] == RunState.INFRASTRUCTURE_FAILURE.value
     assert _usage(governance, org)["meters"]["certification_runs"] == 0
+
+def test_legacy_failed_dispatch_with_retries_remaining_is_not_compensated(tmp_path, manifest) -> None:
+    """A non-exhausted FAILED row is ambiguous and must not be auto-refunded."""
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "incomplete-dispatch-hold", max_attempts=3
+    )
+    _orphan_the_old_way(governance, org, run_id)
+    # Simulate a contradictory legacy row in this disposable test database only.
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.execute(
+            "UPDATE subscriber_run_dispatches SET attempts = 1 "
+            "WHERE run_id = ? AND organization_id = ?",
+            (run_id, org.organization_id),
+        )
+    assert governance.claim_dispatch(
+        "recovery-auditor", organization_id=org.organization_id
+    ) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "FAILED"
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+    with sqlite3.connect(governance.db_path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM subscriber_audit_events "
+            "WHERE resource_id = ? AND action = 'certification.dispatch_orphan_reconciled'",
+            (run_id,),
+        ).fetchone()[0] == 0
