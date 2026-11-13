@@ -34,7 +34,8 @@ def test_multiple_tenant_orphans_reconciled_once(tmp_path, manifest):
                 "UPDATE subscriber_run_dispatches "
                 "SET state='FAILED', attempts=3, claim_token=NULL, "
                 "lease_owner=NULL, lease_expires_at=NULL, "
-                "last_error='subscriber_worker_claim_denied' "
+                "last_error='subscriber_worker_claim_denied', "
+                "updated_at='2026-10-01T00:00:00Z' "
                 "WHERE run_id=? AND organization_id=?",
                 (run_id, org.organization_id),
             )
@@ -42,6 +43,18 @@ def test_multiple_tenant_orphans_reconciled_once(tmp_path, manifest):
 
     assert all(_usage(governance, org)["meters"]["certification_runs"] == 1 for org, _ in pairs)
     assert governance.claim_dispatch("batch-recovery") is None
+    recovered_first = sum(
+        store.get_run(run_id, org.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value for org, run_id in pairs
+    )
+    # Four records at most per transaction, with the fifth held intact.
+    assert recovered_first == 4
+    assert sum(
+        store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+        for org, run_id in pairs
+    ) == 1
+
+    assert governance.claim_dispatch("batch-recovery-follow-up") is None
     for org, run_id in pairs:
         assert store.get_run(run_id, org.organization_id)["state"] == RunState.INFRASTRUCTURE_FAILURE.value
         usage = _usage(governance, org)
