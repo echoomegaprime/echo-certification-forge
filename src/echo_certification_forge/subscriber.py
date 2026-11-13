@@ -4236,6 +4236,11 @@ class SubscriberGovernance:
               ON runs.run_id = d.run_id
              AND runs.tenant_id = d.organization_id
             WHERE d.state = 'FAILED'
+              -- Only dispatches that actually exhausted retries may be compensated.
+              -- A non-exhausted FAILED row is held for independent review.
+              AND d.attempts >= ?
+              -- A failed row from any other cause requires separate ownership review.
+              AND d.last_error = 'subscriber_worker_claim_denied'
               AND r.state = 'BOUND'
               AND runs.state = 'QUEUED'
               -- Legacy recovery may only compensate work with no execution or
@@ -4254,7 +4259,11 @@ class SubscriberGovernance:
               AND d.claim_token IS NULL
               AND d.lease_owner IS NULL
               AND d.lease_expires_at IS NULL
-            """
+            -- Bound the amount of historical remediation in one transaction.
+            ORDER BY d.created_at ASC, d.run_id ASC
+            LIMIT 25
+            """,
+            (self.policy.max_dispatch_attempts,),
         ).fetchall()
         for row in orphans:
             self._terminalize_unstarted_run(

@@ -1,7 +1,7 @@
-"""The immutable orphan-reconciliation audit must not persist untrusted error text.
+"""Historical orphan reconciliation must fail closed for untrusted error text.
 
-All state changes use pytest's private temporary SQLite database.
-This test covers the recovery path only, without a production dispatcher.
+All state changes use a private pytest SQLite fixture; this test never
+modifies production data or sends a synthetic heartbeat.
 """
 from __future__ import annotations
 
@@ -15,15 +15,15 @@ from test_dispatch_orphaned_runs import _orphan_the_old_way, _run, _usage
 
 
 @pytest.mark.parametrize(
-    ("incoming_error", "audited_error"),
+    ("incoming_error", "eligible_for_recovery"),
     [
-        ("subscriber_worker_claim_denied", "subscriber_worker_claim_denied"),
-        ("Authorization: Bearer synthetic-do-not-store-000", "redacted"),
-        (None, None),
+        ("subscriber_worker_claim_denied", True),
+        ("Authorization: Bearer synthetic-do-not-store-000", False),
+        (None, False),
     ],
 )
 def test_orphan_recovery_audit_redacts_untrusted_last_error(
-    tmp_path, manifest, incoming_error, audited_error
+    tmp_path, manifest, incoming_error, eligible_for_recovery
 ):
     store, governance, org, run_id = _run(
         tmp_path, manifest, "audit-redaction", max_attempts=3
@@ -35,15 +35,23 @@ def test_orphan_recovery_audit_redacts_untrusted_last_error(
             "WHERE run_id = ? AND organization_id = ?",
             (incoming_error, run_id, org.organization_id),
         )
-        connection.commit()
 
     assert governance.claim_dispatch(
         "audit-recovery", organization_id=org.organization_id
     ) is None
-    assert store.get_run(run_id, org.organization_id)["state"] == (
+    expected_state = (
         RunState.INFRASTRUCTURE_FAILURE.value
+        if eligible_for_recovery else RunState.QUEUED.value
     )
-    assert _usage(governance, org)["meters"]["certification_runs"] == 0
+    assert store.get_run(run_id, org.organization_id)["state"] == expected_state
+
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == (
+        0 if eligible_for_recovery else 1
+    )
+    assert usage["active_run_reservations"] == (
+        0 if eligible_for_recovery else 1
+    )
 
     with sqlite3.connect(governance.db_path) as connection:
         audit_rows = connection.execute(
@@ -52,7 +60,11 @@ def test_orphan_recovery_audit_redacts_untrusted_last_error(
             "AND action = 'certification.dispatch_orphan_reconciled'",
             (org.organization_id, run_id),
         ).fetchall()
-    assert len(audit_rows) == 1
-    recorded = audit_rows[0][0]
-    assert json.loads(recorded)["last_error"] == audited_error
-    assert "synthetic-do-not-store-000" not in recorded
+
+    assert len(audit_rows) == (1 if eligible_for_recovery else 0)
+    if eligible_for_recovery:
+        assert json.loads(audit_rows[0][0])["last_error"] == (
+            "subscriber_worker_claim_denied"
+        )
+    # Neither recognized nor rejected paths may persist a raw sensitive error.
+    assert "synthetic-do-not-store-000" not in "\n".join(row[0] for row in audit_rows)
