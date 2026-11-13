@@ -4254,7 +4254,23 @@ class SubscriberGovernance:
               AND d.claim_token IS NULL
               AND d.lease_owner IS NULL
               AND d.lease_expires_at IS NULL
-            """
+              -- Only exhausted, known pre-execution failures are safe for
+              -- automatic historical compensation. Recent/unknown failures
+              -- remain untouched for independent reconciliation.
+              AND d.attempts >= ?
+              AND d.last_error IN (
+                  'subscriber_worker_claim_denied',
+                  'dispatch_attempts_exhausted'
+              )
+              AND d.updated_at <= ?
+            ORDER BY d.created_at, d.run_id
+            LIMIT ?
+            """,
+            (
+                self.policy.max_dispatch_attempts,
+                to_utc_iso(now - timedelta(hours=24)),
+                4,
+            ),
         ).fetchall()
         for row in orphans:
             self._terminalize_unstarted_run(

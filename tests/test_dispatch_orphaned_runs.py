@@ -81,7 +81,8 @@ def _orphan_the_old_way(governance, org, run_id) -> None:
             """
             UPDATE subscriber_run_dispatches
             SET state = 'FAILED', attempts = 3, claim_token = NULL, lease_owner = NULL,
-                lease_expires_at = NULL, last_error = 'subscriber_worker_claim_denied'
+                lease_expires_at = NULL, last_error = 'subscriber_worker_claim_denied',
+                updated_at = '2026-10-01T00:00:00Z'
             WHERE run_id = ? AND organization_id = ?
             """,
             (run_id, org.organization_id),
@@ -390,4 +391,96 @@ def test_expired_unstarted_dispatch_does_not_expose_claim_token_in_audit(tmp_pat
     assert "previous_claim_token_hmac_sha256" not in details
     assert dispatch.claim_token not in row[0]
     assert store.get_run(run_id, org.organization_id)["state"] == RunState.INFRASTRUCTURE_FAILURE.value
+    assert _usage(governance, org)["meters"]["certification_runs"] == 0
+
+@pytest.mark.parametrize(("column","value"), [
+    ("attempts", 1),
+    ("last_error", "unrecognized_failure"),
+    ("updated_at", "2099-01-01T00:00:00Z"),
+])
+def test_historical_recovery_holds_nonexhausted_unknown_or_recent(
+    tmp_path, manifest, column, value
+):
+    store, governance, org, run_id = _run(
+        tmp_path, manifest, "orphan-scope-guard", max_attempts=3
+    )
+    _orphan_the_old_way(governance, org, run_id)
+    with sqlite3.connect(governance.db_path) as connection:
+        # Only a disposable synthetic fixture; production is never mutated.
+        connection.execute(
+            f"UPDATE subscriber_run_dispatches SET {column} = ? WHERE run_id = ?",
+            (value, run_id),
+        )
+    assert governance.claim_dispatch(
+        "dispatcher-guard", organization_id=org.organization_id
+    ) is None
+    assert store.get_run(run_id, org.organization_id)["state"] == RunState.QUEUED.value
+    usage = _usage(governance, org)
+    assert usage["meters"]["certification_runs"] == 1
+    assert usage["active_run_reservations"] == 1
+
+
+def test_historical_orphans_recovered_in_bounded_batches(tmp_path, manifest) -> None:
+    store, governance, org, first_id = _run(
+        tmp_path, manifest, "orphan-batch-scope", max_attempts=3
+    )
+    _orphan_the_old_way(governance, org, first_id)
+    run_ids = [first_id]
+    # Seed a synthetic historical backlog without hitting normal API quota/rate
+    # limits. Only this disposable test SQLite database is ever written.
+    with sqlite3.connect(governance.db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        original_dispatch = connection.execute(
+            "SELECT idempotency_key FROM subscriber_run_dispatches WHERE run_id=?",
+            (first_id,),
+        ).fetchone()
+        original_key = original_dispatch["idempotency_key"]
+        for i in range(4):
+            run_id = f"cert_synthetic_backlog_{i:02d}"
+            key = f"batch-fixture-{i:02d}"
+            for table in (
+                "runs",
+                "subscriber_run_reservations",
+                "subscriber_run_dispatches",
+                "subscriber_usage_events",
+            ):
+                where = (
+                    "run_id = ?" if table == "runs"
+                    else "run_id = ?" if table != "subscriber_usage_events"
+                    else "idempotency_key = ? AND meter = 'certification_runs' AND quantity > 0"
+                )
+                source_id = original_key if table == "subscriber_usage_events" else first_id
+                source = connection.execute(
+                    f"SELECT * FROM {table} WHERE {where}", (source_id,),
+                ).fetchone()
+                assert source is not None
+                values = dict(source)
+                values.pop("usage_event_id", None)
+                if "run_id" in values:
+                    values["run_id"] = run_id
+                if "idempotency_key" in values:
+                    values["idempotency_key"] = key
+                columns = list(values)
+                placeholders = ", ".join("?" for _ in columns)
+                connection.execute(
+                    f"INSERT INTO {table} ({', '.join(columns)}) "
+                    f"VALUES ({placeholders})",
+                    tuple(values.values()),
+                )
+            run_ids.append(run_id)
+    assert governance.claim_dispatch(
+        "dispatcher-first-batch", organization_id=org.organization_id
+    ) is None
+    first_count = sum(
+        store.get_run(run_id, org.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value for run_id in run_ids
+    )
+    assert first_count == 4
+    assert governance.claim_dispatch(
+        "dispatcher-second-batch", organization_id=org.organization_id
+    ) is None
+    assert all(
+        store.get_run(run_id, org.organization_id)["state"]
+        == RunState.INFRASTRUCTURE_FAILURE.value for run_id in run_ids
+    )
     assert _usage(governance, org)["meters"]["certification_runs"] == 0

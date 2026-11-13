@@ -40,10 +40,16 @@ def test_orphan_recovery_audit_redacts_untrusted_last_error(
     assert governance.claim_dispatch(
         "audit-recovery", organization_id=org.organization_id
     ) is None
+    # Only a recognized, exhausted pre-execution failure can be compensated.
+    # Unknown or untrusted last_error values are retained for independent review.
+    recognized = incoming_error == "subscriber_worker_claim_denied"
     assert store.get_run(run_id, org.organization_id)["state"] == (
-        RunState.INFRASTRUCTURE_FAILURE.value
+        RunState.INFRASTRUCTURE_FAILURE.value if recognized
+        else RunState.QUEUED.value
     )
-    assert _usage(governance, org)["meters"]["certification_runs"] == 0
+    assert _usage(governance, org)["meters"]["certification_runs"] == (
+        0 if recognized else 1
+    )
 
     with sqlite3.connect(governance.db_path) as connection:
         audit_rows = connection.execute(
@@ -52,7 +58,15 @@ def test_orphan_recovery_audit_redacts_untrusted_last_error(
             "AND action = 'certification.dispatch_orphan_reconciled'",
             (org.organization_id, run_id),
         ).fetchall()
-    assert len(audit_rows) == 1
-    recorded = audit_rows[0][0]
-    assert json.loads(recorded)["last_error"] == audited_error
-    assert "synthetic-do-not-store-000" not in recorded
+        immutable_details = [row[0] for row in connection.execute(
+            "SELECT details_json FROM subscriber_audit_events "
+            "WHERE organization_id = ? AND resource_id = ?",
+            (org.organization_id, run_id),
+        )]
+    if recognized:
+        assert len(audit_rows) == 1
+        assert json.loads(audit_rows[0][0])["last_error"] == audited_error
+    else:
+        # A rejected candidate cannot produce a misleading compensation audit.
+        assert audit_rows == []
+    assert "synthetic-do-not-store-000" not in "".join(immutable_details)
