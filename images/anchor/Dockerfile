@@ -35,6 +35,7 @@ RUN apk add --no-cache --upgrade krb5-libs=1.22.3-r0 \
     && chown -R 65532:65532 /opt/echo /state /run/certforge
 
 COPY --chown=65532:65532 src/echo_certification_forge /opt/echo/echo_certification_forge
+COPY --chown=65532:65532 pyproject.toml images/requirements.lock /opt/echo/echo_certification_forge/runtime_data/
 
 WORKDIR /state
 USER 65532:65532

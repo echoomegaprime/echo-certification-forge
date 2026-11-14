@@ -311,6 +311,8 @@ def execute_container(
         network = inspect.get("NetworkSettings") or {}
         return {
             "container_id": container_id,
+            "image_id": inspect.get("Image"),
+            "configured_image": (inspect.get("Config") or {}).get("Image"),
             "started_at": started,
             "completed_at": datetime.now(UTC),
             "exit_code": inspect["State"].get("ExitCode"),
@@ -386,6 +388,109 @@ def observation(
         "containment": result.get("containment"),
         "sanitized_logs": result.get("sanitized_logs"),
     }, decision.passed
+
+
+
+def runtime_packaging_expectation(source_root: Path = ROOT) -> dict[str, Any]:
+    """Bind installed-role packaging to the executable source and public declarations."""
+    from echo_certification_forge.runtime_identity import _harness_digest
+
+    return {
+        "harness_sha256": _harness_digest(source_root),
+        "declaration_sha256": {
+            "pyproject.toml": sha256_file(source_root / "pyproject.toml"),
+            "images/requirements.lock": sha256_file(source_root / "images/requirements.lock"),
+        },
+    }
+
+
+def basic_runtime_probe(
+    *,
+    image: str,
+    expected_image_id: str,
+    role: ImageRole,
+    ownership_token: str,
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute the installed harness measurement inside every role's baseline container."""
+    code = r"""
+import hashlib, json, os
+from pathlib import Path
+from echo_certification_forge import runtime_identity
+package = Path(runtime_identity.__file__).resolve().parent
+declarations = {
+    'pyproject.toml': package / 'runtime_data/pyproject.toml',
+    'images/requirements.lock': package / 'runtime_data/requirements.lock',
+}
+print(json.dumps({
+    'uid': os.getuid(), 'gid': os.getgid(),
+    'harness_sha256': runtime_identity._harness_digest(),
+    'declaration_sha256': {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in declarations.items()
+    },
+}, sort_keys=True))
+""".strip()
+    result = execute_container(
+        image=image,
+        role=role.value,
+        case="containment",
+        ownership_token=ownership_token,
+        command=["-c", code],
+        timeout_seconds=8.0,
+        memory="128m",
+        pids=32,
+        workspace_size="16m",
+        file_size_bytes=1024 * 1024,
+        nofile=64,
+    )
+    require(type(result.get("exit_code")) is int and result["exit_code"] == 0,
+            f"runtime packaging command failed: {role.value}:{result.get('logs', '')}")
+    require(all(result.get(name) is False for name in ("timed_out", "oom_killed", "cancelled")),
+            f"runtime packaging execution incomplete: {role.value}")
+    require(result.get("image_id") == expected_image_id and result.get("configured_image") == image,
+            f"runtime packaging image identity mismatch: {role.value}")
+    data = parse_last_json(result.get("logs", ""))
+    require(set(data) == {"uid", "gid", "harness_sha256", "declaration_sha256"},
+            f"runtime packaging output incomplete: {role.value}")
+    require(type(data["uid"]) is int and type(data["gid"]) is int
+            and data["uid"] == 65532 and data["gid"] == 65532,
+            f"container baseline failed: {role.value}")
+    require(data["harness_sha256"] == expected["harness_sha256"],
+            f"runtime harness packaging mismatch: {role.value}")
+    require(data["declaration_sha256"] == expected["declaration_sha256"],
+            f"runtime declaration packaging mismatch: {role.value}")
+    containment = result.get("containment")
+    required_containment = {
+        "read_only_root", "network_none", "all_capabilities_dropped", "no_new_privileges",
+        "apparmor", "memory_limited", "pids_limited", "cpu_limited", "docker_socket_absent",
+    }
+    require(isinstance(containment, dict) and set(containment) == required_containment
+            and all(value is True for value in containment.values()),
+            f"container containment failed: {role.value}:{containment}")
+    result["runtime_packaging"] = {
+        "passed": True,
+        "container_id": result["container_id"],
+        "image_id": result["image_id"],
+        "configured_image": result["configured_image"],
+        "exit_code": result["exit_code"],
+        "timed_out": result["timed_out"],
+        "oom_killed": result["oom_killed"],
+        "cancelled": result["cancelled"],
+        "uid": data["uid"],
+        "gid": data["gid"],
+        "harness_sha256": data["harness_sha256"],
+        "declaration_sha256": data["declaration_sha256"],
+        "expected_harness_sha256": expected["harness_sha256"],
+        "expected_declaration_sha256": expected["declaration_sha256"],
+        "containment": containment,
+        "logs_sha256": sha256_bytes(result.get("logs", "").encode("utf-8", errors="replace")),
+        "execution_limits": {
+            "timeout_seconds": 8.0, "memory": "128m", "pids": 32, "cpus": 0.25,
+            "workspace_size": "16m", "file_size_bytes": 1024 * 1024, "nofile": 64,
+        },
+    }
+    return result
 
 
 def normalized_image_manifest(image: str, role: ImageRole, ownership_token: str) -> dict[str, Any]:
@@ -1637,6 +1742,8 @@ def main() -> int:
         require(source_scan.valid, f"source build context invalid: {source_scan.findings}")
         lockfile = ROOT / "images/requirements.lock"
         lockfile_sha256 = sha256_file(lockfile)
+        packaging_expected = runtime_packaging_expectation(ROOT)
+        report["runtime_packaging_expectation"] = packaging_expected
         sealed_parent = args.sealed_manifest.resolve().parent
         attestations: dict[ImageRole, Any] = {}
         policies: dict[ImageRole, ImageAdmissionPolicy] = {}
@@ -1772,15 +1879,13 @@ def main() -> int:
             malware = clamav_scan(args.clamav_image, Path(filesystem["tar_path"]), role, ownership_token,
                                    database_profile=database_profile)
             require(malware["passed"], f"malware scan failed: {role.value}:{malware}")
-            baseline = execute_container(
+            baseline = basic_runtime_probe(
                 image=primary,
-                role=role.value,
-                case="containment",
+                expected_image_id=image_digest,
+                role=role,
                 ownership_token=ownership_token,
-                command=["-c", "import json,os; print(json.dumps({'uid':os.getuid(),'gid':os.getgid()}))"],
+                expected=packaging_expected,
             )
-            baseline_data = parse_last_json(baseline["logs"])
-            require(baseline["exit_code"] == 0 and baseline_data == {"uid": 65532, "gid": 65532}, f"container baseline failed: {role.value}")
             require(all(baseline["containment"].values()), f"container containment failed: {role.value}:{baseline['containment']}")
             report["images"][role.value] = {
                 "primary_reference": primary,
@@ -1805,6 +1910,7 @@ def main() -> int:
                 "vulnerability_scan": vulnerability,
                 "malware_scan": malware,
                 "containment": baseline["containment"],
+                "runtime_packaging": baseline["runtime_packaging"],
             }
 
         report["image_signatures"] = cosign_sign_and_verify(args.cosign, statements, workspace)
@@ -1886,6 +1992,10 @@ def main() -> int:
         checks = {
             "sealed_twelve_image_manifest_verified": report["sealed_image_manifest"]["passed"] and report["sealed_image_manifest"]["record_count"] == 12,
             "six_purpose_built_images": set(report["images"]) == {role.value for role in ROLE_ORDER},
+            "all_runtime_packaging_verified": (
+                set(report["images"]) == {role.value for role in ROLE_ORDER}
+                and all(item["runtime_packaging"]["passed"] is True for item in report["images"].values())
+            ),
             "all_images_independently_comparable": all(item["independently_comparable"] for item in report["images"].values()),
             "all_sboms_verified": all(item["sbom"]["verified"] for item in report["images"].values()),
             "all_vulnerability_scans_passed": all(item["vulnerability_scan"]["passed"] for item in report["images"].values()),

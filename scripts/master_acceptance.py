@@ -40,6 +40,75 @@ def _complete_passed(value: dict[str, Any], phase: str) -> None:
     _require(value.get("run_outcome") == "COMPLETE", f"{phase} run did not complete")
 
 
+def _p4_runtime_packaging(value: dict[str, Any]) -> None:
+    """Require every installed role to measure the current executable source."""
+    from echo_certification_forge.runtime_identity import _harness_digest
+
+    source_root = Path(__file__).resolve().parents[1]
+    expected = {
+        "harness_sha256": _harness_digest(source_root),
+        "declaration_sha256": {
+            "pyproject.toml": sha256_bytes((source_root / "pyproject.toml").read_bytes()),
+            "images/requirements.lock": sha256_bytes((source_root / "images/requirements.lock").read_bytes()),
+        },
+    }
+    _require(value.get("runtime_packaging_expectation") == expected,
+             "P4 runtime packaging source expectation mismatch")
+    checks = value.get("checks")
+    _require(isinstance(checks, dict) and checks.get("all_runtime_packaging_verified") is True,
+             "P4 runtime packaging check is missing")
+    images = value.get("images")
+    roles = {"runner", "custody", "anchor", "signer", "worker", "verifier"}
+    _require(isinstance(images, dict) and set(images) == roles,
+             "P4 runtime packaging role coverage is incomplete")
+    containment_flags = {
+        "read_only_root", "network_none", "all_capabilities_dropped", "no_new_privileges",
+        "apparmor", "memory_limited", "pids_limited", "cpu_limited", "docker_socket_absent",
+    }
+    limits = {
+        "timeout_seconds": 8.0, "memory": "128m", "pids": 32, "cpus": 0.25,
+        "workspace_size": "16m", "file_size_bytes": 1024 * 1024, "nofile": 64,
+    }
+    container_ids: set[str] = set()
+    for image in images.values():
+        _require(isinstance(image, dict), "P4 runtime packaging image record is invalid")
+        proof = image.get("runtime_packaging")
+        _require(isinstance(proof, dict) and proof.get("passed") is True,
+                 "P4 runtime packaging evidence is missing")
+        _require(type(proof.get("exit_code")) is int and proof["exit_code"] == 0
+                 and all(proof.get(flag) is False for flag in ("timed_out", "oom_killed", "cancelled")),
+                 "P4 runtime packaging execution did not complete")
+        cid = proof.get("container_id")
+        _require(isinstance(cid, str) and re.fullmatch(r"[0-9a-f]{64}", cid) is not None
+                 and cid not in container_ids, "P4 runtime packaging container identity is invalid")
+        container_ids.add(cid)
+        image_id, reference = image.get("image_digest"), image.get("primary_reference")
+        _require(isinstance(image_id, str)
+                 and re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is not None
+                 and isinstance(reference, str) and bool(reference)
+                 and proof.get("image_id") == image_id and proof.get("configured_image") == reference,
+                 "P4 runtime packaging image identity mismatch")
+        _require(type(proof.get("uid")) is int and type(proof.get("gid")) is int
+                 and proof["uid"] == 65532 and proof["gid"] == 65532,
+                 "P4 runtime packaging user identity mismatch")
+        _require(proof.get("harness_sha256") == expected["harness_sha256"]
+                 and proof.get("expected_harness_sha256") == expected["harness_sha256"]
+                 and proof.get("declaration_sha256") == expected["declaration_sha256"]
+                 and proof.get("expected_declaration_sha256") == expected["declaration_sha256"]
+                 and image.get("lockfile_sha256") == expected["declaration_sha256"]["images/requirements.lock"],
+                 "P4 runtime packaging measurement mismatch")
+        containment = proof.get("containment")
+        _require(isinstance(containment, dict) and set(containment) == containment_flags
+                 and all(flag is True for flag in containment.values())
+                 and image.get("containment") == containment,
+                 "P4 runtime packaging containment mismatch")
+        _require(proof.get("execution_limits") == limits,
+                 "P4 runtime packaging execution limits mismatch")
+        logs_digest = proof.get("logs_sha256")
+        _require(isinstance(logs_digest, str)
+                 and re.fullmatch(r"[0-9a-f]{64}", logs_digest) is not None,
+                 "P4 runtime packaging output identity is invalid")
+
 def _p4(value: dict[str, Any], *, now: datetime | None = None) -> None:
     _require(value.get("completed_phase_gate") == "P4", "P4 gate is incomplete")
     _require(value.get("run_outcome") == "COMPLETE", "P4 run did not complete")
@@ -166,6 +235,8 @@ def _p4(value: dict[str, Any], *, now: datetime | None = None) -> None:
                  and all(bound.get(flag) is True for flag in
                          ("readonly_mount_verified", "official_db_only", "pre_post_bytes_verified")),
                  "P4 definition scan bytes or containment binding failed")
+
+    _p4_runtime_packaging(value)
 
 
 def _p5(value: dict[str, Any]) -> None:
