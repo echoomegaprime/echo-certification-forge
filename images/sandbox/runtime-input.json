@@ -1,0 +1,114 @@
+{
+  "archive": {
+    "blob_count": 11,
+    "blobs": {
+      "sha256:02fd2962829f215b87c16a8cdfc3a5fbc599463d299dc62347b3d0272f51be4c": 836486,
+      "sha256:061deb070723eabc0cb5cb8ffd1eeab591206d27fdf71991e915cce72e4e7558": 856,
+      "sha256:113b91713f05dfc8999a7dd895088c7afb068e656eb1c802fab15c92d3e5c4e1": 13779381,
+      "sha256:2cd026174c082f84bd35b393974595c474be1f604b98fc4a878589c3dcd556e8": 1244,
+      "sha256:871f5a847bc8e6421d9b43d16e2c6f4f42bb233987c84d1c7eac3987acf55b4d": 1550,
+      "sha256:881fc932939efef04ca120ad44bbd2c0917851eb247aa4995428afb1e80ede17": 3853673,
+      "sha256:8a833af1a90368a6640d74a564e6a394f8774317f766c6ec016435d526fcf72d": 564,
+      "sha256:972388a96779376d98ccf26de21bb64c273ecbff16a2539f84f3543f277c4d90": 167,
+      "sha256:aa121b1b1cdb977b7ae6ba67331cfbf474c3d8060e5d90c833a9abdf86370a60": 411985,
+      "sha256:c85797c519d69f57722ef04b40a2102d4727944c6297056eec5070c9c2715ba6": 5686,
+      "sha256:cc36311dc778ba4d60f5286dc5de96f657c8f9ac4a0bd62ce0f9606aae0d4418": 248
+    },
+    "bytes": 18906112,
+    "envelope_index_sha256": "0c13f069fe07c08fedab5e2f1061026118cdf0cf2d1e3d71d6d708cbf866d1ec",
+    "file_name": "qualified-base-fullid.docker.tar",
+    "sha256": "e05c6c4f3a6f116842d52e98d31940b912e730cfbafbfb5d7de3644bb20fc898"
+  },
+  "identity_kind": "docker_local_image_id",
+  "identity_object_media_type": "application/vnd.oci.image.index.v1+json",
+  "image_identity": {
+    "config_digest": "sha256:c85797c519d69f57722ef04b40a2102d4727944c6297056eec5070c9c2715ba6",
+    "layers": [
+      {
+        "digest": "sha256:881fc932939efef04ca120ad44bbd2c0917851eb247aa4995428afb1e80ede17",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": 3853673
+      },
+      {
+        "digest": "sha256:aa121b1b1cdb977b7ae6ba67331cfbf474c3d8060e5d90c833a9abdf86370a60",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": 411985
+      },
+      {
+        "digest": "sha256:113b91713f05dfc8999a7dd895088c7afb068e656eb1c802fab15c92d3e5c4e1",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": 13779381
+      },
+      {
+        "digest": "sha256:cc36311dc778ba4d60f5286dc5de96f657c8f9ac4a0bd62ce0f9606aae0d4418",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": 248
+      },
+      {
+        "digest": "sha256:02fd2962829f215b87c16a8cdfc3a5fbc599463d299dc62347b3d0272f51be4c",
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": 836486
+      }
+    ],
+    "oci_index_digest": "sha256:061deb070723eabc0cb5cb8ffd1eeab591206d27fdf71991e915cce72e4e7558",
+    "platform_manifest_digest": "sha256:2cd026174c082f84bd35b393974595c474be1f604b98fc4a878589c3dcd556e8",
+    "rootfs_chain_id": "sha256:cc08684f5c8bf186f89bc9379fc8a89bd2224034e3f24c774300627e4be1e9ea",
+    "rootfs_diff_ids": [
+      "sha256:75f1d9657d880da5f75298e8f40e9928bb6e260c50d26f97af196845307e3064",
+      "sha256:d6c38381cc85b3dfb2dc52f4ad75386f844a220358291e69c060b0c6bda7f493",
+      "sha256:c55c05421254604f61c029616b7e7f3de8d875d262a12f30ead74640bc93398a",
+      "sha256:33245a72efc0b5e9c6338ed25da088588bda96f70b9a58e02de970f1a72a55a4",
+      "sha256:3718db0771b0e2ebf95f31c4c255b7d4ff19388afe1024ded3847f7da7fd83a1"
+    ]
+  },
+  "platform": "linux/amd64",
+  "production_admission": "NOT_GRANTED",
+  "profile_id": "certforge-sandbox-runtime-20261114",
+  "qualification": {
+    "cold_import_preserves_identity": {
+      "all_unrelated_container_ids_preserved": true,
+      "all_unrelated_image_ids_preserved": true,
+      "archive_unchanged": true,
+      "exact_full_image_id_restored": true,
+      "same_config": true,
+      "same_oci_descriptor_restored": true,
+      "same_rootfs_diff_ids": true
+    },
+    "critical_count": 0,
+    "high_count": 0,
+    "missing_local_id_fail_closed": true,
+    "post_cold_runtime_passed": true,
+    "proof_sha256": {
+      "archive-identity-proof.json": "4e14afc1b42d44145e401967668909d0bb239e1a5143032e122a1b58d2b19262",
+      "cold-load-proof-2.json": "a82c3c3653377f0ac16e61ba06c0c6edf0fea58ff719f83c8467cc3f6801d230",
+      "fullid-trivy-status.json": "d9f8c3c2c2972806726500d0df3429094cfdfcfd68ecc391c1a75c0ea296f1e4",
+      "missing-fullid-negative.json": "fd69f6bd57870c1e58d4945875669a2347a9db4b6b754fd1f478d8189a13806b",
+      "runtime-post-cold-proof.json": "e330ceee9d547f03f4441bceb9fb479dbde0c01a1faeeaa0d0c3bd4914fab36e"
+    },
+    "raw_scan_sha256": "9b7d80431aafba8b459d475ddc801c13caf6d42f31050800d637830d06f4c816",
+    "scan_by_full_local_id": "sha256:061deb070723eabc0cb5cb8ffd1eeab591206d27fdf71991e915cce72e4e7558",
+    "scanner": "Trivy0.74.0",
+    "scanner_exit_code": 0,
+    "scanner_sha256": "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791",
+    "secret_count": 0,
+    "total_vulnerabilities": 7,
+    "verified_absent_before_load": true,
+    "vulnerability_database": {
+      "DownloadedAt": "2026-11-14T04:06:24.442710986Z",
+      "NextUpdate": "2026-11-15T01:05:40.480840063Z",
+      "UpdatedAt": "2026-11-14T01:05:40.480840314Z",
+      "Version": 2
+    }
+  },
+  "qualification_scope": "OFFLINE_PRIVATE_RUNTIME_INPUT",
+  "qualified_engine": "Docker29.4.1 with OCI image-store support",
+  "recipe": {
+    "os_package_upgrade": "krb5-libs=1.22.3-r0",
+    "path": "images/sandbox/Dockerfile",
+    "sha256": "352e6167e35e8c820f1ecae0f8f026d212403092db25d8fde2a23b89098699b6",
+    "upstream_reference": "python:3.12.16-alpine3.24@sha256:a61cbd76a882645de7f91423329fe43a67eed60d7da24f9e5331414bb3618b20",
+    "upstream_source_revision": "3d7e95597e56a415d9e4abc0f15877e005d2cb2e"
+  },
+  "reference": "sha256:061deb070723eabc0cb5cb8ffd1eeab591206d27fdf71991e915cce72e4e7558",
+  "schema_version": "1.0.0"
+}

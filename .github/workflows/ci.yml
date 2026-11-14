@@ -38,6 +38,8 @@ jobs:
           cache: pip
       - name: Install package and verification dependencies
         run: python -m pip install -e ".[dev]"
+      - name: Prepare immutable CI sandbox behavior fixture
+        run: python scripts/prepare_ci_sandbox.py --github-env "$GITHUB_ENV"
       - name: Compile source and tests
         run: python -m compileall -q src tests
       - name: Run full deterministic test suite
