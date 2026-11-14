@@ -37,3 +37,10 @@ Hostname diagnosis: no exact fielddesk.echo-op.com ingress, so wildcard rule63 r
 
 ## Focused repair verification
 Evidence regression baseline reproduced three failures; repaired evidence/verdict/read-surface suite34passed, including9newcases. Terminal-replay baseline1failed2passed; repaired new+existingrerun suite4passed. Heartbeat baseline3failed1passed; repaired suite4passed. Independent peer review found no material blocker in evidence/subscriber repairs; heartbeatdiff independently inspected. Broader exact-source validation and hosted CI remain pending. No live row, artifact, signing key or verdict was altered.
+
+## Broad local validation and exact-head CI
+Initial code head216694d5158649c746faa299a015f0a8dc74a832: compile passed;641 full-suite cases passed,2skipped,one unchanged Windows symlink fixture failed withWinError1314(required privilege absent);80.72% branch coverage exceeds unchanged80% gate. P1,P6,P7 fixture acceptance passed. Do not weaken the symlink check or claim a fully passing Windows suite. Linux hosted acceptance must exercise the real supported boundary.
+
+Port the exact existing PR62 CI/CodeQL workflow blobdadb8efe9431bde7770f592e34a8617738044fe2 from9417dc5a06159291384d11f569a2ffdb5b15c108: pin checkout/setup/artifact/CodeQL action revisions, verify actual checkout equals PRhead, preserve full tests/coverage/P1/P6/P7 and add exact-head Python analysis. Only CodeQL gets security-events write; no deployment permission. Existing source and review branches remain unchanged. Await fresh checks on the resulting new head.
+
+Review limits: ambiguous commit errors preserve bytes for reconciliation; filesystem identity-check/unlink assumes service-controlled directories. An in-flight heartbeat blocked in SQLite can briefly outlive the2s join, but the stop-event prevents further renewal cycles. No claim of instantaneous blocked-I/O cleanup.

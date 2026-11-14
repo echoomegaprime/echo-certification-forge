@@ -11,15 +11,28 @@ name: certification-forge-ci
 permissions:
   contents: read
 
+env:
+  ECHO_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  ECHO_SCAN_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref }}
+
 jobs:
   test:
+    name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.ECHO_SOURCE_SHA }}
+          persist-credentials: false
+      - name: Verify source identity
+        run: |
+          echo_actual_sha=$(git rev-parse HEAD)
+          test "$echo_actual_sha" = "$ECHO_SOURCE_SHA"
+          printf 'Verified source: %s\n' "$echo_actual_sha"
       - name: Configure Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
           cache: pip
@@ -37,9 +50,40 @@ jobs:
         run: python scripts/p7_acceptance.py
       - name: Upload verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: certification-forge-evidence-${{ github.sha }}
+          name: certification-forge-evidence-${{ env.ECHO_SOURCE_SHA }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - name: Check out exact source for static analysis
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.ECHO_SOURCE_SHA }}
+          persist-credentials: false
+      - name: Verify source identity
+        run: |
+          echo_actual_sha=$(git rev-parse HEAD)
+          test "$echo_actual_sha" = "$ECHO_SOURCE_SHA"
+          printf 'Verified source: %s\n' "$echo_actual_sha"
+      - name: Initialize Python analysis
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: python
+          build-mode: none
+      - name: Analyze and upload results
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:python
+          ref: ${{ env.ECHO_SCAN_REF }}
+          sha: ${{ env.ECHO_SOURCE_SHA }}
