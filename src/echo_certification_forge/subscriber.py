@@ -3690,7 +3690,9 @@ class SubscriberGovernance:
                         now,
                     )
                 elif existing_run["state"] != "QUEUED":
-                    if not (
+                    # A completed retry already has a RELEASED reservation.
+                    # Its exact identity/binding was validated above; never requeue it.
+                    if not terminal_replay and not (
                         row["state"] == "BOUND"
                         and row["run_id"] == run_id
                         and existing_run["state"] in _TERMINAL_RUN_STATES

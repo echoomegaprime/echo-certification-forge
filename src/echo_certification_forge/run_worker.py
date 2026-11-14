@@ -550,10 +550,14 @@ def run(
                 "detail": exc.code,
             }
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        # Executor/storage failures must not leave a live thread renewing a
+        # stranded claim. Preserve the exception and let leased recovery fence it.
+        try:
+            if heartbeat is not None:
+                heartbeat.stop()
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
     if claim is not None and subscribers is not None:
-        if heartbeat is not None:
-            heartbeat.stop()
         if result.final_state != RunState.COMPLETED.value:
             try:
                 subscribers.finish_worker_claim(
