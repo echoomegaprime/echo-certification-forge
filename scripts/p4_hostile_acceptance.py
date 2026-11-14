@@ -40,6 +40,9 @@ from echo_certification_forge.canonical import (  # noqa: E402
     to_utc_iso,
 )
 from echo_certification_forge.p4_manifest import P4ImageManifest, verify_p4_image_manifest  # noqa: E402
+from echo_certification_forge.clamav_database import (  # noqa: E402
+    validate_database_snapshot, stage_database_snapshot, snapshot_evidence,
+)
 from echo_certification_forge.hostile import (  # noqa: E402
     HostileCaseKind,
     HostileCaseObservation,
@@ -507,15 +510,73 @@ def trivy_scan(trivy: Path, image: str, role: ImageRole, workspace: Path) -> dic
     }
 
 
-def clamav_scan(clamav_image: str, tar_path: Path, role: ImageRole, ownership_token: str) -> dict[str, Any]:
+def verify_clamav_database(
+    image: str, snapshot: dict[str, Any], ownership_token: str
+) -> dict[str, Any]:
+    """Authenticate every frozen official database offline with the pinned vendor engine."""
+    snapshot = validate_database_snapshot(snapshot["directory"], snapshot["manifest_sha256"], image)
+    commands: list[dict[str, Any]] = []
+    for name, identity in sorted(snapshot["databases"].items()):
+        path = "/var/lib/clamav/" + identity["path"]
+        checks = [("container", ["--fips-limits", "--info=" + path], "Verification OK.")]
+        if identity["path"].endswith(".cvd"):
+            checks.insert(0, ("detached", ["--verify=" + path], "Successfully verified"))
+        for kind, command, marker in checks:
+            container_id = create_container(
+                image=image, role="scanner", case=f"database-{name}-{kind}",
+                ownership_token=ownership_token, command=command, entrypoint="sigtool",
+                mounts=[(snapshot["directory"], "/var/lib/clamav", True)],
+                # Vendor verification expands the full Main database; use the existing AV scan envelope.
+                memory="2g", pids=64, workspace_size="8m", nofile=256,
+            )
+            try:
+                mounted = json.loads(run(["docker", "inspect", container_id], timeout=15).stdout)[0]
+                mount = [item for item in mounted.get("Mounts", [])
+                         if item.get("Destination") == "/var/lib/clamav"]
+                readonly = (len(mount) == 1 and mount[0].get("Type") == "bind"
+                            and mount[0].get("RW") is False
+                            and mount[0].get("Source") == str(snapshot["directory"].resolve()))
+                require(readonly, "definition verification did not mount the frozen snapshot read-only")
+                run(["docker", "start", container_id])
+                code = int(run(["docker", "wait", container_id], timeout=120).stdout.strip())
+                logs = run(["docker", "logs", container_id], check=False)
+                combined = logs.stdout + logs.stderr
+                passed = (code == 0 and marker.casefold() in combined.casefold()
+                          and "unsigned" not in combined.casefold()
+                          and "this version of the clamav engine is outdated" not in combined.casefold())
+                commands.append({
+                    "database": name, "path": identity["path"], "kind": kind,
+                    "argv": ["sigtool", *command], "exit_code": code,
+                    "logs_sha256": sha256_bytes(combined.encode("utf-8", errors="replace")),
+                    "sanitized_logs": sanitize_runner_log(combined), "readonly_mount_verified": readonly,
+                    "passed": passed,
+                })
+                if not passed:
+                    return {"passed": False, "commands": commands, "profile": snapshot_evidence(snapshot),
+                            "qualified_at_utc": to_utc_iso(datetime.now(UTC))}
+            finally:
+                remove_exact(container_id)
+    validate_database_snapshot(snapshot["directory"], snapshot["manifest_sha256"], image)
+    return {"passed": len(commands) >= 3 and all(item["passed"] for item in commands),
+            "commands": commands, "profile": snapshot_evidence(snapshot),
+            "qualified_at_utc": to_utc_iso(datetime.now(UTC))}
+
+
+def clamav_scan(
+    clamav_image: str, tar_path: Path, role: ImageRole, ownership_token: str,
+    *, database_profile: dict[str, Any],
+) -> dict[str, Any]:
+    database_profile = validate_database_snapshot(database_profile["directory"], database_profile["manifest_sha256"], clamav_image)
     container_id = create_container(
         image=clamav_image,
         role="scanner",
         case=f"malware-{role.value}",
         ownership_token=ownership_token,
-        command=["--infected", "--no-summary", "/scan/image.tar"],
+        command=["--infected", "--no-summary", "--official-db-only=yes",
+                 "--database=/var/lib/clamav", "/scan/image.tar"],
         entrypoint="clamscan",
-        mounts=[(tar_path, "/scan/image.tar", True)],
+        mounts=[(tar_path, "/scan/image.tar", True),
+                (database_profile["directory"], "/var/lib/clamav", True)],
         memory="2g",
         pids=128,
         workspace_size="8m",
@@ -523,20 +584,35 @@ def clamav_scan(clamav_image: str, tar_path: Path, role: ImageRole, ownership_to
         nofile=256,
     )
     try:
+        mounted = json.loads(run(["docker", "inspect", container_id], timeout=15).stdout)[0]
+        mounts = [item for item in mounted.get("Mounts", [])
+                  if item.get("Destination") == "/var/lib/clamav"]
+        readonly = (len(mounts) == 1 and mounts[0].get("Type") == "bind"
+                    and mounts[0].get("RW") is False
+                    and mounts[0].get("Source") == str(database_profile["directory"].resolve()))
+        require(readonly, "scanner did not mount the frozen definition snapshot read-only")
         run(["docker", "start", container_id])
-        exit_code = int(run(["docker", "wait", container_id]).stdout.strip())
+        exit_code = int(run(["docker", "wait", container_id], timeout=600).stdout.strip())
         logs = run(["docker", "logs", container_id], check=False)
         combined = logs.stdout + logs.stderr
         database_missing = "No supported database files found" in combined or "LibClamAV Error" in combined
+        validate_database_snapshot(database_profile["directory"], database_profile["manifest_sha256"], clamav_image)
         return {
             "scanner_image": clamav_image,
             "exit_code": exit_code,
             "logs_sha256": sha256_bytes(combined.encode("utf-8", errors="replace")),
             "database_missing": database_missing,
-            "passed": exit_code == 0 and not database_missing,
+            "database_profile": {"manifest_sha256": database_profile["manifest_sha256"],
+                                 "files": database_profile["files"],
+                                 "readonly_mount_verified": readonly,
+                                 "official_db_only": True, "pre_post_bytes_verified": True},
+            "passed": (exit_code == 0 and not database_missing
+                       and "this version of the clamav engine is outdated" not in combined.casefold()),
         }
     finally:
         remove_exact(container_id)
+
+
 
 
 class CosignKeyGenerationError(RuntimeError):
@@ -1466,14 +1542,22 @@ def main() -> int:
     parser.add_argument("--trivy", type=Path, required=True)
     parser.add_argument("--cosign", type=Path, required=True)
     parser.add_argument("--clamav-image", required=True)
+    parser.add_argument("--clamav-db-dir", type=Path, required=True)
+    parser.add_argument("--clamav-db-manifest-sha256", required=True)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     workspace = args.workspace.resolve()
     output = args.output.resolve()
-    if workspace.exists():
-        shutil.rmtree(workspace)
+    requested_definitions = args.clamav_db_dir.resolve()
+    require(workspace != requested_definitions and workspace not in requested_definitions.parents
+            and requested_definitions not in workspace.parents,
+            "definition snapshot must be outside the disposable workspace")
+    require(output != requested_definitions and requested_definitions not in output.parents,
+            "definition snapshot must not contain acceptance output")
+    require(not workspace.exists() and not workspace.is_symlink(), "acceptance workspace must be fresh; previous attempts are preserved")
+    require(not output.exists() and not output.is_symlink(), "acceptance output already exists; previous evidence is preserved")
     workspace.mkdir(parents=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     started = datetime.now(UTC)
@@ -1516,6 +1600,10 @@ def main() -> int:
             "cosign": {"path": str(args.cosign.resolve()), "sha256": sha256_file(args.cosign)},
             "clamav_image": args.clamav_image,
         }
+        supplied_database = validate_database_snapshot(args.clamav_db_dir, args.clamav_db_manifest_sha256, args.clamav_image)
+        database_profile = stage_database_snapshot(supplied_database, workspace / "qualified-clamav-db")
+        report["tools"]["clamav_database_profile"] = verify_clamav_database(args.clamav_image, database_profile, ownership_token)
+        require(report["tools"]["clamav_database_profile"]["passed"], "official definition authentication failed")
         images_document = json.loads(args.images.read_text(encoding="utf-8"))
         image_map = images_document.get("images")
         require(isinstance(image_map, dict), "images manifest missing")
@@ -1681,7 +1769,8 @@ def main() -> int:
             require(filesystem["passed"], f"forbidden image file found: {role.value}:{filesystem['findings']}")
             vulnerability = trivy_scan(args.trivy, primary, role, workspace)
             require(vulnerability["passed"], f"vulnerability policy failed: {role.value}:{vulnerability['blocking_vulnerabilities']}")
-            malware = clamav_scan(args.clamav_image, Path(filesystem["tar_path"]), role, ownership_token)
+            malware = clamav_scan(args.clamav_image, Path(filesystem["tar_path"]), role, ownership_token,
+                                   database_profile=database_profile)
             require(malware["passed"], f"malware scan failed: {role.value}:{malware}")
             baseline = execute_container(
                 image=primary,
@@ -1801,6 +1890,12 @@ def main() -> int:
             "all_sboms_verified": all(item["sbom"]["verified"] for item in report["images"].values()),
             "all_vulnerability_scans_passed": all(item["vulnerability_scan"]["passed"] for item in report["images"].values()),
             "all_malware_scans_passed": all(item["malware_scan"]["passed"] for item in report["images"].values()),
+            "current_official_definitions_authenticated": report["tools"]["clamav_database_profile"]["passed"],
+            "definition_profile_bytes_bound": all(item["malware_scan"]["database_profile"]["manifest_sha256"] == args.clamav_db_manifest_sha256
+                                                   and item["malware_scan"]["database_profile"]["pre_post_bytes_verified"]
+                                                   and item["malware_scan"]["database_profile"]["readonly_mount_verified"]
+                                                   and item["malware_scan"]["database_profile"]["official_db_only"]
+                                                   for item in report["images"].values()),
             "all_image_signatures_verified": report["image_signatures"]["passed"],
             "all_admission_denials_passed": all(
                 not item["expired_admission"]["allowed"]
