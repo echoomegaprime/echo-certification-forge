@@ -3493,7 +3493,6 @@ class SubscriberGovernance:
                                          compensate_meter=True, only_reserved=True)
                 logging.getLogger(__name__).warning(json.dumps({
                     "event": "pending_intake_rejected", "reason": "pending_intake_invalid",
-                    "reservation_ref": sha256_bytes(reservation.idempotency_key.encode())[:32],
                 }))
                 continue
             pending.append(
