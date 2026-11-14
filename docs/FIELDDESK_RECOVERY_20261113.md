@@ -15,10 +15,10 @@ The SDK service separately completed an existing restart. The readiness helper t
 ## Repair queue
 | Item | Completion criterion | State |
 | --- | --- | --- |
-| Evidence append | Independent writers serialize chain allocation/publication; contention bounded; loser cannot alter winner; tenant/hash/append-only rules intact | Focused regression verified; full validation pending |
-| Terminal rerun replay | Exact terminal RELEASED replay returns original child with no new usage/dispatch; active/cross-tenant/binding guards intact | Focused regression verified; full validation pending |
-| Heartbeat cleanup | Unexpected executor failure always stops renewal, preserves exception and owned cleanup, permits normal fenced lease recovery | Focused regression verified; full validation pending |
-| Source validation | Focused/full tests, P1/P6/P7, independent review, clean staged secret scan, pushed exact head and draft PR | Pending |
+| Evidence append | Independent writers serialize chain allocation/publication; contention bounded; loser cannot alter winner; tenant/hash/append-only rules intact | Focused regressions and combined parent CI verified; final lifetime revision CI pending |
+| Terminal rerun replay | Exact terminal RELEASED replay returns original child with no new usage/dispatch; active/cross-tenant/binding guards intact | Focused regressions and combined parent CI verified; final lifetime revision CI pending |
+| Heartbeat cleanup | Unexpected executor failure always stops renewal, preserves exception and owned cleanup, permits normal fenced lease recovery | Focused regressions and combined parent CI verified; final lifetime revision CI pending |
+| Source validation | Focused/full tests, P1/P6/P7, independent review, clean staged secret scan, pushed exact head and draft PR | PR68; final lifetime revision hosted checks pending |
 | Release integration | Reconcile with existing deployed-ancestry/recovery PR64/65 and current release owner; renewed exact-source checks and governed staged acceptance | Pending; no promotion authorized by a fixture pass |
 | FieldDesk production | Final data freeze/reconciliation, rollback, exact hostname authenticated gateway, trusted collector evidence, issuer approvals and device/provider acceptance | Pending |
 
@@ -49,3 +49,10 @@ Review limits: ambiguous commit errors preserve bytes for reconciliation; filesy
 Live API and dispatcher process directories, selected current symlink and immutable release marker identify deployed baseline d8ad9fd881365801354b78a758632d2a31ab6828. Main4f7d99e2 diverges from that line; this repair must not replace the deployment from its main-only parent. Integrate PR65head1d15bdf4cb5db6ec120f2b8c05928f29361d8593 (which contains PR64e6b51c683c0027cab3ed446a26fdd614476a32c6,mainanddeployedancestry) into our owned branch. Existing PR64/65 heads stay untouched; retarget this repair PR onto PR65 for a narrow review delta.
 
 Automatic merge had no conflicts. Independent combined-parent review confirmed production-attestation requirements, signing/collector rules, policies, dispatch compensation guards and source bindings remain unchanged. Combined staged tree2301f7fc1c55e0fa6ba3b08c75efab8fc9da61a5 passed43focused cases with zero failures/errors/skips, before this documentation update. Await fresh whole combined-head CI/CodeQL and acceptance before admission.
+
+## Final heartbeat lifetime revision and validation
+Combined parent a482eec61697ce0cd192c49185bd6692c8b8962c passed exact-source hosted workflow43552554622:755 tests,80.38% coverage,compile,P1/P6/P7,CI,CodeQL and release sentinel. Source readback in hosted logs exactly matched that commit. These results belong to that parent, not a later revision.
+
+Final lifetime extension closes failures during preparation after claim acquisition, including run lookup and adapter-evidence persistence before executor entry. The outer finally stops any acquired heartbeat and removes only the worker-owned mkdtemp directory. All original run-body statements and other top-level definitions were independently verified AST-identical under the mechanical indentation change. Independent review confirmed unchanged claim, tenant, fencing, source, verdict and signing behavior. Two additional regression cases reproduced the pre-executor leak before the fix; all6 heartbeat tests now pass.
+
+Final combined focused verification on2026-11-14T03:49Z:45passed,zero failures/errors/skips in8.13s; JUnit focused-final.xml and log retained outside source. This revision requires its own fresh full Linux CI and CodeQL before release admission. No production deployment or run-state edit occurred.

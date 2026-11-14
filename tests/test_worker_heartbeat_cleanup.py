@@ -1,6 +1,7 @@
 """Heartbeat lifecycle regression tests; no customer code or real signing is executed."""
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -9,8 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 import echo_certification_forge.run_worker as worker
+from echo_certification_forge.canonical import sha256_json
 from echo_certification_forge.evidence import EvidenceStore
 from echo_certification_forge.models import RunState
+from echo_certification_forge.runner import RunnerResponse
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.subscriber import SubscriberError, SubscriberGovernance
@@ -137,3 +140,96 @@ def test_normal_executor_return_stops_renewal_and_cleans_owned_workspace(
     finally:
         for heartbeat in heartbeats:
             heartbeat.stop()
+
+@pytest.mark.parametrize("stage", ["run_lookup", "adapter_append"])
+def test_pre_executor_storage_failure_stops_renewal_and_allows_safe_requeue(
+    tmp_path, manifest, monkeypatch, stage,
+):
+    now, store, governance, org, source, run_id, heartbeats = _context(
+        tmp_path, manifest, monkeypatch,
+    )
+    executor_calls = []
+
+    def unexpected_executor(*args, **kwargs):
+        executor_calls.append(args)
+        raise AssertionError("pre-executor failure must not enter customer execution")
+
+    monkeypatch.setattr(worker.RunExecutor, "execute", unexpected_executor)
+    message = f"synthetic {stage} storage failure"
+    options = {}
+
+    def failed_connection():
+        raise sqlite3.OperationalError(message)
+
+    if stage == "adapter_append":
+        # A schema-valid synthetic transport envelope only reaches persistence;
+        # no adapter/customer execution or attestation verification is substituted.
+        body = {"fixture": "pre-executor storage regression"}
+        options["adapter_bundle_response"] = RunnerResponse(
+            response_id="cleanup-response", request_id="cleanup-request",
+            run_id=run_id, tenant_id=org.organization_id, runner_id="cleanup-runner",
+            sequence=1, issued_at=datetime.now(UTC), status="COMPLETED",
+            body=body, body_sha256=sha256_json(body),
+            runner_key_id="synthetic-fixture", signature_b64="synthetic-fixture",
+        )
+
+        class FailedArtifactInsert(sqlite3.Connection):
+            def execute(self, sql, *args, **kwargs):
+                if "INSERT INTO evidence_artifacts" in sql:
+                    raise sqlite3.OperationalError(message)
+                return super().execute(sql, *args, **kwargs)
+
+        def failed_connection():
+            connection = sqlite3.connect(
+                store.db_path, timeout=10, factory=FailedArtifactInsert,
+            )
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA journal_mode = WAL")
+            return connection
+
+    try:
+        with monkeypatch.context() as storage_fault:
+            storage_fault.setattr(store, "_connect", failed_connection)
+            with pytest.raises(sqlite3.OperationalError, match=message):
+                worker.run(
+                    run_id, org.organization_id,
+                    {"type": "local", "path": str(source)},
+                    store=store, manifest=manifest,
+                    signer=Ed25519VerdictSigner.generate(), subscribers=governance,
+                    **options,
+                )
+        assert executor_calls == []
+        assert len(heartbeats) == 1
+        heartbeat = heartbeats[0]
+        assert heartbeat._stop.is_set()
+        assert not heartbeat._thread.is_alive()
+        assert not list((store.evidence_root / ".worker").iterdir())
+        assert source.exists()
+        assert store.get_run(run_id, org.organization_id)["state"] == "QUEUED"
+        assert store.latest_signed_verdict(run_id, org.organization_id) is None
+
+        # Pre-start work is requeued by the existing lease policy, never promoted
+        # to execution or compensated as if customer code had already started.
+        now[0] += timedelta(seconds=governance.policy.worker_claim_lease_seconds + 1)
+        assert governance.recover_expired_claims(org.organization_id) == 1
+        assert governance.recover_expired_claims(org.organization_id) == 0
+        assert store.get_run(run_id, org.organization_id)["state"] == "QUEUED"
+        with sqlite3.connect(store.db_path) as connection:
+            state = connection.execute(
+                "SELECT state FROM subscriber_run_reservations WHERE run_id = ?", (run_id,),
+            ).fetchone()[0]
+            compensations = connection.execute(
+                "SELECT COUNT(*) FROM subscriber_usage_events "
+                "WHERE organization_id = ? AND quantity < 0", (org.organization_id,),
+            ).fetchone()[0]
+        assert state == "BOUND"
+        assert compensations == 0
+        with pytest.raises(SubscriberError, match="worker_run_claim_inactive"):
+            governance.heartbeat_worker_claim(heartbeat._claim)
+        assert store.latest_signed_verdict(run_id, org.organization_id) is None
+    finally:
+        for heartbeat in heartbeats:
+            heartbeat.stop()
+        # Keep the intentionally red baseline isolated to its own fixture tree.
+        shutil.rmtree(store.evidence_root / ".worker", ignore_errors=True)
