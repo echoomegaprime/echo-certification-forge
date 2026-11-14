@@ -22,6 +22,12 @@ INSERT INTO arcanum_sdk.sdk_capabilities
    input_schema_json, required_scope, danger_tier, static_headers, default_timeout_seconds,
    lifecycle_status, health_status)
 VALUES
+  ('echo.certforge.runtime_environment',
+   'Certification Forge: resolve a bounded job journey into the effective operator-selected runtime identity. Authenticated read only; no customer execution or run creation.',
+   'http', 'http://127.0.0.1:8309/v1/subscriber/runtime/environment', 'POST', 'json_body', 'forge',
+   '{"additionalProperties":false,"properties":{"command":{"maxLength":64,"minLength":1,"type":"string"},"journey":{"anyOf":[{"items":{"maxLength":2048,"minLength":1,"pattern":"^[^\\x00]*$","type":"string"},"maxItems":32,"minItems":1,"type":"array"},{"type":"null"}]},"project_id":{"anyOf":[{"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$","type":"string"},{"type":"null"}]},"target":{"anyOf":[{"additionalProperties":false,"properties":{"artifact_sha256":{"anyOf":[{"pattern":"^[0-9a-f]{64}$","type":"string"},{"type":"null"}]},"identity_digest":{"pattern":"^[0-9a-f]{64}$","type":"string"},"path":{"anyOf":[{"maxLength":2048,"minLength":1,"type":"string"},{"type":"null"}]},"ref":{"anyOf":[{"maxLength":256,"minLength":1,"type":"string"},{"type":"null"}]},"reference":{"maxLength":2048,"minLength":1,"type":"string"},"source_commit":{"anyOf":[{"maxLength":64,"minLength":7,"type":"string"},{"type":"null"}]},"target_type":{"pattern":"^(local|git|archive|container|package|deployment|mcp|sdk|cli)$","type":"string"},"url":{"anyOf":[{"maxLength":2048,"minLength":1,"type":"string"},{"type":"null"}]}},"required":["target_type","identity_digest","reference"],"type":"object"},{"type":"null"}]}},"required":["command"],"type":"object"}'::jsonb,
+   'certforge.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
   ('echo.certforge.health',
    'Certification Forge: service health — status, version, custody/anchor/signing posture. No tenant, no side effects.',
    'http', 'http://127.0.0.1:8309/healthz', 'GET', 'query', 'forge',

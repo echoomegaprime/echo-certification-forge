@@ -88,6 +88,34 @@ def _submit_body(
     }
 
 
+def check_runtime_profile(base: str, owner, intruder, service_status: dict) -> bool:
+    from echo_certification_forge.models import EnvironmentIdentity
+    from echo_certification_forge.service import RuntimeEnvironmentResponse
+    journey = ["python3", "certforge_smoke.py"]
+    code, payload = _req(base, "POST", "/v1/subscriber/runtime/environment",
+                         tenant=owner.organization_id, token=owner.bootstrap_api_key,
+                         body={"journey": journey})
+    check("authenticated runtime planning -> 200", code == 200, str(code))
+    if code != 200:
+        return False
+    try:
+        response = RuntimeEnvironmentResponse.model_validate(payload)
+        components = EnvironmentIdentity(**response.environment.model_dump())
+        valid = (response.journey == journey
+                 and components.identity_digest == response.submit_environment.identity_digest
+                 and response.submit_environment.runner_image_digest == "sha256:" + components.runner_image_sha256
+                 and response.submit_environment.runner_image_digest == service_status.get("runner_image_digest"))
+    except ValueError:
+        valid = False
+    check("runtime journey, components and operator image agree", valid)
+    code, _ = _req(base, "POST", "/v1/subscriber/runtime/environment", body={"journey": journey})
+    check("runtime planning without authorization -> 401", code == 401, str(code))
+    code, _ = _req(base, "POST", "/v1/subscriber/runtime/environment",
+                   tenant=owner.organization_id, token=intruder.bootstrap_api_key, body={"journey": journey})
+    check("cross-tenant runtime planning -> 404", code == 404, str(code))
+    return valid and not FAILS
+
+
 def main() -> int:
     base = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8311"
     print(f"== echo-certification-forge live smoke @ {base} ==")
@@ -162,6 +190,9 @@ def main() -> int:
     check("smoke project id returned", bool(project_id), json.dumps(project)[:200])
     if not project_id:
         return 1
+    if os.environ.get("ECHO_CERTFORGE_EXPECT_RUNTIME_PROFILE") == "required":
+        if not check_runtime_profile(base, owner, intruder, svc):
+            return 1
 
     # 2. no tenant header -> 401 (fail closed)
     status, _ = _req(base, "GET", "/v1/certifications")

@@ -167,7 +167,7 @@ def _submit_local_run(
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=journey)
     payload = {
         "tenant_id": organization_id,
         "project_id": project_response.json()["project_id"],
@@ -354,7 +354,7 @@ def test_subscriber_oci_without_sandbox_fails_and_releases_claim(
         target_reference=reference,
         target_identity_digest=_digest("subscriber-oci-declared-target"),
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest)
     run_id = "cert_" + _digest("subscriber-oci-run")[:40]
     governance.materialize_reserved_run(
         reservation,
@@ -1146,6 +1146,7 @@ def test_run_worker_enforces_live_subscriber_entitlement(
         org.bootstrap_api_key,
         source,
         key=f"worker-{status.value.lower()}-0001",
+        journey=[sys.executable, 'journey.py'],
     )
     with sqlite3.connect(governance.db_path) as connection:
         connection.execute(
@@ -1191,6 +1192,7 @@ def test_run_worker_uses_plan_retention_immediately_before_execution(
         org.bootstrap_api_key,
         source,
         key="worker-retention-0001",
+        journey=[sys.executable, 'hello.py'],
     )
 
     result = run(
@@ -1243,6 +1245,7 @@ def test_run_worker_fails_closed_when_retention_lookup_fails(tmp_path, manifest)
         org.bootstrap_api_key,
         source,
         key="worker-lookup-failure-0001",
+        journey=[sys.executable, 'journey.py'],
     )
 
     def broken_authorization(_claim):
@@ -1366,6 +1369,7 @@ def test_worker_revalidates_queued_state_immediately_before_execution(
         org.bootstrap_api_key,
         source,
         key="worker-cancel-race-0001",
+        journey=[sys.executable, 'journey.py'],
     )
     authorize = governance.authorize_worker_execution
 
@@ -2271,9 +2275,9 @@ def test_dispatcher_recovers_crash_after_durable_reservation(
                 "path": source.resolve().as_posix(),
             },
             "environment": {
-                "identity_digest": _worker_environment().identity_digest,
+                "identity_digest": _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).identity_digest,
                 "runner_image_digest": "sha256:"
-                + _worker_environment().runner_image_sha256,
+                + _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).runner_image_sha256,
             },
             "policy_version": manifest.manifest_id,
             "idempotency_key": "durable-intake-0001",
@@ -2398,8 +2402,8 @@ def test_worker_lease_heartbeat_and_started_crash_recovery(tmp_path, manifest):
         claim,
         target_identity=target.to_dict(),
         target_identity_digest=target.identity_digest,
-        environment_identity=_worker_environment().to_dict(),
-        environment_identity_digest=_worker_environment().identity_digest,
+        environment_identity=_worker_environment(manifest=manifest).to_dict(),
+        environment_identity_digest=_worker_environment(manifest=manifest).identity_digest,
     )
     assert authorization.subscription_version >= 1
 
@@ -2632,6 +2636,7 @@ def test_concurrent_suspension_wins_before_execution_boundary(
         org.bootstrap_api_key,
         source,
         key="suspension-boundary-0001",
+        journey=[sys.executable, 'journey.py'],
     )
     entered_boundary = threading.Event()
     release_boundary = threading.Event()
@@ -2740,7 +2745,7 @@ def test_api_worker_reconciles_canonical_identities_and_rejects_digest_drift(
     assert result["signed"] is True
     assert marker.exists()
     assert json.loads(persisted["target_identity_json"]) == target.to_dict()
-    assert json.loads(persisted["environment_identity_json"]) == _worker_environment().to_dict()
+    assert json.loads(persisted["environment_identity_json"]) == _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"]).to_dict()
     assert store.latest_signed_verdict(run_id, org.organization_id) is not None
 
     drift_source = tmp_path / "identity-drift-source"
@@ -2864,7 +2869,7 @@ def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
     repository = "https://github.com/echo/example.git"
     reference = f"{repository}@{source_commit}"
     artifact_sha256 = _digest("verified-acquired-git-tree")
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest, journey=[sys.executable, "journey.py"])
     declared_digest = declared_target_identity_digest(
         org.organization_id,
         "git",
@@ -2960,7 +2965,7 @@ def test_atomic_materialization_rolls_back_and_concurrent_suspension_terminalize
         canonical_ref=acquired.canonical_ref,
         artifact_sha256=acquired.artifact_sha256,
     )
-    environment = _worker_environment()
+    environment = _worker_environment(manifest=manifest)
     request = SubmitRequest.model_validate(
         {
             "tenant_id": org.organization_id,

@@ -717,9 +717,14 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     result = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert result["adapter_bundle_response_sha256"]
     assert result["signed"] is True
+    from echo_certification_forge.policy import RuleManifest
+    from echo_certification_forge.sandbox import DockerSandbox
+
     expected_environment = _worker_environment(
         adapter_set_digest(records),
         result["adapter_execution_profile_sha256"],
+        manifest=RuleManifest.load(Path(__file__).parents[1] / "policies/mandatory-rules.v2.json"),
+        sandbox=DockerSandbox(), journey=None,
     )
     assert result["environment_identity_digest"] == expected_environment.identity_digest
     store = EvidenceStore(db_path, evidence_root)
