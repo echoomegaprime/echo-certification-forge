@@ -1,0 +1,19 @@
+{
+  "dependencies_manifest_sha256": "46bfa67835b115de46ffbaa8efdc80386ba90592f091508079a164710b36d798",
+  "dependency_source_commit": "290658c4be634af6dd308021d1946f737032c3cf",
+  "frontend_archive": {
+    "path": "frontend-dependencies.tar.gz",
+    "sha256": "4c9f5911548721c419afc1e01f3873a5781e600ce8b942777a483c92fb6cf7c2",
+    "size_bytes": 244911140
+  },
+  "inputs": {
+    "backend/requirements.txt": "986335d9561613e765504417fb313890baa19b74432d2227f95198609e4fadfd",
+    "deploy/certification/requirements.lock": "89859f38a37ef3b71413ba124fb393d83c322b2fd97319d15517170520eda0a4",
+    "frontend/.npmrc": "a3909ac0447c469fda12c57374993be70f47ce73e49fd3124678c7c047f2214d",
+    "frontend/package.json": "0eedf4c01872062c1e17f1a196c626b767f8be1717de1422e05c19356e54e7e8",
+    "frontend/pnpm-lock.yaml": "c1cf616256e559343ce421101ea43cf5635f8c3ba75baef97477e5a68ac9a4cc",
+    "frontend/pnpm-workspace.yaml": "4a69dc93a75ff4a33f54c2853d5317c8e7374faab592f3472b5164257bff8066"
+  },
+  "python_requirements_sha256": "878b3fe2f7d36f3dc7b5eb2bb45675ed4b0c8efdf981fdafd184785661d8f52f",
+  "schema_version": "fielddesk.journey-materials.v1"
+}

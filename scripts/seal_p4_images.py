@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -361,8 +362,28 @@ def trivy_scan(trivy: Path, reference: str, raw_output: Path, summary_output: Pa
     return summary
 
 
-def load_private_key(path: Path) -> Ed25519PrivateKey:
-    key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+def load_private_key(path: Path, *, expected_stat: os.stat_result | None = None) -> Ed25519PrivateKey:
+    if expected_stat is None:
+        # Preserve the established P4 caller contract. Journey admission supplies
+        # already checked owner-only metadata and uses the strict descriptor path.
+        raw = path.read_bytes()
+    else:
+        fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_uid", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns")
+        expected = tuple(getattr(expected_stat, field) for field in fields)
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            opened = os.fstat(handle.fileno())
+            require(tuple(getattr(opened, field) for field in fields) == expected,
+                    "attestation key custody changed before read")
+            require(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1 and opened.st_size <= 8192,
+                    "attestation key type or size invalid")
+            raw = handle.read(8193)
+            after = os.fstat(handle.fileno())
+            require(len(raw) <= 8192 and tuple(getattr(after, field) for field in fields) == expected,
+                    "attestation key custody changed during read")
+        require(tuple(getattr(path.lstat(), field) for field in fields) == expected,
+                "attestation key custody changed after read")
+    key = serialization.load_pem_private_key(raw, password=None)
     require(isinstance(key, Ed25519PrivateKey), "P4 attestation key must be Ed25519")
     return key
 

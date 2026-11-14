@@ -756,7 +756,9 @@ def test_run_worker_executes_webhook_declared_run_end_to_end(
     workdir.mkdir()
     (workdir / "hello.py").write_text("print('ok')\n", encoding="utf-8")
     probe = acquire_target({"type": "local", "path": str(workdir)}, tmp_path / "probe")
-    worker_environment = run_worker._worker_environment()
+    worker_environment = run_worker._worker_environment(
+        manifest=manifest, journey=[sys.executable, "hello.py"]
+    )
 
     body = json.dumps(
         _declared_event(
@@ -1793,28 +1795,76 @@ def test_oci_acquisition_is_digest_pinned_and_fail_closed(tmp_path):
 
 
 _DOCKER_STUB_SOURCE = r'''
-import json, os, subprocess, sys
+import hashlib, json, os, subprocess, sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 argv = sys.argv[1:]
-if not argv or argv[0] != "run":
+log_path = Path(os.environ["CERTFORGE_TEST_DOCKER_LOG"])
+state_path = log_path.with_suffix(".daemon.json")
+def load():
+    return json.loads(state_path.read_text()) if state_path.exists() else None
+def absent(identifier):
+    print("Error response from daemon: No such container: " + identifier, file=sys.stderr)
+    sys.exit(1)
+if not argv:
     sys.exit(64)
+if argv[0] != "run":
+    with Path(str(log_path) + ".controls.jsonl").open("a") as out:
+        out.write(json.dumps(argv) + "\n")
+    current = load()
+    if argv[:2] == ["image", "inspect"]:
+        reference = argv[-1]
+        print(json.dumps("sha256:" + hashlib.sha256(("synthetic-config:" + reference).encode()).hexdigest()))
+    elif argv[0] == "inspect":
+        identifier = argv[-1]
+        if current is None or identifier not in (current["Id"], current["Name"].lstrip("/")):
+            absent(identifier)
+        print(json.dumps(current))
+    elif argv[:2] == ["rm", "--force"]:
+        if current is None or argv[-1] != current["Id"]:
+            absent(argv[-1])
+        state_path.unlink()
+    elif argv[0] == "info":
+        print(json.dumps("29.4.1"))
+    elif argv[0] == "ps":
+        if current is not None and any(current["Name"] in value for value in argv):
+            print(current["Id"])
+    else:
+        sys.exit(64)
+    sys.exit(0)
+
 workdir = None
 image = None
 cmd = []
+labels = {}
 for index, arg in enumerate(argv):
     if arg == "-v" and argv[index + 1].endswith(":/work:ro"):
         workdir = argv[index + 1][: -len(":/work:ro")]
+    if arg == "--label":
+        key, value = argv[index + 1].split("=", 1)
+        labels[key] = value
     if arg == "-w":
         cursor = index + 2
         while argv[cursor] == "--env":
             cursor += 2
         image = argv[cursor]
-        cmd = argv[cursor + 1 :]
-with open(os.environ["CERTFORGE_TEST_DOCKER_LOG"], "a", encoding="utf-8") as log:
-    log.write(json.dumps({"argv": argv, "image": image, "workdir": workdir}) + "\n")
-if workdir is None or image is None or not cmd:
+        cmd = argv[cursor + 1:]
+if workdir is None or image is None or not cmd or "--name" not in argv or "--cidfile" not in argv:
     sys.exit(64)
+name = argv[argv.index("--name") + 1]
+cid = hashlib.sha256(name.encode()).hexdigest()
+current = {"Id": cid, "Name": "/" + name,
+           "Image": "sha256:" + hashlib.sha256(("synthetic-config:" + image).encode()).hexdigest(),
+           "Created": datetime.now(timezone.utc).isoformat(),
+           "Config": {"Image": image, "Labels": labels}}
+state_path.write_text(json.dumps(current))
+Path(argv[argv.index("--cidfile") + 1]).write_text(cid + "\n")
+with log_path.open("a", encoding="utf-8") as log:
+    log.write(json.dumps({"argv": argv, "image": image, "workdir": workdir}) + "\n")
 executable = sys.executable if cmd[0] in ("python", "python3") else cmd[0]
+# Trusted synthetic image fixture only. A retained fake daemon record requires
+# the real sandbox ownership protocol to close it after this client exits.
 sys.exit(subprocess.run([executable, *cmd[1:]], cwd=workdir).returncode)
 '''
 
@@ -1844,7 +1894,13 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
             "image_repository": repo,
             "source_commit": SOURCE_COMMIT,
             # the platform declares the WORKER's environment commitment for the run
-            "environment_identity_digest": run_worker._worker_environment().identity_digest,
+            "environment_identity_digest": run_worker._worker_environment(
+                manifest=manifest, journey=["python3", "app/hello.py"],
+                sandbox=DockerSandbox(
+                    image=f"127.0.0.1:{registry.port}/testapp@{manifest_digest}",
+                    docker=(sys.executable, str(stub)),
+                ),
+            ).identity_digest,
             "policy_version": manifest.manifest_id,
         }
         body = json.dumps(event).encode("utf-8")
@@ -1882,6 +1938,11 @@ def test_registry_webhook_oci_run_certifies_and_deploys_end_to_end(
         json.loads(line) for line in docker_log.read_text(encoding="utf-8").splitlines()
     ]
     assert len(invocations) == 1
+    assert not docker_log.with_suffix(".daemon.json").exists()
+    controls = [json.loads(line) for line in Path(str(docker_log) + ".controls.jsonl").read_text().splitlines()]
+    removals = [item for item in controls if item[:2] == ["rm", "--force"]]
+    assert len(removals) == 1 and len(removals[0][-1]) == 64
+    assert any(item[:2] == ["image", "inspect"] for item in controls)
     assert invocations[0]["image"] == f"127.0.0.1:{registry.port}/testapp@{manifest_digest}"
     assert "--network" in invocations[0]["argv"]
     assert invocations[0]["argv"][invocations[0]["argv"].index("--network") + 1] == "none"

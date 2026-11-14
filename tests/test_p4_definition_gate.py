@@ -184,7 +184,8 @@ def test_qualification_timestamp_is_required_aware_and_bounded(native_report, cl
 
 
 @pytest.mark.parametrize("invalid_gate", ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "SDK", "CI",
-                                         "P4_missing_time", "P4_future_time"])
+                                         "P4_missing_time", "P4_future_time",
+                                         "P4_packaging_missing", "P4_packaging_wrong_source"])
 def test_all_supplied_phase_inputs_are_checked_before_key_access_or_master(
     native_report, tmp_path, monkeypatch, invalid_gate
 ):
@@ -207,10 +208,10 @@ def test_all_supplied_phase_inputs_are_checked_before_key_access_or_master(
                            for _ in range(2)]},
         "P6": {"passed": True, "checks_total": 12, "checks_passed": 12},
         "P7": {"passed": True, "scenarios": {"synthetic": {"passed": True}}},
-        "SDK": {"capability_count": 61,
+        "SDK": {"capability_count": 62,
                 "capabilities": {f"echo.cert.synthetic.{index}": {
                     "operation": "GET /synthetic", "input_schema": {}, "output_schema": {}}
-                    for index in range(61)}},
+                    for index in range(62)}},
         "CI": {"status": "completed", "conclusion": "success", "head_sha": source},
     }
     if invalid_gate in {"P1", "P2", "P3", "P6", "P7"}:
@@ -222,6 +223,13 @@ def test_all_supplied_phase_inputs_are_checked_before_key_access_or_master(
     elif invalid_gate == "P4_future_time":
         p4["tools"]["clamav_database_profile"]["qualified_at_utc"] = (
             datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    elif invalid_gate == "P4_packaging_missing":
+        p4["images"]["runner"].pop("runtime_packaging")
+    elif invalid_gate == "P4_packaging_wrong_source":
+        p4["runtime_packaging_expectation"]["harness_sha256"] = "f" * 64
+        for image in p4["images"].values():
+            image["runtime_packaging"]["harness_sha256"] = "f" * 64
+            image["runtime_packaging"]["expected_harness_sha256"] = "f" * 64
     elif invalid_gate == "P5":
         inputs["P5"]["adapter_gate_eligible"] = False
     elif invalid_gate == "SDK":
@@ -248,8 +256,16 @@ def test_all_supplied_phase_inputs_are_checked_before_key_access_or_master(
                            signing_key=SimpleNamespace(read_bytes=forbidden_key_read))
     monkeypatch.setattr(consumer, "parse_args", lambda: args)
     monkeypatch.setattr(consumer, "MasterAcceptanceRunner", forbidden_master)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as denied:
         consumer.main()
+    if invalid_gate.startswith("P4_packaging"):
+        assert "P4 runtime packaging" in str(denied.value)
+    elif invalid_gate in {"P4_missing_time", "P4_future_time"}:
+        assert "qualification timestamp" in str(denied.value)
+    elif invalid_gate == "P4":
+        assert "daily definitions are stale" in str(denied.value)
+    else:
+        assert invalid_gate in str(denied.value)
     assert accessed == []
 
 

@@ -19,7 +19,8 @@ import urllib.request
 from pathlib import Path
 
 from echo_certification_forge.acquisition import acquire_target
-from echo_certification_forge.models import TargetIdentity
+from echo_certification_forge.models import EnvironmentIdentity, TargetIdentity
+from echo_certification_forge.service import RuntimeEnvironmentResponse
 from echo_certification_forge.subscriber import (
     OrganizationStatus,
     SubscriberGovernance,
@@ -83,6 +84,23 @@ def _require_attestation_gate_closed(terminal: dict) -> None:
     )
 
 
+def _resolve_environment(base: str, headers: dict, journey: list[str], image: str) -> dict:
+    code, payload = _request(
+        base, "POST", "/v1/subscriber/runtime/environment", **headers,
+        body={"journey": journey},
+    )
+    _require(code == 200, "smoke journey runtime resolved", code)
+    response = RuntimeEnvironmentResponse.model_validate(payload)
+    measured = EnvironmentIdentity(**response.environment.model_dump())
+    _require(response.journey == journey, "resolved runtime binds the smoke journey")
+    _require(response.submit_environment.identity_digest == measured.identity_digest,
+             "resolved runtime component commitment verifies")
+    _require(response.submit_environment.runner_image_digest == image
+             and image == "sha256:" + measured.runner_image_sha256,
+             "resolved runtime retains the operator image")
+    return response.submit_environment.model_dump(exclude_none=True)
+
+
 def main() -> int:
     base = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8309"
     db_path = os.environ.get("ECHO_CERTFORGE_DB")
@@ -94,12 +112,7 @@ def main() -> int:
     status_code, status = _request(base, "GET", "/v1/status")
     _require(status_code == 200, "service status is reachable", status_code)
     _require(status.get("adapter_qualification") == "REQUIRED", "required adapter mode is active")
-    environment_digest = status.get("certification_environment_identity_digest")
     runner_image_digest = status.get("runner_image_digest")
-    _require(
-        isinstance(environment_digest, str) and len(environment_digest) == 64,
-        "customer certification environment is published",
-    )
     _require(
         isinstance(runner_image_digest, str) and runner_image_digest.startswith("sha256:"),
         "customer runner image is published",
@@ -123,6 +136,9 @@ def main() -> int:
     target_root = Path(db_path).parent / "deploy-scratch" / f"dispatch-smoke-{_NONCE}"
     target_root.mkdir(parents=True)
     try:
+        journey = ["python3", "certforge_smoke.py"]
+        environment = _resolve_environment(base, headers, journey, runner_image_digest)
+        environment_digest = environment["identity_digest"]
         (target_root / "certforge_smoke.py").write_text(
             "print('echo-certification-forge-production-smoke')\n",
             encoding="utf-8",
@@ -170,13 +186,10 @@ def main() -> int:
                     "reference": acquired.canonical_ref,
                     "path": acquired.canonical_ref,
                 },
-                "environment": {
-                    "identity_digest": environment_digest,
-                    "runner_image_digest": runner_image_digest,
-                },
+                "environment": environment,
                 "policy_version": status["rule_manifest_id"],
                 "idempotency_key": f"production-dispatch-smoke-{_NONCE}",
-                "journey": ["python3", "certforge_smoke.py"],
+                "journey": journey,
             },
         )
         _require(submit_status == 201, "customer certification was accepted", submitted)

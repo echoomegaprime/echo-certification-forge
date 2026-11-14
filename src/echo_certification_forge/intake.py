@@ -10,7 +10,7 @@ import json
 import sqlite3
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .canonical import sha256_json, utc_now
 from .evidence import EvidenceStore
@@ -24,6 +24,7 @@ from .models import (
 from .production_e2e import RULE_ID as PRODUCTION_E2E_RULE_ID
 from .production_e2e import validate_production_e2e
 from .policy import RuleManifest
+from .runtime_identity import _journey
 
 # Internal fine-grained RunState -> coarse public state (contracts/schemas/certification-run.v1.json).
 _PUBLIC_STATE: dict[RunState, str] = {
@@ -63,7 +64,14 @@ class SubmitTarget(BaseModel):
 
     def worker_spec(self) -> dict[str, str]:
         if self.target_type == "local":
-            return {"type": "local", "path": self.path or self.reference}
+            spec = {"type": "local", "path": self.path or self.reference}
+            # Atomic subscriber materialization persists these commitments from
+            # the worker spec. Dropping them skips exact identity reconciliation.
+            if self.artifact_sha256 is not None:
+                spec["artifact_sha256"] = self.artifact_sha256
+            if self.source_commit is not None:
+                spec["source_commit"] = self.source_commit
+            return spec
         if self.target_type == "git":
             if self.url is not None:
                 spec = {"type": "git", "url": self.url}
@@ -120,6 +128,12 @@ class SubmitRequest(BaseModel):
     policy_version: str = Field(min_length=1, max_length=128)
     idempotency_key: str = Field(min_length=8, max_length=128)
     journey: list[str] | None = Field(default=None, max_length=32)
+
+    @field_validator("journey")
+    @classmethod
+    def validate_journey(cls, value: list[str] | None) -> list[str] | None:
+        _journey(value)
+        return value
 
     def request_digest(self) -> str:
         """Semantic identity of the request (excludes the idempotency key itself)."""
