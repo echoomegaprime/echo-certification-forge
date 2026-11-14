@@ -99,7 +99,7 @@ def _dependency_sha256(root: Path, name: str) -> str:
                     or _directory_identity(path_stat) != identity):
                 raise ValueError("runtime_binding_dependency_mismatch")
         return sha256_bytes(bytes(content))
-    except (OSError, TypeError, NotImplementedError, OverflowError) as exc:
+    except (OSError, TypeError, RuntimeError, OverflowError) as exc:
         raise ValueError("runtime_binding_dependency_mismatch") from exc
     finally:
         close_error = None

@@ -1,21 +1,43 @@
 """A stale tenant's crash gap cannot prevent independent work from dispatching."""
 import sqlite3
 from dataclasses import replace
+from unittest.mock import patch
 
 import pytest
 
 from echo_certification_forge.dispatch_worker import recover_pending_intake
 from echo_certification_forge.intake import SubmitRequest
 from echo_certification_forge.run_worker import _worker_environment
-from echo_certification_forge.subscriber import Permission
-from test_p7_subscriber_governance import _stack, _provision, _headers, _owner
+from test_p7_subscriber_governance import _stack, _provision, _headers
+
+
+def create_project_through_http(governance, client, headers, *, label, reference):
+    # Observe the real service boundary without replacing authentication or persistence.
+    create_project = governance.create_project
+    authenticated = []
+
+    def observe(principal, **kwargs):
+        project = create_project(principal, **kwargs)
+        authenticated.append(principal)
+        return project
+
+    with patch.object(governance, 'create_project', side_effect=observe) as observed:
+        response = client.post('/v1/subscriber/projects', headers=headers,
+                               json={'slug': label, 'name': label, 'target_reference': reference})
+    return response, authenticated, observed.call_count
 
 
 def reserve(governance, client, manifest, tmp_path, label):
     org = _provision(governance, label)
     reference = (tmp_path / label).resolve().as_posix()
-    project = client.post('/v1/subscriber/projects', headers=_headers(org.organization_id, org.bootstrap_api_key),
-                          json={'slug': label, 'name': label, 'target_reference': reference}).json()
+    response, authenticated, calls = create_project_through_http(
+        governance, client, _headers(org.organization_id, org.bootstrap_api_key),
+        label=label, reference=reference)
+    assert response.status_code == 201, response.text
+    assert calls == 1 and len(authenticated) == 1
+    project = response.json()
+    principal = authenticated[0]
+    assert principal.organization_id == project['organization_id'] == org.organization_id
     environment = _worker_environment(manifest=manifest)
     request = SubmitRequest.model_validate({
         'tenant_id': org.organization_id, 'project_id': project['project_id'],
@@ -23,7 +45,6 @@ def reserve(governance, client, manifest, tmp_path, label):
         'environment': {'identity_digest': environment.identity_digest, 'runner_image_digest': 'sha256:' + environment.runner_image_sha256},
         'policy_version': manifest.manifest_id, 'idempotency_key': label + '-request',
     })
-    principal = _owner(governance, org.organization_id, org.bootstrap_api_key, Permission.RUN_CREATE)
     reservation = governance.reserve_certification_run(
         principal, project_id=request.project_id, idempotency_key=request.idempotency_key,
         request_digest=request.request_digest(), policy_version=request.policy_version,
@@ -32,6 +53,34 @@ def reserve(governance, client, manifest, tmp_path, label):
         journey=request.journey, submit_request=request.model_dump(exclude_none=True),
     )
     return org, request, reservation
+
+
+@pytest.mark.parametrize('invalid_boundary', ['wrong_key', 'wrong_tenant'])
+def test_project_http_denial_cannot_capture_principal_or_create_reservation(
+        tmp_path, manifest, invalid_boundary):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, 'intended-owner')
+    other = _provision(governance, 'other-tenant')
+    if invalid_boundary == 'wrong_key':
+        key = org.bootstrap_api_key[:-1] + ('x' if org.bootstrap_api_key[-1] != 'x' else 'y')
+        headers = _headers(org.organization_id, key)
+    else:
+        headers = _headers(other.organization_id, org.bootstrap_api_key)
+    with patch.object(governance, 'reserve_certification_run',
+                      wraps=governance.reserve_certification_run) as reserve_run:
+        response, authenticated, calls = create_project_through_http(
+            governance, client, headers, label='denied-project',
+            reference=(tmp_path / 'denied-source').resolve().as_posix())
+    expected_status, expected_detail = ((401, 'api_key_invalid') if invalid_boundary == 'wrong_key'
+                                        else (404, 'tenant_not_found'))
+    assert response.status_code == expected_status, response.text
+    assert response.json() == {'detail': expected_detail}
+    assert calls == 0 and authenticated == []
+    reserve_run.assert_not_called()
+    with sqlite3.connect(store.db_path) as db:
+        assert db.execute('SELECT count(*) FROM subscriber_projects').fetchone() == (0,)
+        assert db.execute('SELECT count(*) FROM subscriber_run_reservations').fetchone() == (0,)
+    assert governance.pending_intake_requests() == []
 
 
 @pytest.mark.parametrize('failure', ['archived_project', 'invalid_request', 'invalid_target_shape'])

@@ -525,3 +525,45 @@ def test_reader_closes_every_owned_descriptor_on_hash_failure(tmp_path, monkeypa
         binding.check_source(tmp_path, SHA)
     assert opened
     assert Counter(opened) == Counter(closed)
+
+
+@requires_secure_reader
+@pytest.mark.parametrize("error_type", [NotImplementedError, RuntimeError])
+@pytest.mark.parametrize("boundary", ["read", "fstat"])
+def test_reader_normalizes_runtime_descriptor_failures_and_closes_all_fds(
+        tmp_path, monkeypatch, error_type, boundary):
+    from echo_certification_forge import runtime_admission as module
+    binding = _binding(tmp_path)
+    (tmp_path / "package-lock.json").write_bytes(b"locked dependencies\n")
+    actual_open, actual_close = module.os.open, module.os.close
+    actual_boundary = getattr(module.os, boundary)
+    actual_fstat = module.os.fstat
+    opened, closed, injected = [], [], []
+
+    def recorded_open(*args, **kwargs):
+        descriptor = actual_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    def recorded_close(descriptor):
+        closed.append(descriptor)
+        return actual_close(descriptor)
+
+    def unavailable(*args, **kwargs):
+        result = actual_boundary(*args, **kwargs)  # Exercise the genuine descriptor first.
+        if args[0] in opened and args[0] not in closed and not injected:
+            injected.append(args[0])
+            raise error_type("synthetic unsupported descriptor operation")
+        return result
+
+    _patch_os(monkeypatch, module, "open", recorded_open)
+    _patch_os(monkeypatch, module, "close", recorded_close)
+    _patch_os(monkeypatch, module, boundary, unavailable)
+    with pytest.raises(ValueError, match="^runtime_binding_dependency_mismatch$") as denied:
+        binding.check_source(tmp_path, SHA)
+    assert type(denied.value.__cause__) is error_type
+    assert injected and opened
+    assert Counter(opened) == Counter(closed)
+    for descriptor in set(opened):
+        with pytest.raises(OSError):
+            actual_fstat(descriptor)
