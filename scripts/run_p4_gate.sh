@@ -22,10 +22,10 @@
 set -Eeuo pipefail
 
 # ---- pinned, verified inputs (2026-07-20) --------------------------------
-REPO_URL="${REPO_URL:-https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge}"
+REPO_URL="${REPO_URL:-https://github.com/echoomegaprime/echo-certification-forge}"
 BRANCH="${BRANCH:-feat/certforge-r5-negative-controls}"
 GIT_CRED_FILE="${GIT_CRED_FILE:-/home/forge/.config/echo/omega_git_creds}"
-BASE_DIGEST="${BASE_DIGEST:-sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111}"
+BASE_DIGEST="${BASE_DIGEST:-sha256:a61cbd76a882645de7f91423329fe43a67eed60d7da24f9e5331414bb3618b20}"
 CLAMAV_IMAGE="${CLAMAV_IMAGE:-clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a}"
 COSIGN="${COSIGN:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign}"
 TRIVY="${TRIVY:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/trivy/trivy}"
@@ -62,7 +62,7 @@ command -v docker >/dev/null || die "docker not on PATH"
 [[ -x "${TRIVY}"  ]] || die "trivy missing: ${TRIVY}"
 [[ -x "${PY}"     ]] || die "python missing: ${PY}"
 [[ -f "${GIT_CRED_FILE}" ]] || die "git cred file missing: ${GIT_CRED_FILE}"
-docker image inspect "python:3.12-alpine@${BASE_DIGEST}" >/dev/null 2>&1 || die "pinned base image absent: python:3.12-alpine@${BASE_DIGEST}"
+docker image inspect "python:3.12.16-alpine3.24@${BASE_DIGEST}" >/dev/null 2>&1 || die "pinned base image absent: python:3.12.16-alpine3.24@${BASE_DIGEST}"
 docker image inspect "${CLAMAV_IMAGE}" >/dev/null 2>&1 || die "pinned clamav image absent: ${CLAMAV_IMAGE}"
 "${PY}" -c 'import cryptography, pydantic' 2>/dev/null || die "python ${PY} lacks cryptography/pydantic"
 

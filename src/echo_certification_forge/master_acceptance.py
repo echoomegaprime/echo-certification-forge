@@ -476,7 +476,10 @@ class MasterAcceptanceRunner:
         return result
 
     def _sandbox_image_digest(self) -> str:
-        match = re.search(r"@sha256:([0-9a-f]{64})$", self.sandbox.image)
+        # Docker full local image IDs and repository manifest digests are both
+        # immutable content identities. Their identity kind is recorded separately
+        # in the qualified runtime input; neither accepts a mutable tag or short ID.
+        match = re.fullmatch(r"(?:[^@\s]+@)?sha256:([0-9a-f]{64})", self.sandbox.image)
         if match is None:
             raise ValueError("master acceptance sandbox image must be digest-pinned")
         return match.group(1)

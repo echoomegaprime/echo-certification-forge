@@ -263,6 +263,9 @@ def verify_p4_image_manifest(
             failures.append(f"{prefix}:provenance_lockfile_mismatch")
 
         vulnerability = json.loads(paths["vulnerability_scan"].read_text(encoding="utf-8"))
+        scanner_exit = vulnerability.get("tool_returncode")
+        if type(scanner_exit) is not int or scanner_exit != 0:
+            failures.append(f"{prefix}:vulnerability_scanner_exit_unverified")
         if not vulnerability.get("passed"):
             failures.append(f"{prefix}:vulnerability_policy_failed")
         if any(int(vulnerability.get(key, -1)) != 0 for key in ("critical_count", "fixed_high_or_critical_count", "secret_finding_count")):

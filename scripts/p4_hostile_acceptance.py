@@ -454,6 +454,7 @@ def scan_image_filesystem(image: str, role: ImageRole, ownership_token: str, wor
 
 def trivy_scan(trivy: Path, image: str, role: ImageRole, workspace: Path) -> dict[str, Any]:
     output = workspace / f"{role.value}.trivy.json"
+    require(not output.exists() and not output.is_symlink(), "Trivy output already exists; use a fresh scan path")
     result = run(
         [
             str(trivy),
@@ -472,6 +473,7 @@ def trivy_scan(trivy: Path, image: str, role: ImageRole, workspace: Path) -> dic
     )
     require(output.is_file(), f"Trivy did not produce output for {role.value}: {result.stderr}")
     document = json.loads(output.read_text(encoding="utf-8"))
+    require(isinstance(document, dict) and isinstance(document.get("Results"), list), "Trivy JSON report is incomplete")
     vulnerabilities: list[dict[str, Any]] = []
     secrets_found: list[dict[str, Any]] = []
     for section in document.get("Results") or []:
@@ -491,7 +493,7 @@ def trivy_scan(trivy: Path, image: str, role: ImageRole, workspace: Path) -> dic
         "critical_count": len(critical),
         "fixed_high_or_critical_count": len(fixed_blockers),
         "secret_finding_count": len(secrets_found),
-        "passed": not critical and not fixed_blockers and not secrets_found,
+        "passed": result.returncode == 0 and not critical and not fixed_blockers and not secrets_found,
         "blocking_vulnerabilities": [
             {
                 "vulnerability_id": item.get("VulnerabilityID"),

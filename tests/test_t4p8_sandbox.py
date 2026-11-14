@@ -5,6 +5,8 @@ the executor's journey-runner injection is proven with fakes; a real-Docker path
 """
 from __future__ import annotations
 
+import os
+import re
 import shutil
 from pathlib import Path
 
@@ -16,6 +18,15 @@ from echo_certification_forge.sandbox import (
 )
 from echo_certification_forge.signing import Ed25519VerdictSigner
 from production_e2e_support import trusted_generic_production_e2e
+
+
+def _real_sandbox_image() -> str:
+    reference = os.environ.get("ECHO_CERTFORGE_TEST_SANDBOX_IMAGE")
+    if reference is None:
+        return DEFAULT_IMAGE
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", reference) is None:
+        raise ValueError("CI fixture must be a full local Docker image ID")
+    return reference
 
 
 def test_build_command_has_all_hardening_flags(tmp_path):
@@ -32,9 +43,10 @@ def test_build_command_has_all_hardening_flags(tmp_path):
     assert "--security-opt no-new-privileges" in joined
     assert f"{tmp_path.resolve()}:/work:ro" in joined   # source mounted READ-ONLY
     assert "-w /work" in joined
-    assert DEFAULT_IMAGE in cmd                  # pinned @sha256 image
+    assert DEFAULT_IMAGE in cmd                  # pinned full local image ID
     assert cmd[-2:] == ["python3", "hello.py"]   # argv last
-    assert "@sha256:" in DEFAULT_IMAGE           # image is digest-pinned, not a mutable tag
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", DEFAULT_IMAGE)
+    assert "--pull=never" in cmd                  # missing local content cannot fall back to a tag
 
 
 def test_empty_argv_rejected(tmp_path):
@@ -96,7 +108,7 @@ def test_executor_injected_runner_failure_blocks_ready(store, manifest, target, 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
 def test_real_docker_sandbox_runs_benign_and_blocks_network(tmp_path):
     src = _benign(tmp_path)
-    sandbox = DockerSandbox(timeout_s=60.0)
+    sandbox = DockerSandbox(image=_real_sandbox_image(), timeout_s=60.0)
     # benign journey runs to completion inside the container
     ok = sandbox.run(["python3", "hello.py"], src)
     assert ok.returncode == 0 and "ok" in ok.stdout
@@ -109,3 +121,39 @@ def test_real_docker_sandbox_runs_benign_and_blocks_network(tmp_path):
     )
     net = sandbox.run(["python3", "net.py"], src)
     assert net.returncode == 7 and "NET_BLOCKED" in net.stdout
+
+
+def test_real_sandbox_image_uses_default_when_ci_fixture_is_unset(monkeypatch):
+    monkeypatch.delenv("ECHO_CERTFORGE_TEST_SANDBOX_IMAGE", raising=False)
+    assert _real_sandbox_image() == DEFAULT_IMAGE
+
+
+def test_real_sandbox_image_accepts_only_full_local_ci_fixture(monkeypatch):
+    image = "sha256:" + "a" * 64
+    monkeypatch.setenv("ECHO_CERTFORGE_TEST_SANDBOX_IMAGE", image)
+    assert _real_sandbox_image() == image
+
+
+@pytest.mark.parametrize("reference", ["", "python:latest", "sha256:abc", "sha256:" + "A" * 64,
+                                       "repository@sha256:" + "a" * 64])
+def test_invalid_ci_fixture_fails_instead_of_falling_back(monkeypatch, reference):
+    monkeypatch.setenv("ECHO_CERTFORGE_TEST_SANDBOX_IMAGE", reference)
+    with pytest.raises(ValueError, match="full local Docker image ID"):
+        _real_sandbox_image()
+
+
+def test_local_id_uses_no_pull_while_registry_digest_keeps_existing_acquisition(tmp_path):
+    local = DockerSandbox(image="sha256:" + "a" * 64).build_command(["python3", "hello.py"], tmp_path)
+    registry = DockerSandbox(image="repository/runtime@sha256:" + "b" * 64).build_command(
+        ["python3", "hello.py"], tmp_path)
+    assert "--pull=never" in local
+    assert "--pull=never" not in registry
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
+def test_missing_local_image_fails_without_registry_pull(tmp_path):
+    source = _benign(tmp_path)
+    sandbox = DockerSandbox(image="sha256:" + "0" * 64, timeout_s=20.0)
+    result = sandbox.run(["python3", "hello.py"], source)
+    assert result.returncode != 0
+    assert "pull access denied" not in result.stderr.lower()
