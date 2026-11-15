@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from echo_certification_forge.p4_manifest import (
     P4ArtifactRef,
     P4ImageManifest,
@@ -106,6 +108,7 @@ def _build_manifest(root: Path) -> Path:
             _write_json(
                 vulnerability_path,
                 {
+                    "tool_returncode": 0,
                     "critical_count": 0,
                     "fixed_high_or_critical_count": 0,
                     "secret_finding_count": 0,
@@ -215,3 +218,25 @@ def test_manifest_rejects_duplicate_immutable_image_identity(tmp_path: Path) -> 
         assert "unexpected duplicate image_id" in str(exc)
     else:
         raise AssertionError("duplicate image identity was accepted")
+
+
+@pytest.mark.parametrize("returncode", [2, None, False, "0"])
+def test_manifest_rejects_failed_or_unproven_scanner_exit(tmp_path: Path, returncode) -> None:
+    manifest_path = _build_manifest(tmp_path)
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = document["records"][0]
+    scan_path = manifest_path.parent / record["vulnerability_scan"]["path"]
+    scan = json.loads(scan_path.read_text(encoding="utf-8"))
+    if returncode is None:
+        scan.pop("tool_returncode", None)
+    else:
+        scan["tool_returncode"] = returncode
+    # Bind the changed summary correctly; this is a semantic rejection test,
+    # rather than a file-tamper/hash-mismatch test.
+    _write_json(scan_path, scan)
+    record["vulnerability_scan"]["sha256"] = sha256_file(scan_path)
+    _write_json(manifest_path, document)
+    result = verify_p4_image_manifest(manifest_path, expected_source_commit=SOURCE,
+                                      expected_base_digest=BASE, now=NOW + timedelta(minutes=1))
+    assert result["passed"] is False
+    assert any("vulnerability_scanner_exit_unverified" in item for item in result["failures"])

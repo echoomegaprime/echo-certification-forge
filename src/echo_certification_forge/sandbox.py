@@ -10,7 +10,7 @@ but that code is hostile until proven otherwise. This module confines it to a Do
   * ``--user 65534`` (nobody)     — non-root runtime
   * ``--cap-drop ALL`` + ``no-new-privileges`` — no capabilities, no privilege escalation
   * source mounted ``:ro``        — the target tree is read-only inside the container
-  * pinned image by @sha256       — no unpinned/mutable base
+  * full immutable image identity — local ID or repository@sha256
   * ``--rm`` + host-side timeout  — the harness terminates only what it launched (SPEC 2.5)
 
 The trusted orchestration (acquisition, scanning, signing) runs on the host and NEVER executes
@@ -18,14 +18,16 @@ target code — only the journey runs, and only inside the sandbox.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-# Pinned minimal Python base (same digest the P4 supply-chain pipeline pins). Override per policy.
-DEFAULT_IMAGE = "python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111"
+# Qualified offline runtime; its upstream recipe and delivered OCI index are bound
+# in images/sandbox/runtime-input.json. Provision and admit it before deployment.
+DEFAULT_IMAGE = "sha256:061deb070723eabc0cb5cb8ffd1eeab591206d27fdf71991e915cce72e4e7558"
 
 
 class SandboxError(RuntimeError):
@@ -71,6 +73,10 @@ class DockerSandbox:
             "-v", f"{workdir.resolve()}:/work:ro",
             "-w", "/work",
         ]
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", self.image):
+            # A local content ID must already be acquired and qualified. Never
+            # reinterpret a missing local ID as a registry repository/tag.
+            cmd.insert(len(self.docker) + 2, "--pull=never")
         for key, value in sorted(self.extra_env.items()):
             cmd += ["--env", f"{key}={value}"]
         cmd += [self.image, *argv]

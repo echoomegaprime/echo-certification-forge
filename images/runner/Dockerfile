@@ -1,4 +1,4 @@
-FROM python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111
+FROM python:3.12.16-alpine3.24@sha256:a61cbd76a882645de7f91423329fe43a67eed60d7da24f9e5331414bb3618b20
 
 ARG SOURCE_REVISION=unknown
 ARG IMAGE_VARIANT=unknown
@@ -6,10 +6,10 @@ ARG ADMISSION_POLICY_ID=p4.runner.production.v1
 ARG ATTESTATION_KEY_ID=unknown
 LABEL org.opencontainers.image.title="Echo Certification Forge Runner" \
       org.opencontainers.image.description="Purpose-built non-root execution image for isolated Certification Forge runs" \
-      org.opencontainers.image.source="https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge" \
+      org.opencontainers.image.source="https://github.com/echoomegaprime/echo-certification-forge" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
-      org.opencontainers.image.base.name="python:3.12-alpine" \
-      org.opencontainers.image.base.digest="sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111" \
+      org.opencontainers.image.base.name="python:3.12.16-alpine3.24" \
+      org.opencontainers.image.base.digest="sha256:a61cbd76a882645de7f91423329fe43a67eed60d7da24f9e5331414bb3618b20" \
       echo.certforge.image.role="runner" \
       echo.certforge.image.variant="${IMAGE_VARIANT}" \
       echo.certforge.admission.policy="${ADMISSION_POLICY_ID}" \
@@ -23,7 +23,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 COPY images/requirements.lock /tmp/requirements.lock
-RUN python -m pip install --root-user-action=ignore --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.lock \
+# Exact Alpine package fix; keep this pin until a scanned base incorporates it.
+RUN apk add --no-cache --upgrade krb5-libs=1.22.3-r0 \
+    && python -m pip install --root-user-action=ignore --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.lock \
     && rm -f /tmp/requirements.lock \
     && addgroup -S -g 65532 certforge \
     && adduser -S -D -H -u 65532 -G certforge -s /sbin/nologin certforge \

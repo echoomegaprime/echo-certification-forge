@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -19,18 +20,68 @@ def load_script(name: str):
 
 
 def completed_report() -> dict:
-    # Contract fixture only: no real P4 execution or certification is claimed.
+    # Synthetic contract fixture only: no real P4 execution or certification is claimed.
+    epoch = int(datetime.now(UTC).timestamp())
+    engine = "clamav/clamav@sha256:" + "a" * 64
+    digest = "b" * 64
+    databases = {}
+    files = {}
+    commands = []
+    for name, extension, version, age in (
+        ("main", "cvd", 63, 10 * 365 * 86400),
+        ("daily", "cld", 28182, 60),
+        ("bytecode", "cvd", 339, 365 * 86400),
+    ):
+        path = f"{name}.{extension}"
+        databases[name] = {
+            "path": path, "version": version, "signatures": 100,
+            "required_functionality_level": 90, "build_epoch": epoch - age,
+            "header_sha256": hashlib.sha256(("synthetic-header:" + name).encode()).hexdigest(),
+        }
+        names = [path]
+        if extension == "cvd":
+            names.append(f"{name}-{version}.cvd.sign")
+        for filename in names:
+            files[filename] = {
+                "path": filename, "size_bytes": 512,
+                "sha256": hashlib.sha256(("synthetic-file:" + filename).encode()).hexdigest(),
+            }
+        checks = [("container", ["--fips-limits", "--info=/var/lib/clamav/" + path], "Verification OK.")]
+        if extension == "cvd":
+            checks.append(("detached", ["--verify=/var/lib/clamav/" + path], "Successfully verified"))
+        for kind, argv, log in checks:
+            commands.append({
+                "database": name, "path": path, "kind": kind, "argv": ["sigtool", *argv],
+                "exit_code": 0, "logs_sha256": hashlib.sha256(log.encode()).hexdigest(),
+                "sanitized_logs": "TARGET|" + log, "readonly_mount_verified": True, "passed": True,
+            })
+    profile = {
+        "manifest_sha256": digest, "engine_reference": engine,
+        "files": files, "databases": databases,
+        "daily_max_age_seconds": 172800, "future_clock_skew_seconds": 300,
+    }
+    images = {}
+    for role in ("runner", "custody", "anchor", "signer", "worker", "verifier"):
+        images[role] = {"malware_scan": {
+            "passed": True, "exit_code": 0, "scanner_image": engine,
+            "database_profile": {
+                "manifest_sha256": digest, "files": {name: dict(row) for name, row in files.items()},
+                "readonly_mount_verified": True, "official_db_only": True, "pre_post_bytes_verified": True,
+            },
+        }}
     return {
-        "phase": "P4",
-        "passed": True,
-        "run_outcome": "COMPLETE",
-        "release_verdict": "NOT_READY",
-        "source_commit": "a" * 40,
-        "checks": {"sealed_twelve_image_manifest_verified": True, "public_verifier_passed": True},
-        "cleanup": {
-            "unrelated_container_ids_preserved": True,
-            "ephemeral_private_files_removed": True,
+        "phase": "P4", "passed": True, "run_outcome": "COMPLETE",
+        "release_verdict": "NOT_READY", "source_commit": "a" * 40,
+        "checks": {
+            "sealed_twelve_image_manifest_verified": True, "public_verifier_passed": True,
+            "current_official_definitions_authenticated": True, "definition_profile_bytes_bound": True,
         },
+        "tools": {"clamav_image": engine, "clamav_database_profile": {
+            "passed": True, "profile": profile, "commands": commands,
+            "qualified_at_utc": datetime.fromtimestamp(epoch, UTC).isoformat(),
+        }},
+        "images": images,
+        "cleanup": {"unrelated_container_ids_preserved": True, "ephemeral_private_files_removed": True},
     }
 
 
