@@ -136,6 +136,25 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def write_acceptance_report(path: Path, report: dict[str, Any]) -> None:
+    """Publish phase completion only after checks and final cleanup succeed."""
+    report.pop("completed_phase_gate", None)
+    checks = report.get("checks")
+    cleanup = report.get("cleanup") or {}
+    if (
+        report.get("phase") == "P4"
+        and report.get("passed") is True
+        and report.get("run_outcome") == "COMPLETE"
+        and isinstance(checks, dict)
+        and checks
+        and all(value is True for value in checks.values())
+        and cleanup.get("unrelated_container_ids_preserved") is True
+        and cleanup.get("ephemeral_private_files_removed") is True
+    ):
+        report["completed_phase_gate"] = "P4"
+    write_json(path, report)
+
+
 def docker_json(*arguments: str) -> Any:
     return json.loads(run(["docker", *arguments]).stdout)
 
@@ -1375,6 +1394,10 @@ def service_health_probe(image: str, role: ImageRole, ownership_token: str, work
                 "ECHO_CERTFORGE_DB": "/workspace/state/certforge.sqlite3",
                 "ECHO_CERTFORGE_EVIDENCE_ROOT": "/workspace/state/evidence",
                 "ECHO_CERTFORGE_TRUSTED_KEYS": "/workspace/state/trusted-public-keys",
+                # The worker app opens its P6 deployment ledger at import time. The default
+                # (<package root>/var/deployments.sqlite3) is on the read-only image root, so
+                # the ledger joins the other state paths on the writable workspace.
+                "ECHO_CERTFORGE_DEPLOYMENT_LEDGER": "/workspace/state/deployments.sqlite3",
             }
         )
         command = ["-lc", "mkdir -p /workspace/state/trusted-public-keys /workspace/state/evidence && exec uvicorn echo_certification_forge.app:app --host 127.0.0.1 --port 8080 --no-access-log"]
@@ -1859,7 +1882,7 @@ def main() -> int:
             report["error"] = {"type": "CleanupError", "message": "unrelated container identity changed"}
             return_code = 1
         report["completed_at_utc"] = to_utc_iso(datetime.now(UTC))
-        write_json(output, report)
+        write_acceptance_report(output, report)
         print(
             json.dumps(
                 {
