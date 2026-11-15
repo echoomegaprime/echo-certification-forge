@@ -78,6 +78,23 @@ def _manual_capabilities() -> dict[str, dict[str, Any]]:
         ],
     )
     return {
+        "echo.certforge.publish": {
+            "operation": "POST /v1/subscriber/certifications/{run_id}/publish",
+            "input_schema": _object_schema(
+                {
+                    "command": COMMAND_SCHEMA,
+                    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                },
+                ["command", "run_id"],
+            ),
+            "output_schema": _object_schema(
+                {
+                    "verification_id": {"type": "string"},
+                    "verification_url": {"type": "string"},
+                },
+                ["verification_id", "verification_url"],
+            ),
+        },
         "echo.certforge.run": {
             "operation": "POST /sdk/certification-forge/run",
             "input_schema": _object_schema(
