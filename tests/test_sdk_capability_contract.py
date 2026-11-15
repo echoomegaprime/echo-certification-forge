@@ -32,7 +32,7 @@ def test_generated_sdk_contract_is_current() -> None:
 def test_every_certforge_capability_has_command_and_output_schema() -> None:
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     capabilities = contract["capabilities"]
-    assert contract["capability_count"] == 60 == len(capabilities)
+    assert contract["capability_count"] == 61 == len(capabilities)
     for capability, item in capabilities.items():
         input_schema = item["input_schema"]
         output_schema = item["output_schema"]
@@ -46,6 +46,14 @@ def test_every_certforge_capability_has_command_and_output_schema() -> None:
         }
         assert isinstance(output_schema, dict) and output_schema, capability
         assert "type" in output_schema or "anyOf" in output_schema, capability
+
+
+def test_github_app_publish_alias_is_exactly_schema_compatible() -> None:
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    capabilities = contract["capabilities"]
+    least_privileged = capabilities["echo.certforge.publish"]
+    administrative = capabilities["echo.certforge.admin.publish"]
+    assert least_privileged == administrative
 
 
 def test_registered_capability_set_equals_sdk_contract() -> None:

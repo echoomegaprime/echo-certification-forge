@@ -1,10 +1,10 @@
 {
-  "manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
+  "manifest_digest": "9e9f963377374e827ccc9c8b07ea82cc7966e25a2392838997d3c1371f5a4e5c",
   "manifest_id": "certforge.release-strict.v1",
   "passed": true,
   "phase": "P1",
-  "platform": "Windows-11-10.0.22631-SP0",
-  "python": "3.13.0 (tags/v3.13.0:60403a5, Oct  7 2024, 09:38:07) [MSC v.1941 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
   "scenarios": {
     "default_block": {
       "passed": true,
@@ -17,27 +17,30 @@
         "mandatory_rule_missing:environment_identity",
         "mandatory_rule_missing:evidence_integrity",
         "mandatory_rule_missing:immutable_target_identity",
+        "mandatory_rule_missing:production_e2e",
         "mandatory_rule_missing:runner_control_channel",
         "mandatory_rule_missing:signing_authority_separation",
         "mandatory_rule_missing:tenant_isolation",
+        "production_e2e_attestation_missing",
         "run_outcome_inconclusive"
       ],
+      "verdict": "NOT_READY"
+    },
+    "source_only_blocks": {
+      "deploy_gate_allowed": false,
+      "evidence_merkle_root": "41a4fc282a478767dc16f6c64128c93ab2535866e620a3f5b0ae922220ffb449",
+      "passed": true,
+      "payload_sha256": "a7255f5bae53fcd49b1e049b3edd1feb6c9b03f4520b0e2abb0e44f0da7138e7",
+      "signing_key_id": "ed25519:e222f1c31e85f1b8a6d8cfed30fd2300",
       "verdict": "NOT_READY"
     },
     "tamper_blocks": {
       "deploy_gate_allowed": false,
       "passed": true,
       "reasons": [
-        "current_evidence_invalid"
+        "current_evidence_invalid",
+        "verdict_not_production_ready"
       ]
-    },
-    "verified_ready": {
-      "deploy_gate_allowed": true,
-      "evidence_merkle_root": "438efda29a515669d0db0472f6527c201c55d0d80afebf2963123d11c77a7d73",
-      "passed": true,
-      "payload_sha256": "db3fe179c7c950a9ffaf90cfef6d475fc915af87f0d1b10a85071c7d8411b975",
-      "signing_key_id": "ed25519:4592da038060823a957506d477e49114",
-      "verdict": "PRODUCTION_READY"
     }
   },
   "schema_version": "1.0.0"

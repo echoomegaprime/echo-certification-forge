@@ -216,6 +216,16 @@ def build_contract() -> dict[str, Any]:
             "input_schema": _operation_input(operation, components),
             "output_schema": _operation_output(operation, components),
         }
+    # Keep the least-privileged publishing capability used by the Certification Forge GitHub
+    # App as a first-class compatibility alias. It targets the same fail-closed route as the
+    # tier-2 administrative capability, but the service still re-evaluates the exact signed
+    # PRODUCTION_READY verdict before publishing public verification material.
+    publish = capabilities["echo.certforge.admin.publish"]
+    capabilities["echo.certforge.publish"] = {
+        "operation": publish["operation"],
+        "input_schema": publish["input_schema"],
+        "output_schema": publish["output_schema"],
+    }
     capabilities.update(_manual_capabilities())
     return {
         "schema_version": "1.0.0",
