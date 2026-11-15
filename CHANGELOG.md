@@ -3,6 +3,18 @@
 All notable changes to Echo Certification Forge are documented here. Versions follow Semantic
 Versioning; dates use ISO 8601.
 
+## [Unreleased]
+
+### Fixed
+
+- Made exact idempotent replay converge after a completed run reconciles its declared Git target
+  digest to the acquired artifact digest, without weakening immutable request or dispatch binding.
+
+### Added
+
+- Added the repository showroom contract, exact offline certification journey, premium architecture
+  and workflow graphics, service preview, CodeQL workflow, and operator workflow documentation.
+
 ## [1.1.0] - 2026-08-09
 
 ### Added
