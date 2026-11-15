@@ -46,6 +46,13 @@ VALUES
    '{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string"}}}'::jsonb,
    'certforge.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
 
+  -- New identity metadata route: activate only after admitted service rollout and authenticated smoke.
+  ('echo.certforge.identities',
+   'Certification Forge: export reconciled canonical run identities after tenant authorization, digest verification, and metadata-only audit. Never reads evidence bytes.',
+   'http', 'http://127.0.0.1:8309/v1/certifications/{run_id}/identities', 'GET', 'path', 'forge',
+   '{"type":"object","required":["command","run_id"],"properties":{"command":{"type":"string","minLength":1,"maxLength":64},"run_id":{"type":"string"}},"additionalProperties":false}'::jsonb,
+   'certforge.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+
   ('echo.certforge.cancel',
    'Certification Forge: cancel a certification run. Fail-closed — 409 once past the cancellable window; never re-opens a terminal run.',
    'http', 'http://127.0.0.1:8309/v1/certifications/{run_id}/cancel', 'POST', 'path', 'forge',
