@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import json
+import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 from echo_certification_forge.p4_manifest import (
     P4ArtifactRef,
     P4ImageManifest,
     P4ImageRecord,
     sha256_file,
+    staged_public_verifier_artifacts,
     verify_p4_image_manifest,
     write_manifest,
 )
@@ -215,3 +219,39 @@ def test_manifest_rejects_duplicate_immutable_image_identity(tmp_path: Path) -> 
         assert "unexpected duplicate image_id" in str(exc)
     else:
         raise AssertionError("duplicate image identity was accepted")
+
+
+def test_public_verifier_staging_handles_mode_0600_without_mutating_seals(tmp_path: Path) -> None:
+    artifacts = {}
+    for name in ("attestation", "policy", "sbom"):
+        path = tmp_path / f"sealed-{name}.json"
+        path.write_text('{"public":"synthetic"}\n', encoding="utf-8")
+        path.chmod(0o600)
+        artifacts[name] = path
+    expected = {name: sha256_file(path) for name, path in artifacts.items()}
+
+    with staged_public_verifier_artifacts(artifacts, expected_sha256=expected) as copies:
+        paths = list(copies.values())
+        assert len(paths) == 3
+        for name, path in copies.items():
+            assert stat.S_IMODE(path.stat().st_mode) == 0o444
+            assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755
+            assert sha256_file(path) == expected[name]
+    assert all(not path.exists() for path in paths)
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in artifacts.values())
+
+
+def test_public_verifier_staging_rejects_unpinned_and_extra_artifacts(tmp_path: Path) -> None:
+    artifacts = {}
+    for name in ("attestation", "policy", "sbom"):
+        path = tmp_path / f"{name}.json"
+        path.write_text("{}", encoding="utf-8")
+        artifacts[name] = path
+    expected = {name: sha256_file(path) for name, path in artifacts.items()}
+    expected["policy"] = "0" * 64
+    with pytest.raises(RuntimeError, match="source hash mismatch: policy"):
+        with staged_public_verifier_artifacts(artifacts, expected_sha256=expected):
+            pass
+    with pytest.raises(ValueError, match="artifact set mismatch"):
+        with staged_public_verifier_artifacts({**artifacts, "private_key": tmp_path / "key"}):
+            pass

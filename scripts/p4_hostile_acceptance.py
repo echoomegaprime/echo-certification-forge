@@ -39,7 +39,11 @@ from echo_certification_forge.canonical import (  # noqa: E402
     sha256_bytes,
     to_utc_iso,
 )
-from echo_certification_forge.p4_manifest import P4ImageManifest, verify_p4_image_manifest  # noqa: E402
+from echo_certification_forge.p4_manifest import (  # noqa: E402
+    P4ImageManifest,
+    staged_public_verifier_artifacts,
+    verify_p4_image_manifest,
+)
 from echo_certification_forge.hostile import (  # noqa: E402
     HostileCaseKind,
     HostileCaseObservation,
@@ -1242,6 +1246,7 @@ def public_verifier_probe(
     image_digest: str,
     now: datetime,
     ownership_token: str,
+    expected_sha256: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     targets = {
         "attestation": "/input/runner.attestation.json",
@@ -1249,45 +1254,45 @@ def public_verifier_probe(
         "sbom": "/input/runner.spdx.json",
     }
     require(set(artifacts) == set(targets), f"public verifier artifact set mismatch: {sorted(artifacts)}")
-    mounts: list[tuple[Path, str, bool]] = []
     artifact_identities: dict[str, dict[str, Any]] = {}
     for name, target in targets.items():
         source = artifacts[name].resolve(strict=True)
         require(source.is_file(), f"public verifier artifact is not a file: {name}")
-        mounts.append((source, target, True))
         artifact_identities[name] = {
             "source": str(source),
             "target": target,
             "sha256": sha256_file(source),
             "read_only": True,
         }
-    result = execute_container(
-        image=image,
-        role="verifier",
-        case="public-verify",
-        ownership_token=ownership_token,
-        entrypoint="python",
-        command=[
-            "-m",
-            "echo_certification_forge.verifier_cli",
-            "--attestation",
-            targets["attestation"],
-            "--policy",
-            targets["policy"],
-            "--sbom",
-            targets["sbom"],
-            "--image-digest",
-            image_digest,
-            "--now",
-            to_utc_iso(now),
-        ],
-        mounts=mounts,
-        timeout_seconds=60,
-        memory="256m",
-        pids=64,
-        workspace_size="8m",
-        nofile=256,
-    )
+    with staged_public_verifier_artifacts(artifacts, expected_sha256=expected_sha256) as readable:
+        mounts = [(readable[name], target, True) for name, target in targets.items()]
+        result = execute_container(
+            image=image,
+            role="verifier",
+            case="public-verify",
+            ownership_token=ownership_token,
+            entrypoint="python",
+            command=[
+                "-m",
+                "echo_certification_forge.verifier_cli",
+                "--attestation",
+                targets["attestation"],
+                "--policy",
+                targets["policy"],
+                "--sbom",
+                targets["sbom"],
+                "--image-digest",
+                image_digest,
+                "--now",
+                to_utc_iso(now),
+            ],
+            mounts=mounts,
+            timeout_seconds=60,
+            memory="256m",
+            pids=64,
+            workspace_size="8m",
+            nofile=256,
+        )
     output = parse_last_json(result["logs"])
     passed = (
         result["exit_code"] == 0
@@ -1725,6 +1730,11 @@ def main() -> int:
             image_digest=attestations[ImageRole.RUNNER].identity.image_digest,
             now=started + timedelta(seconds=1),
             ownership_token=ownership_token,
+            expected_sha256={
+                "attestation": sealed_records[(ImageRole.RUNNER.value, "a")].attestation.sha256,
+                "policy": sealed_records[(ImageRole.RUNNER.value, "a")].admission_policy.sha256,
+                "sbom": sealed_records[(ImageRole.RUNNER.value, "a")].sbom.sha256,
+            },
         )
         require(report["service_runtime"]["verifier"]["passed"], "public verifier image failed")
 

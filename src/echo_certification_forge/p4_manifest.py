@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import stat
+import tempfile
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Iterator, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,6 +25,11 @@ from .supply_chain import (
 
 P4_ROLES = tuple(role.value for role in ImageRole)
 P4_VARIANTS = ("a", "b")
+PUBLIC_VERIFIER_FILES = {
+    "attestation": "runner.attestation.json",
+    "policy": "runner.admission-policy.json",
+    "sbom": "runner.spdx.json",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -29,6 +38,48 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+@contextmanager
+def staged_public_verifier_artifacts(
+    artifacts: Mapping[str, Path],
+    *,
+    expected_sha256: Mapping[str, str] | None = None,
+) -> Iterator[dict[str, Path]]:
+    """Expose only hash-pinned public records to an unprivileged verifier.
+
+    Sealed owner records may be mode 0600 under a restrictive umask. Docker
+    preserves that mode on a read-only file bind, so UID 65532 cannot open the
+    file. Make short-lived, mode-0444 copies without modifying sealed originals
+    or copying the private signing key. Remove them after container execution.
+    """
+    if set(artifacts) != set(PUBLIC_VERIFIER_FILES):
+        raise ValueError("public verifier artifact set mismatch")
+    if expected_sha256 is not None and set(expected_sha256) != set(PUBLIC_VERIFIER_FILES):
+        raise ValueError("public verifier expected-hash set mismatch")
+
+    with tempfile.TemporaryDirectory(prefix="certforge-p4-public-") as directory:
+        staging = Path(directory)
+        staging.chmod(0o755)
+        copies: dict[str, Path] = {}
+        for name, filename in PUBLIC_VERIFIER_FILES.items():
+            source = Path(artifacts[name]).resolve(strict=True)
+            if not source.is_file():
+                raise RuntimeError(f"public verifier artifact is not a file: {name}")
+            original_hash = sha256_file(source)
+            if expected_sha256 is not None and original_hash != expected_sha256[name]:
+                raise RuntimeError(f"public verifier source hash mismatch: {name}")
+            copy = staging / filename
+            shutil.copyfile(source, copy)
+            copy.chmod(0o444)
+            if (
+                stat.S_IMODE(copy.stat().st_mode) != 0o444
+                or sha256_file(copy) != original_hash
+                or sha256_file(source) != original_hash
+            ):
+                raise RuntimeError(f"public verifier staged artifact mismatch: {name}")
+            copies[name] = copy
+        yield copies
 
 
 class P4ArtifactRef(BaseModel):

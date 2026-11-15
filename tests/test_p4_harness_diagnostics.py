@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from datetime import UTC, datetime
 import json
+import stat
 import subprocess
 from pathlib import Path
 
@@ -149,11 +150,16 @@ def test_public_verifier_probe_uses_only_exact_read_only_artifacts(tmp_path: Pat
     for name in ("attestation", "policy", "sbom"):
         path = tmp_path / f"{name}.json"
         path.write_text("{}", encoding="utf-8")
+        path.chmod(0o600)
         artifacts[name] = path
     captured = {}
 
     def fake_execute_container(**kwargs):
         captured.update(kwargs)
+        for path, _target, read_only in kwargs["mounts"]:
+            assert read_only is True
+            assert path.read_text(encoding="utf-8") == "{}"
+            assert stat.S_IMODE(path.stat().st_mode) == 0o444
         return {
             "exit_code": 0,
             "timed_out": False,
@@ -189,11 +195,13 @@ def test_public_verifier_probe_uses_only_exact_read_only_artifacts(tmp_path: Pat
     assert captured["pids"] == 64
     assert captured["workspace_size"] == "8m"
     assert captured["nofile"] == 256
-    assert captured["mounts"] == [
-        (artifacts["attestation"].resolve(), "/input/runner.attestation.json", True),
-        (artifacts["policy"].resolve(), "/input/runner.admission-policy.json", True),
-        (artifacts["sbom"].resolve(), "/input/runner.spdx.json", True),
+    assert [(path.name, target, readonly) for path, target, readonly in captured["mounts"]] == [
+        ("runner.attestation.json", "/input/runner.attestation.json", True),
+        ("runner.admission-policy.json", "/input/runner.admission-policy.json", True),
+        ("runner.spdx.json", "/input/runner.spdx.json", True),
     ]
+    assert all(not path.exists() for path, _target, _readonly in captured["mounts"])
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in artifacts.values())
     assert all(item["read_only"] for item in result["artifacts"].values())
 
 
