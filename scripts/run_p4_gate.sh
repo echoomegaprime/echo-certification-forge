@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run_p4_gate.sh — one-command, fail-closed driver for the P4 hostile-runner /
+# run_p4_gate.sh â€” one-command, fail-closed driver for the P4 hostile-runner /
 # image-supply-chain acceptance gate. Reconstructed from the source scripts
 # (generate_p4_attestation_key.py, build_p4_images.py, seal_p4_images.py,
 # p4_hostile_acceptance.py) so a full P4 gate run is repeatable instead of ad-hoc.
@@ -26,7 +26,7 @@ REPO_URL="${REPO_URL:-https://github.com/echoomegaprime/echo-certification-forge
 BRANCH="${BRANCH:-feat/certforge-r5-negative-controls}"
 GIT_CRED_FILE="${GIT_CRED_FILE:-/home/forge/.config/echo/omega_git_creds}"
 BASE_DIGEST="${BASE_DIGEST:-sha256:a61cbd76a882645de7f91423329fe43a67eed60d7da24f9e5331414bb3618b20}"
-CLAMAV_IMAGE="${CLAMAV_IMAGE:-clamav/clamav@sha256:7f5389ccaa2368c383fa80e167ccfe44348d71e685f926fce4755eed1757673a}"
+CLAMAV_IMAGE="${CLAMAV_IMAGE:-clamav/clamav@sha256:45fe5149fbee5a46509c9848ef20d0c354b7b2323c9369f285939a37cf33422a}"
 COSIGN="${COSIGN:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/cosign/cosign}"
 TRIVY="${TRIVY:-/home/forge/.cache/echo-certforge/p4-9c07eb7/tools/trivy/trivy}"
 # Use a CLEAN interpreter: the echo-worker venv intermittently fires a flywheel
@@ -57,6 +57,8 @@ RUN_LABEL="${2:-run-$(date -u +%Y%m%dT%H%M%SZ)}"
 SHORT="${SOURCE_COMMIT:0:7}"
 TAG_PREFIX="p4-${SHORT}"
 
+[[ -n "${CLAMAV_DB_DIR:-}" && -d "${CLAMAV_DB_DIR}" ]] || die "CLAMAV_DB_DIR must name a frozen official definition profile"
+[[ "${CLAMAV_DB_MANIFEST_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] || die "CLAMAV_DB_MANIFEST_SHA256 must be an exact digest"
 command -v docker >/dev/null || die "docker not on PATH"
 [[ -x "${COSIGN}" ]] || die "cosign missing: ${COSIGN}"
 [[ -x "${TRIVY}"  ]] || die "trivy missing: ${TRIVY}"
@@ -71,7 +73,7 @@ SRC="${RUN_DIR}/src"
 KEYS="${RUN_DIR}/keys"
 SEALED="${RUN_DIR}/sealed"
 WS="${RUN_DIR}/ws"
-mkdir -p "${SRC}" "${KEYS}" "${SEALED}" "${WS}"
+mkdir -p "${SRC}" "${KEYS}" "${SEALED}"
 log "commit=${SOURCE_COMMIT} tag_prefix=${TAG_PREFIX} run_dir=${RUN_DIR}"
 
 # ---- 1. checkout the exact commit ----------------------------------------
@@ -97,7 +99,7 @@ KEY_ID="$("${PY}" -c "import json,sys;print(json.load(open(sys.argv[1]))['key_id
 log "key_id=${KEY_ID}"
 
 # ---- 3. build all 12 role images from the exact commit -------------------
-log "building 12 images (6 roles x 2 variants, --no-cache) — this is the long step ..."
+log "building 12 images (6 roles x 2 variants, --no-cache) â€” this is the long step ..."
 "${PY}" "${SRC}/scripts/build_p4_images.py" \
   --source-root "${SRC}" \
   --source-commit "${SOURCE_COMMIT}" \
@@ -133,13 +135,13 @@ log "sealed manifest: ${SEALED}/manifest.json"
 
 # ---- 6. the 14-step hostile-acceptance gate ------------------------------
 # NOTE: seal writes ${SEALED}/images.json (role map + sealed_manifest_sha256
-# binding) — that bound document, NOT the raw input map, is the gate's --images.
+# binding) â€” that bound document, NOT the raw input map, is the gate's --images.
 GATE_IMAGES="${SEALED}/images.json"
 [[ -f "${GATE_IMAGES}" ]] || die "seal did not produce ${GATE_IMAGES}"
 RESULT="${RUN_DIR}/p4_hostile_result.json"
 log "running hostile-acceptance gate ..."
 set +e
-"${PY}" "${SRC}/scripts/p4_hostile_acceptance.py" \
+"${PY}" "${SRC}/scripts/p4_hostile_acceptance_hardened.py" \
   --images "${GATE_IMAGES}" \
   --sealed-manifest "${SEALED}/manifest.json" \
   --base-digest "${BASE_DIGEST}" \
@@ -147,6 +149,8 @@ set +e
   --trivy "${TRIVY}" \
   --cosign "${COSIGN}" \
   --clamav-image "${CLAMAV_IMAGE}" \
+  --clamav-db-dir "${CLAMAV_DB_DIR}" \
+  --clamav-db-manifest-sha256 "${CLAMAV_DB_MANIFEST_SHA256}" \
   --workspace "${WS}" \
   --output "${RESULT}"
 GATE_RC=$?
@@ -180,7 +184,7 @@ for k, v in hits[:6]:
     print("  signer-check:", k, "=", v)
 PYEOF
 else
-  echo "NO RESULT FILE WRITTEN — gate aborted before producing output"
+  echo "NO RESULT FILE WRITTEN â€” gate aborted before producing output"
 fi
 echo "================================================================="
 exit "${GATE_RC}"

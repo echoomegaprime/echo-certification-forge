@@ -88,3 +88,47 @@ CI does not claim to qualify the delivered DEFAULT artifact.
 FieldDesk remains290658c with verified private browser and FORGE acceptance and a
 sealed non-live deployment preview. No customer migration, production service,
 ingress, provider, phone or physical-device action was performed.
+
+
+## Current-definition follow-up
+Branch agent/builder-fielddesk-definition-profile-20261114 starts at047c5eb.
+That head passed813Linux cases/80.41%coverage and complete functional nativeP4,
+but its bundled antivirus database was125days old; its result cannot supply
+current malware coverage. The latest official1.5.4 image also has an older
+bundled DB. One normal official FreshClam update supplied current signed
+main63/daily28182/bytecode339 without bypassing vendor download controls.
+
+The frozen public vendor asset is checkpointed on QUENCH under
+D:/ECHO_OMEGA_PRIME/08_ARTIFACTS/fielddesk-issuer-recovery-20261113/ClamAV-current-definition-profile
+Archive SHA25625d5b75cc2b24ce55b95b44e50ccfef3bd71b4058362b4d1d1cdf1b705df308e;
+manifest6c682959672874f2e29a083ac8da61fd591a07c3657efb48f059d85a5cd2e3a1.
+Actual offline vendor authentication, five genuine tamper rejections, clean0,
+EICAR1, read-only byte preservation and strict owned-container cleanup passed.
+The no-alias physical snapshot uses independent copies, not hardlinks.
+No raw HTTP cookies, updater state, private identities or EICAR files enter the capsule.
+
+The new native profile requires the exact manifest, authenticates vendor data
+offline, masks bundled definitions with its read-only private copy, and preserves
+all existing target scan limits/signature semantics. Daily age48h/future300s,
+inventory/hash/size, FIFO/nonblocking, link identity, copy bounds, path overlap,
+post-use drift and engine-support checks fail closed. Existing historical P4
+reports lack the required native contract and are rejected before signer access.
+
+Affected source checks initially291passed/2Windows symlink skips; an actual
+new-helper probe verified all5vendor commands, clean/EICAR and7owned closures.
+Its first256MiB verification cap failed on Main; the new authentication step
+uses the existing2GiB AV envelope, leaving target limits unchanged.
+Final root review adds link count to descriptor identity and reproduces/rejects
+a new-alias-before-open race without weakening a guard.
+
+Unsigned/pre-sign admission reevaluates48h freshness at actual current time.
+Already-signed reports retain existing authenticated issuance/expiry rules;
+the public verifier may use a signed issuance anchor only after trusted signature,
+source, expiry, raw-hash and future-clock checks. No signed TTL is changed.
+
+Fresh final commit CI/CodeQL/P1/P6/P7, source export, P2/P3, actual-default MASTER,
+SDK/P5 and all12role images/native fresh-definition P4 remain required.
+Reuse immutable vendor/runtime assets and orchestration logic, never old-source
+phase outcomes. Independent source approval/trusted readiness signing, original
+FieldDesk rerun, final customer freeze/migration/host/collector/device/provider
+acceptance remain open. No main merge or production/data/trust change.
