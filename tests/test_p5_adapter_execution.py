@@ -39,6 +39,7 @@ from echo_certification_forge.p5_qualification import (
 from echo_certification_forge.family_r5 import execute as execute_r5
 from echo_certification_forge.evidence import merkle_root
 from echo_certification_forge.runner import RunnerEphemeralIdentity
+from echo_certification_forge.sandbox import DockerSandbox
 from echo_certification_forge.run_worker import (
     _load_adapter_inputs,
     load_adapter_execution_profile,
@@ -720,6 +721,7 @@ def test_production_router_arguments_rebind_bundle_and_reach_worker_execution(
     expected_environment = _worker_environment(
         adapter_set_digest(records),
         result["adapter_execution_profile_sha256"],
+        DockerSandbox(),
     )
     assert result["environment_identity_digest"] == expected_environment.identity_digest
     store = EvidenceStore(db_path, evidence_root)

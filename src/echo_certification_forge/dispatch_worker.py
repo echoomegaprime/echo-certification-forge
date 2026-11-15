@@ -12,7 +12,7 @@ from .evidence import EvidenceStore
 from .intake import SubmitRequest
 from .policy import RuleManifest
 from .run_worker import _load_adapter_inputs, _load_signer, run
-from .sandbox import DEFAULT_IMAGE, DockerSandbox
+from .sandbox import DEFAULT_IMAGE, DEFAULT_MEMORY, DockerSandbox, normalize_memory_limit
 from .subscriber import SubscriberDispatch, SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -188,6 +188,12 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
     )
     parser.add_argument(
+        "--sandbox-memory",
+        type=normalize_memory_limit,
+        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_MEMORY", DEFAULT_MEMORY),
+        help="bounded container memory limit (128m through 4g)",
+    )
+    parser.add_argument(
         "--sandbox-docker",
         default=os.environ.get("ECHO_CERTFORGE_SANDBOX_DOCKER", "docker"),
     )
@@ -273,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     sandbox = (
         DockerSandbox(
             image=args.sandbox_image,
+            memory=args.sandbox_memory,
             docker=tuple(args.sandbox_docker.split()),
         )
         if args.sandbox

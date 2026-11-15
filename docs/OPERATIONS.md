@@ -18,6 +18,13 @@
 6. Promote atomically, health-check production, and roll back on any mismatch.
 7. Publish immutable machine certificates and the repository certificate graphic.
 
+The execution cgroup remains mandatory. `ECHO_CERTFORGE_SANDBOX_MEMORY` (or
+`--sandbox-memory`) may select a whole-MiB/GiB limit from `128m` through `4g`; the default is
+`512m`. CertForge rejects malformed, lower, higher, or unbounded values, applies the same value to
+memory and memory-swap, and records the effective resource profile in critical-journey evidence.
+The pinned sandbox image digest and resource profile are also incorporated into the authoritative
+certification environment identity; changing either invalidates reuse of the prior environment digest.
+
 ## Incident triage
 
 Capture the run ID, target SHA, environment digest, policy version, service health, dispatcher state,
