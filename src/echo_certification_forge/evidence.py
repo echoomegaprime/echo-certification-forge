@@ -76,7 +76,9 @@ class EvidenceStore:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
+        # Match the subscriber writer budget; SQLite waits at lock acquisition,
+        # never by replaying a partially published evidence append.
+        connection = sqlite3.connect(self.db_path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
@@ -588,9 +590,6 @@ class EvidenceStore:
     ) -> dict[str, Any]:
         require_identifier(artifact_id, "artifact_id")
         require_identifier(source_component, "source_component")
-        run = self.get_run(run_id, tenant_id)
-        del run
-        created_at = to_utc_iso(utc_now())
         artifact_filename = (
             artifact_id[len(run_id) + 1 :]
             if artifact_id.startswith(f"{run_id}-")
@@ -598,11 +597,23 @@ class EvidenceStore:
         )
         relative_path = f"{tenant_id}/{run_id}/artifacts/{artifact_filename}.bin"
         destination = contained_path(self.evidence_root, relative_path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            raise FileExistsError(f"artifact already exists: {artifact_id}")
-        descriptor: dict[str, Any]
-        with self._connection() as connection:
+        temporary: Path | None = None
+        published = False
+        commit_attempted = False
+        connection = self._connect()
+        try:
+            # Allocate the chain tail and publish its bytes under one writer lock.
+            # A deferred SELECT followed by INSERT lets concurrent writers choose
+            # the same ordinal, or fail upgrading an obsolete read snapshot.
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT tenant_id FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None or run["tenant_id"] != tenant_id:
+                raise KeyError(f"unknown run: {run_id}")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                raise FileExistsError(f"artifact already exists: {artifact_id}")
             previous = connection.execute(
                 "SELECT ordinal, chain_hash FROM evidence_artifacts WHERE run_id = ? ORDER BY ordinal DESC LIMIT 1",
                 (run_id,),
@@ -610,6 +621,7 @@ class EvidenceStore:
             ordinal = 1 if previous is None else int(previous["ordinal"]) + 1
             prev_chain_hash = _ZERO_HASH if previous is None else str(previous["chain_hash"])
             digest = sha256_bytes(content)
+            created_at = to_utc_iso(utc_now())
             descriptor = {
                 "artifact_id": artifact_id,
                 "run_id": run_id,
@@ -626,30 +638,57 @@ class EvidenceStore:
             record_hash = sha256_json(descriptor)
             chain_hash = sha256_bytes(bytes.fromhex(prev_chain_hash) + bytes.fromhex(record_hash))
             fd, temporary_name = tempfile.mkstemp(prefix=".artifact-", dir=destination.parent)
+            temporary = Path(temporary_name)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            # Link fully flushed bytes without replacing an existing publication.
+            # Keep the private temporary name until commit so failed-transaction
+            # cleanup can compare file identity instead of deleting by name alone.
+            os.link(temporary, destination)
+            published = True
+            connection.execute(
+                """
+                INSERT INTO evidence_artifacts(
+                    artifact_id, run_id, tenant_id, relative_path, sha256, size_bytes,
+                    media_type, source_component, redaction_status, ordinal, created_at,
+                    record_hash, prev_chain_hash, chain_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    artifact_id, run_id, tenant_id, relative_path, digest, len(content),
+                    media_type, source_component, redaction_status.value, ordinal, created_at,
+                    record_hash, prev_chain_hash, chain_hash,
+                ),
+            )
+            commit_attempted = True
+            connection.commit()
+        except BaseException:
+            # Keep the writer lock through cleanup. If commit raised after leaving
+            # the transaction, its outcome is ambiguous: retain the published bytes
+            # rather than risk deleting evidence that was actually committed.
             try:
-                with os.fdopen(fd, "wb") as handle:
-                    handle.write(content)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary_name, destination)
-                connection.execute(
-                    """
-                    INSERT INTO evidence_artifacts(
-                        artifact_id, run_id, tenant_id, relative_path, sha256, size_bytes,
-                        media_type, source_component, redaction_status, ordinal, created_at,
-                        record_hash, prev_chain_hash, chain_hash
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        artifact_id, run_id, tenant_id, relative_path, digest, len(content),
-                        media_type, source_component, redaction_status.value, ordinal, created_at,
-                        record_hash, prev_chain_hash, chain_hash,
-                    ),
-                )
-            except Exception:
-                Path(temporary_name).unlink(missing_ok=True)
-                destination.unlink(missing_ok=True)
-                raise
+                if published and temporary is not None and (
+                    connection.in_transaction or not commit_attempted
+                ):
+                    try:
+                        owned = os.path.samestat(
+                            temporary.stat(follow_symlinks=False),
+                            destination.stat(follow_symlinks=False),
+                        )
+                    except FileNotFoundError:
+                        owned = False
+                    if owned:
+                        destination.unlink()
+            finally:
+                if connection.in_transaction:
+                    connection.rollback()
+            raise
+        finally:
+            connection.close()
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         return {**descriptor, "record_hash": record_hash, "chain_hash": chain_hash}
 
     def record_rule_result(self, run_id: str, tenant_id: str, result: RuleResult) -> None:

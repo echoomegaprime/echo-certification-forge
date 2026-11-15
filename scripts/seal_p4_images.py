@@ -44,7 +44,7 @@ from echo_certification_forge.supply_chain import (  # noqa: E402
 
 ROLE_ORDER = tuple(ImageRole)
 VARIANTS = ("a", "b")
-BASE_NAME = "python:3.12-alpine"
+BASE_NAME = "python:3.12.16-alpine3.24"
 SENSITIVE_ENV_TOKENS = ("PASSWORD", "SECRET", "TOKEN", "PRIVATE_KEY", "STRIPE", "AWS_ACCESS", "ECHO_SOVEREIGN")
 DEV_PACKAGES = {"pytest", "pytest-cov", "hatchling", "build", "twine", "ruff", "mypy", "tox", "coverage"}
 NETWORK_PACKAGES = {"curl", "git", "openssh-client", "openssh", "netcat", "nmap", "socat"}
@@ -304,6 +304,7 @@ print(json.dumps({'shell_history':history,'unexpected_cache':cache,'inspection_e
     return document
 
 def trivy_scan(trivy: Path, reference: str, raw_output: Path, summary_output: Path) -> dict[str, Any]:
+    require(not raw_output.exists() and not raw_output.is_symlink(), "Trivy output already exists; use a fresh scan path")
     result = run(
         [
             str(trivy),
@@ -322,6 +323,7 @@ def trivy_scan(trivy: Path, reference: str, raw_output: Path, summary_output: Pa
     )
     require(raw_output.is_file(), f"Trivy output missing for {reference}: {result.stderr}")
     document = json.loads(raw_output.read_text(encoding="utf-8"))
+    require(isinstance(document, dict) and isinstance(document.get("Results"), list), "Trivy JSON report is incomplete")
     vulnerabilities: list[dict[str, Any]] = []
     secrets_found: list[dict[str, Any]] = []
     for section in document.get("Results") or []:
@@ -343,7 +345,7 @@ def trivy_scan(trivy: Path, reference: str, raw_output: Path, summary_output: Pa
         "critical_count": len(critical),
         "fixed_high_or_critical_count": len(fixed),
         "secret_finding_count": len(secrets_found),
-        "passed": not critical and not fixed and not secrets_found,
+        "passed": result.returncode == 0 and not critical and not fixed and not secrets_found,
         "blocking_findings": [
             {
                 "id": item.get("VulnerabilityID"),
@@ -477,7 +479,7 @@ def main() -> int:
                         "resolvedDependencies": [
                             {"uri": f"docker-image://{BASE_NAME}", "digest": {"sha256": args.base_digest.split(":", 1)[1]}},
                             {
-                                "uri": "git+https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+                                "uri": "git+https://github.com/echoomegaprime/echo-certification-forge",
                                 "digest": {"gitCommit": args.source_commit},
                             },
                         ],
