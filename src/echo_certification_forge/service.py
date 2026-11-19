@@ -617,18 +617,27 @@ def create_app(context: ServiceContext) -> FastAPI:
         x_tenant_id: str | None = Header(default=None),
         authorization: str | None = Header(default=None),
     ) -> dict[str, object]:
-        tenant_id, _principal = authorize(
+        tenant_id, principal = authorize(
             x_tenant_id, authorization, Permission.RUN_CANCEL, "certifications.cancel"
         )
         try:
-            context.store.transition_state(
-                run_id=run_id,
-                tenant_id=tenant_id,
-                next_state=RunState.CANCELLED,
-                actor="certforge.api",
-                reason="cancel_requested",
-                workflow_version="t4.p2",
-            )
+            if context.subscribers is None:
+                context.store.transition_state(
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    next_state=RunState.CANCELLED,
+                    actor="certforge.api",
+                    reason="cancel_requested",
+                    workflow_version="t4.p2",
+                )
+            else:
+                if principal is None:
+                    raise HTTPException(status_code=401, detail="subscriber identity required")
+                context.subscribers.cancel_certification(principal, run_id)
+        except SubscriberError as exc:
+            raise subscriber_error(exc) from exc
+        except sqlite3.Error as exc:
+            raise HTTPException(status_code=503, detail="certification_store_unavailable") from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         except ValueError as exc:
