@@ -26,7 +26,8 @@ from .canonical import (
     to_utc_iso,
     utc_now,
 )
-from .models import declared_target_identity_digest, is_exact_git_commit
+from .models import RunState, declared_target_identity_digest, is_exact_git_commit
+from .state_machine import validate_transition
 
 _ZERO_HASH = "0" * 64
 _TERMINAL_RUN_STATES = ("COMPLETED", "CANCELLED", "INFRASTRUCTURE_FAILURE")
@@ -3098,6 +3099,48 @@ class SubscriberGovernance:
                 connection, organization_id, self._now()
             )
 
+    def cancel_certification(self, principal: SubscriberPrincipal, run_id: str) -> None:
+        self.require(principal, Permission.RUN_CANCEL)
+        tenant = principal.organization_id
+        now = to_utc_iso(self._now())
+        with self._connection(immediate=True) as connection:
+            row = connection.execute(
+                "SELECT state FROM runs WHERE tenant_id = ? AND run_id = ?",
+                (tenant, run_id),
+            ).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            prior = RunState(row["state"])
+            validate_transition(prior, RunState.CANCELLED)
+            self._transition_run_with_connection(
+                connection, run_id, tenant, prior.value, RunState.CANCELLED.value,
+                "certforge.api", "cancel_requested", "t4.p2", now,
+            )
+            connection.execute(
+                "UPDATE runs SET run_outcome = 'CANCELLED' WHERE tenant_id = ? AND run_id = ?",
+                (tenant, run_id),
+            )
+            # A live worker retains its lease until its finish or expiry handler runs.
+            released = connection.execute(
+                """UPDATE subscriber_run_reservations SET state = 'RELEASED', updated_at = ?
+                   WHERE organization_id = ? AND run_id = ? AND state = 'BOUND'
+                     AND claim_token IS NULL AND execution_started_at IS NULL""",
+                (now, tenant, run_id),
+            ).rowcount
+            if released:
+                connection.execute(
+                    """UPDATE subscriber_run_dispatches
+                       SET state = 'CANCELLED', claim_token = NULL, lease_owner = NULL,
+                           lease_expires_at = NULL, last_error = 'cancel_requested', updated_at = ?
+                       WHERE organization_id = ? AND run_id = ? AND state IN ('PENDING', 'CLAIMED')""",
+                    (now, tenant, run_id),
+                )
+            self._append_audit(
+                connection, organization_id=tenant, actor_ref=principal.user_id,
+                action="certification.cancel", resource_type="certification", resource_id=run_id,
+                outcome="allowed", details={"reservation_released": bool(released)},
+            )
+
     def _reconcile_run_reservations(
         self, connection: sqlite3.Connection, organization_id: str, now: str
     ) -> None:
@@ -3187,6 +3230,7 @@ class SubscriberGovernance:
             SET state = 'RELEASED', updated_at = ?
             WHERE organization_id = ? AND state IN ('BOUND', 'EXECUTING', 'STARTED') AND run_id IN (
                 SELECT run_id FROM runs WHERE tenant_id = ? AND state IN ({",".join("?" for _ in _TERMINAL_RUN_STATES)})
+                  AND (state != 'CANCELLED' OR subscriber_run_reservations.state = 'BOUND')
             )
             """,
             (now, organization_id, organization_id, *_TERMINAL_RUN_STATES),

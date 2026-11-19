@@ -194,6 +194,87 @@ def _submit_local_run(
     return response.json()["run_id"], target
 
 
+@pytest.mark.parametrize("claim_dispatch", [False, True])
+def test_cancel_bound_run_releases_only_its_quota_immediately(tmp_path, manifest, claim_dispatch):
+    _, governance, client = _stack(tmp_path, manifest)
+    owner = _provision(governance, "cancel-owner")
+    other = _provision(governance, "cancel-other")
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "test.txt").write_text("sample")
+
+    def submit(org, key):
+        run_id, _ = _submit_local_run(
+            client, manifest, org.organization_id, org.bootstrap_api_key, source, key=key,
+        )
+        return run_id
+
+    run_id = submit(owner, "cancel-owner-0001")
+    other_id = submit(other, "cancel-other-0001")
+    url = f"/v1/certifications/{run_id}/cancel"
+    owner_headers = _headers(owner.organization_id, owner.bootstrap_api_key)
+    other_headers = _headers(other.organization_id, other.bootstrap_api_key)
+    assert client.post(url, headers=other_headers).status_code == 404
+    dispatch = None
+    if claim_dispatch:
+        dispatch = governance.claim_dispatch(
+            "cancel-test-dispatcher", organization_id=owner.organization_id, run_id=run_id,
+        )
+        assert dispatch is not None
+    assert client.post(url, headers=owner_headers).status_code == 200
+    usage = client.get("/v1/subscriber/usage", headers=owner_headers).json()
+    assert usage["active_run_reservations"] == 0
+    assert usage["meters"]["certification_runs"] == 1
+    assert governance.dispatch_status(run_id, owner.organization_id)["state"] == "CANCELLED"
+    if dispatch is not None:
+        with pytest.raises(SubscriberError, match="dispatch_claim_inactive"):
+            governance.finish_dispatch(dispatch)
+    assert client.post(url, headers=owner_headers).status_code == 409
+    assert governance.dispatch_status(other_id, other.organization_id)["state"] == "PENDING"
+    assert client.get("/v1/subscriber/usage", headers=other_headers).json()["active_run_reservations"] == 1
+    submit(owner, "cancel-owner-0002")
+    assert client.get("/v1/subscriber/usage", headers=owner_headers).json()["active_run_reservations"] == 1
+
+
+def test_cancel_keeps_active_worker_custody_until_worker_exits(tmp_path, manifest):
+    _, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "cancel-worker", plan_code="professional")
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "test.txt").write_text("sample")
+    run_id, target = _submit_local_run(client, manifest, org.organization_id, org.bootstrap_api_key, source, key="cancel-claim-0001")
+    headers = _headers(org.organization_id, org.bootstrap_api_key)
+    claim = governance.claim_worker_run(
+        run_id=run_id, organization_id=org.organization_id, policy_version=manifest.manifest_id,
+        target_type="local", target_reference=target.canonical_ref, worker_id=None,
+        worker_attestation_sha256=None, execution_location="local", signing_authority="platform",
+        signing_key_id=Ed25519VerdictSigner.generate().key_id,
+    )
+    assert client.post(f"/v1/certifications/{run_id}/cancel", headers=headers).status_code == 200
+    _submit_local_run(client, manifest, org.organization_id, org.bootstrap_api_key, source, key="cancel-claim-0002")
+    assert client.get("/v1/subscriber/usage", headers=headers).json()["active_run_reservations"] == 2
+    governance.finish_worker_claim(claim, reason="cancelled", require_active=True)
+    assert client.get("/v1/subscriber/usage", headers=headers).json()["active_run_reservations"] == 1
+
+
+def test_cancel_rolls_back_on_dispatch_write_failure(tmp_path, manifest):
+    store, governance, client = _stack(tmp_path, manifest)
+    org = _provision(governance, "cancel-rollback")
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "test.txt").write_text("sample")
+    run_id, _ = _submit_local_run(client, manifest, org.organization_id, org.bootstrap_api_key, source, key="cancel-fault-0001")
+    headers = _headers(org.organization_id, org.bootstrap_api_key)
+    with sqlite3.connect(governance.db_path) as db:
+        db.execute("""CREATE TRIGGER cancellation_fault BEFORE UPDATE OF state
+                      ON subscriber_run_dispatches WHEN NEW.state = 'CANCELLED'
+                      BEGIN SELECT RAISE(ABORT, 'injected test failure'); END""")
+    assert client.post(f"/v1/certifications/{run_id}/cancel", headers=headers).status_code == 503
+    assert store.get_run(run_id, org.organization_id)["state"] == "QUEUED"
+    assert governance.dispatch_status(run_id, org.organization_id)["state"] == "PENDING"
+    assert client.get("/v1/subscriber/usage", headers=headers).json()["active_run_reservations"] == 1
+
+
 def test_legacy_platform_subscriber_tables_are_archived_before_p7_schema(
     tmp_path,
 ):
