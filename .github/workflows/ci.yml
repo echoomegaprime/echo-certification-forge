@@ -1,0 +1,45 @@
+name: certification-forge-ci
+
+"on":
+  push:
+    branches:
+      - main
+      - feat/p5-adapter-execution
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install package and verification dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Compile source and tests
+        run: python -m compileall -q src tests
+      - name: Run full deterministic test suite
+        run: python -m pytest -q --cov=echo_certification_forge --cov-branch --cov-report=term-missing
+      - name: Run deterministic P1 verification
+        run: python scripts/verify_p1.py
+      - name: Run P6 deployment enforcement acceptance
+        run: python scripts/p6_acceptance.py
+      - name: Run P7 subscriber governance acceptance
+        run: python scripts/p7_acceptance.py
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: certification-forge-evidence-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30

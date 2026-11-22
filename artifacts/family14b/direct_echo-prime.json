@@ -1,0 +1,27 @@
+{
+  "base_url": "http://192.168.1.49:8200",
+  "captured_at_utc": "2026-07-16T05:08:37.162547Z",
+  "error": {
+    "body": "{\"detail\":\"family server busy; queue full \u2014 retry with backoff\"}",
+    "headers": {
+      "Connection": "close",
+      "content-length": "66",
+      "content-type": "application/json",
+      "date": "Thu, 16 Jul 2026 05:02:36 GMT",
+      "retry-after": "2",
+      "server": "uvicorn",
+      "x-echo-queue-status": "saturated"
+    },
+    "status_code": 503,
+    "type": "HTTPError"
+  },
+  "max_tokens": 96,
+  "request_messages": [
+    {
+      "content": "Return one compact JSON object only. Scenario: the application log says ready on 127.0.0.1:8080 and GET /health returned 200, but the harness probed port 3000 and got connection refused. Classify the primary failure and give one bounded repair action.",
+      "role": "user"
+    }
+  ],
+  "requested_model": "echo-prime",
+  "schema_version": "1.0.0"
+}

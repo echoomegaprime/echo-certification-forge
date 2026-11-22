@@ -1,0 +1,9 @@
+{
+  "body": {
+    "fault_preserved": false,
+    "lease_id": "cc93c7bd-884a-4302-b4db-c0781016efa8",
+    "released": true,
+    "unloaded_preserved": true
+  },
+  "status_code": 200
+}

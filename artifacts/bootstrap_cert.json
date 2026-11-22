@@ -1,0 +1,47 @@
+{
+  "payload": {
+    "schema_version": "bootstrap.v1",
+    "subject": "echo-certification-forge",
+    "attestation_type": "independent_bootstrap",
+    "bootstrap_verdict": "CERTIFIED",
+    "run_signer_key_id": "ed25519:110ad592e335289d0a30d9312dbc1d94",
+    "claims": [
+      {
+        "name": "acceptance_suite_passing",
+        "satisfied": true,
+        "evidence_ref": "python -m pytest -q"
+      },
+      {
+        "name": "control_plane_holds_no_private_signing_key",
+        "satisfied": true,
+        "evidence_ref": "tests/test_t4p3_signer_anchor.py::test_control_plane_holds_no_private_signing_key"
+      },
+      {
+        "name": "mandatory_external_anchoring_enforced",
+        "satisfied": true,
+        "evidence_ref": "tests/test_t4p3_signer_anchor.py::test_no_signed_verdict_without_anchor_sign_chain_gate_denies"
+      },
+      {
+        "name": "isolated_signer_validates_anchor_before_signing",
+        "satisfied": true,
+        "evidence_ref": "signing_service.IsolatedVerdictSigningService._validate_anchor"
+      },
+      {
+        "name": "deploy_gate_default_deny_on_missing_signed_verdict",
+        "satisfied": true,
+        "evidence_ref": "deploy_gate.py:signed_verdict_missing"
+      },
+      {
+        "name": "p4_hostile_runner_and_supply_chain_gate_green",
+        "satisfied": true,
+        "evidence_ref": "docs/PHASE_LEDGER.md:P4 COMPLETE (FORGE gate 8c6b30d)"
+      }
+    ],
+    "unsatisfied_claims": [],
+    "signing_key_id": "ed25519:37e6259f43b9b39111c57f00dc7d69f7",
+    "issued_at": "2026-07-20T12:00:00Z"
+  },
+  "signature_b64": "+hqNn4PfilegvkKT0Gu/Zo402qWIo23q2ngOQJt0wWwxkgX4+Bhpxxl5b9YhoUsfi0qZmbQauvk3tbvHiUGwBg==",
+  "key_id": "ed25519:37e6259f43b9b39111c57f00dc7d69f7",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAojV75CBolpO8AGIh9Erxz3xEcBje75+rOg5p6qjfa4Y=\n-----END PUBLIC KEY-----\n"
+}

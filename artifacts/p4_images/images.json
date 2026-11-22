@@ -1,0 +1,32 @@
+{
+  "images": {
+    "anchor": {
+      "comparison": "echo-certforge-anchor:p4-8ccfa65-b",
+      "primary": "echo-certforge-anchor:p4-8ccfa65-a"
+    },
+    "custody": {
+      "comparison": "echo-certforge-custody:p4-8ccfa65-b",
+      "primary": "echo-certforge-custody:p4-8ccfa65-a"
+    },
+    "runner": {
+      "comparison": "echo-certforge-runner:p4-8ccfa65-b",
+      "primary": "echo-certforge-runner:p4-8ccfa65-a"
+    },
+    "signer": {
+      "comparison": "echo-certforge-signer:p4-8ccfa65-b",
+      "primary": "echo-certforge-signer:p4-8ccfa65-a"
+    },
+    "verifier": {
+      "comparison": "echo-certforge-verifier:p4-8ccfa65-b",
+      "primary": "echo-certforge-verifier:p4-8ccfa65-a"
+    },
+    "worker": {
+      "comparison": "echo-certforge-worker:p4-8ccfa65-b",
+      "primary": "echo-certforge-worker:p4-8ccfa65-a"
+    }
+  },
+  "schema_version": "1.0.0",
+  "sealed_manifest": "manifest.json",
+  "sealed_manifest_sha256": "bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a",
+  "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1.0",
+  "policy_id": "p4.custody.production.v1",
+  "required_role": "custody",
+  "expected_image_digest": "sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+  "approved_base_digests": [
+    "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+  ],
+  "approved_source_commits": [
+    "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+  ],
+  "approved_dockerfile_sha256": "8bf27b0262a87775a481adbfa84b4741f6794f8cec4a47d300174ab5dbfd8105",
+  "approved_lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+  "trusted_attestation_keys": {
+    "ed25519:d1a2b83569e5a4d3d33025410088a5fe": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4dwMCuPuVi7BX5oorE1YN3Ie05cL2sFMgJFimDPQnhU=\n-----END PUBLIC KEY-----\n"
+  },
+  "revoked_image_digests": [],
+  "compromised_key_ids": []
+}

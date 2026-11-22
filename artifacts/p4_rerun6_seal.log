@@ -1,0 +1,14 @@
+=== seal_p4_images start 2026-07-18T06:45:20Z ===
+ 01:45:20 up 6 days,  9:37, 15 users,  load average: 10.23, 18.08, 23.04
+               total        used        free      shared  buff/cache   available
+Mem:            31Gi        13Gi       1.2Gi       220Mi        16Gi        17Gi
+{
+  "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+  "images": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/images.json",
+  "manifest": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/manifest.json",
+  "manifest_sha256": "bc86b3ce849d7da82a4378cc2d3693d44e04604d2b1288d740c066408c802c8a",
+  "passed": true,
+  "records": 12,
+  "verification": "/mnt/storage/forge_cache/echo-certforge/p4-8ccfa65/sealed/manifest-verification.json"
+}
+=== seal_p4_images end 2026-07-18T06:47:17Z exit=0 ===

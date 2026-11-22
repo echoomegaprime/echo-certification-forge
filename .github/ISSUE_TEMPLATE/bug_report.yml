@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible defect that does not contain sensitive information
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not disclose vulnerabilities, credentials, private evidence, or customer data here. Use SECURITY.md.
+  - type: input
+    id: revision
+    attributes:
+      label: Exact revision
+      description: Git SHA, package version, or deployed build identifier.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: Include sanitized logs and the smallest reproducible sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification performed
+      description: Tests, environments, and negative paths already checked.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data-safety confirmation
+      options:
+        - label: I removed secrets, private evidence, customer data, and personal information.
+          required: true

@@ -1,0 +1,33 @@
+{
+  "commit_sha": "c27324e4b7e0b147c34cb7c1eea232982cb619e7",
+  "conclusion": "RESOLVED",
+  "product_verdict": "NOT_READY",
+  "pull_request_run": {
+    "artifact_digest": "sha256:d06747004c1b51cb3e294f91218da3a52e882a5d0eb1bd23c84c5e25948ebfa7",
+    "artifact_id": 8578871983,
+    "event": "pull_request",
+    "job_id": 89334783598,
+    "run_id": 30045263342,
+    "url": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge/actions/runs/30045263342",
+    "workflow": "certification-forge-ci"
+  },
+  "push_run": {
+    "artifact_digest": "sha256:3e8c11a0d61b1f7b4e46618b3de55b5766d1e7152b734095d42fb623bb43575e",
+    "artifact_id": 8578873146,
+    "event": "push",
+    "job_id": 89334774766,
+    "run_id": 30045260673,
+    "url": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge/actions/runs/30045260673",
+    "workflow": "certification-forge-ci"
+  },
+  "required_steps": [
+    "checkout",
+    "python-3.13",
+    "install",
+    "compile",
+    "full-pytest-with-branch-coverage",
+    "p1-verification",
+    "evidence-upload"
+  ],
+  "schema_version": "1.0.0"
+}

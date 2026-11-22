@@ -1,0 +1,1036 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "P4",
+  "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+  "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+  "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+  "created_at_utc": "2026-07-18T06:45:20.715601Z",
+  "build_host_identity": "forge:192.168.1.220:rootful-docker",
+  "attestation_public_key": {
+    "path": "p4-attestation-public.pem",
+    "sha256": "e238ff5b6af5f08a6142a25df2fe19a75fb8df74238b741901eb796c4b91ec72"
+  },
+  "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+  "records": [
+    {
+      "schema_version": "1.0.0",
+      "role": "anchor",
+      "variant": "a",
+      "repository": "echo-certforge-anchor",
+      "tag": "p4-8ccfa65-a",
+      "reference": "echo-certforge-anchor:p4-8ccfa65-a",
+      "image_id": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+      "repo_digest": "echo-certforge-anchor@sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+      "config_digest": "sha256:3e8dc4bbfa98860173af9019d710259b7c54abcc7b5ae13287fcbc8875c75cfb",
+      "manifest_digest": "sha256:54a86fa4dc7b7bbf2a18ed2a53b41577805efa057640936331294bfad1405463",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/anchor/Dockerfile",
+      "dockerfile_sha256": "4ae2d6a5af5732fac4902d0cac0ba41325db9b1a8ff4735a9b9d7ee152761f86",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/anchor/a/anchor-a.spdx.json",
+        "sha256": "40c1637a59877ffbe97a5b3cc3dc433a1d42a48be88d7a330b47ddc48193bd9b"
+      },
+      "provenance": {
+        "path": "records/anchor/a/anchor-a.provenance.json",
+        "sha256": "02695d5727628b937de8b793dbf40d088a5a3e7903bb246cf465eaf96ca59977"
+      },
+      "attestation": {
+        "path": "records/anchor/a/anchor-a.attestation.json",
+        "sha256": "ffb3ebca6d86471ddb9180ec49fc43e8a38c149a3671fedcb8fb16cb99cd3837"
+      },
+      "admission_policy": {
+        "path": "records/anchor/a/anchor-a.admission-policy.json",
+        "sha256": "e89412d321ec550222ec3e282b97a1fef98af0a92158bac54181486efb4b05de"
+      },
+      "vulnerability_scan": {
+        "path": "records/anchor/a/anchor-a.vulnerability.json",
+        "sha256": "6cca37ac890d9da85a011d6efe14b3407b9a6d2bf95fe7f47a04268341f63219"
+      },
+      "runtime_scan": {
+        "path": "records/anchor/a/anchor-a.runtime.json",
+        "sha256": "4eebe6cc26254356e400c954e9355d87dfbbb2c73708c324fa2de858bb33a39e"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "uvicorn",
+        "echo_certification_forge.p3_runtime:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--no-access-log"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      ],
+      "admission_policy_identity": "p4.anchor.production.v1",
+      "build_timestamp": "2026-07-18T06:10:29.628762Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.anchor.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "anchor",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built independent evidence-root anchoring service image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Anchor"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "anchor",
+      "variant": "b",
+      "repository": "echo-certforge-anchor",
+      "tag": "p4-8ccfa65-b",
+      "reference": "echo-certforge-anchor:p4-8ccfa65-b",
+      "image_id": "sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03",
+      "repo_digest": "echo-certforge-anchor@sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03",
+      "config_digest": "sha256:a0c8e168cc0a4cabb9fcdd1989b7edc1174d21a1ff5a8d691b12836fb46c7115",
+      "manifest_digest": "sha256:f0c559f0d754f05c76f8153af64c4d81c8b5c357e75fb3879c482db8f3108a03",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/anchor/Dockerfile",
+      "dockerfile_sha256": "4ae2d6a5af5732fac4902d0cac0ba41325db9b1a8ff4735a9b9d7ee152761f86",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/anchor/b/anchor-b.spdx.json",
+        "sha256": "ce0d1f2ca00e24a47079ddb36df2870cbc060ce13f1fe4a4d73624ab32a16c67"
+      },
+      "provenance": {
+        "path": "records/anchor/b/anchor-b.provenance.json",
+        "sha256": "600ba2790d068475a9257ebb8fede621b5ec3ec5d5743e2064cec1122956f2a2"
+      },
+      "attestation": {
+        "path": "records/anchor/b/anchor-b.attestation.json",
+        "sha256": "3833a1aea92c2c3c29591aa70f723dcfe14c7ec0b23799efcba7c1c7c9f91dc4"
+      },
+      "admission_policy": {
+        "path": "records/anchor/b/anchor-b.admission-policy.json",
+        "sha256": "069d21ce6028380b7fe1ee281fc41b0dae1ae6c064b321f345bcaa9496fb4a19"
+      },
+      "vulnerability_scan": {
+        "path": "records/anchor/b/anchor-b.vulnerability.json",
+        "sha256": "0a4d98501ec949e2c637e87b5b35fa53c480b4203bccabb0a38d2e2cd75959ea"
+      },
+      "runtime_scan": {
+        "path": "records/anchor/b/anchor-b.runtime.json",
+        "sha256": "020bee0ba43b83b847b933aa16c59044d7e1f276a3787ea4c9a566322171f9dc"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "uvicorn",
+        "echo_certification_forge.p3_runtime:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--no-access-log"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      ],
+      "admission_policy_identity": "p4.anchor.production.v1",
+      "build_timestamp": "2026-07-18T06:10:39.515914Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.anchor.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "anchor",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built independent evidence-root anchoring service image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Anchor"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "custody",
+      "variant": "a",
+      "repository": "echo-certforge-custody",
+      "tag": "p4-8ccfa65-a",
+      "reference": "echo-certforge-custody:p4-8ccfa65-a",
+      "image_id": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+      "repo_digest": "echo-certforge-custody@sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+      "config_digest": "sha256:2d273ca7f803254b0174f5739f84c7ac7d03ef66c3e2c4c59c0e2f5c09d13973",
+      "manifest_digest": "sha256:63fde0a4862086b7040cf0c751d20a9aa7159fa2052202d4c3e142b8b855a921",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/custody/Dockerfile",
+      "dockerfile_sha256": "8bf27b0262a87775a481adbfa84b4741f6794f8cec4a47d300174ab5dbfd8105",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/custody/a/custody-a.spdx.json",
+        "sha256": "390249c9594c6e673f66df3e6f4983a71fde889dbe9a39120af33c9f18fbf43b"
+      },
+      "provenance": {
+        "path": "records/custody/a/custody-a.provenance.json",
+        "sha256": "a8b7ceadd9c308673ff2b62e143897b6d6f76b9253fd0a784809772a3ca669a4"
+      },
+      "attestation": {
+        "path": "records/custody/a/custody-a.attestation.json",
+        "sha256": "5680ae4e0117a9d90757d60196eb54008696bbf5e68e54b2b1e136a3bcaaaada"
+      },
+      "admission_policy": {
+        "path": "records/custody/a/custody-a.admission-policy.json",
+        "sha256": "e2573d3b94860fad49675796f9689942cd79dc6d54c68e659cd8d06ea818a3f4"
+      },
+      "vulnerability_scan": {
+        "path": "records/custody/a/custody-a.vulnerability.json",
+        "sha256": "1cf17d96204a213a05d48a4a780212f7ec226c5e695f643537be838020881277"
+      },
+      "runtime_scan": {
+        "path": "records/custody/a/custody-a.runtime.json",
+        "sha256": "4ecbc7071a362b07515dab9ac91469242af41486c1f63469ef99d8421f06ee05"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "uvicorn",
+        "echo_certification_forge.p3_runtime:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--no-access-log"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      ],
+      "admission_policy_identity": "p4.custody.production.v1",
+      "build_timestamp": "2026-07-18T06:09:59.643943Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.custody.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "custody",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built append-only evidence custody service image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Custody"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "custody",
+      "variant": "b",
+      "repository": "echo-certforge-custody",
+      "tag": "p4-8ccfa65-b",
+      "reference": "echo-certforge-custody:p4-8ccfa65-b",
+      "image_id": "sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+      "repo_digest": "echo-certforge-custody@sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+      "config_digest": "sha256:4687d08bc134f29abf3b84e25ee5fe54556fd32a49eb6cfacdd4e763546e82eb",
+      "manifest_digest": "sha256:cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/custody/Dockerfile",
+      "dockerfile_sha256": "8bf27b0262a87775a481adbfa84b4741f6794f8cec4a47d300174ab5dbfd8105",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/custody/b/custody-b.spdx.json",
+        "sha256": "abfc4b22d558c440b3083c553b56b446a46fcff6a3b944ecf9801da27832af4f"
+      },
+      "provenance": {
+        "path": "records/custody/b/custody-b.provenance.json",
+        "sha256": "6d34fca8d1a9e16656b67bc5228a03c3cff5efdce173a5871854f082473e224f"
+      },
+      "attestation": {
+        "path": "records/custody/b/custody-b.attestation.json",
+        "sha256": "cae113867147664fcc1d385042cc3316df0f4dd5650f9aad2d1857f3717a05f2"
+      },
+      "admission_policy": {
+        "path": "records/custody/b/custody-b.admission-policy.json",
+        "sha256": "8cd3791e200ad2759021150135ec4c19f27299c6accf0438b96902f118173bc2"
+      },
+      "vulnerability_scan": {
+        "path": "records/custody/b/custody-b.vulnerability.json",
+        "sha256": "8d6e89880a3c1cb552347f8c3fb17e19dc44cac32b386ede6b425c6543bee475"
+      },
+      "runtime_scan": {
+        "path": "records/custody/b/custody-b.runtime.json",
+        "sha256": "ae1685d50f0e527498ec00ddbdb38d257c64c6a8c76d22536dabb5acb158c9da"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "uvicorn",
+        "echo_certification_forge.p3_runtime:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--no-access-log"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      ],
+      "admission_policy_identity": "p4.custody.production.v1",
+      "build_timestamp": "2026-07-18T06:10:21.607201Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.custody.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "custody",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built append-only evidence custody service image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Custody"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "runner",
+      "variant": "a",
+      "repository": "echo-certforge-runner",
+      "tag": "p4-8ccfa65-a",
+      "reference": "echo-certforge-runner:p4-8ccfa65-a",
+      "image_id": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+      "repo_digest": "echo-certforge-runner@sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+      "config_digest": "sha256:d777db049b95e69becca07c1e4dbf7cc8e6933960936b5985349f40d23a3498c",
+      "manifest_digest": "sha256:33a049deab08995c47c9b1b4e76e2ab5e6ad741aee1df7f0b2f4f12701dd3c65",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/runner/Dockerfile",
+      "dockerfile_sha256": "e28b1c9bc05ef8f2b8d2f95e769162a06a8feafc2e9e3396af7523daf939de25",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/runner/a/runner-a.spdx.json",
+        "sha256": "0886ee19641c7c4a30c806893f0633bcfc6c93d4297f3a2af811348482c50679"
+      },
+      "provenance": {
+        "path": "records/runner/a/runner-a.provenance.json",
+        "sha256": "a05dbd3510b4902b0679587a079876705d0b15148110056cec0b7f40ece70217"
+      },
+      "attestation": {
+        "path": "records/runner/a/runner-a.attestation.json",
+        "sha256": "9da27435601bdff09815c6ac9da140e27509ae8a5b3021dc19087bca38bbe5ae"
+      },
+      "admission_policy": {
+        "path": "records/runner/a/runner-a.admission-policy.json",
+        "sha256": "3658b04f0a3164290e317834bcdbb403e56e671dc36f776a3d2b50f96e4384ab"
+      },
+      "vulnerability_scan": {
+        "path": "records/runner/a/runner-a.vulnerability.json",
+        "sha256": "b820fef903c02b928c8e5e58daec450bc1ea4ad0fe5ccb555e6f0e6d902055f7"
+      },
+      "runtime_scan": {
+        "path": "records/runner/a/runner-a.runtime.json",
+        "sha256": "e55efd9fa17e81b7e5ad39259b1b81eaa5b17835a5955b406cb8d4b6cf040c35"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "python",
+        "-c",
+        "import echo_certification_forge; print('echo-certforge-runner-ready')"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import echo_certification_forge"
+      ],
+      "admission_policy_identity": "p4.runner.production.v1",
+      "build_timestamp": "2026-07-18T06:07:50.823846Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.runner.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "runner",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built non-root execution image for isolated Certification Forge runs",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Runner"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "runner",
+      "variant": "b",
+      "repository": "echo-certforge-runner",
+      "tag": "p4-8ccfa65-b",
+      "reference": "echo-certforge-runner:p4-8ccfa65-b",
+      "image_id": "sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+      "repo_digest": "echo-certforge-runner@sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+      "config_digest": "sha256:355f7326037f6d43784a575a03fc214714631155955e304caaf22001f5107ff6",
+      "manifest_digest": "sha256:a67952c91aeb2379d6d5a755ae38bee9f2c01294ea9b90856a78d8358eb9510c",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/runner/Dockerfile",
+      "dockerfile_sha256": "e28b1c9bc05ef8f2b8d2f95e769162a06a8feafc2e9e3396af7523daf939de25",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/runner/b/runner-b.spdx.json",
+        "sha256": "f33f4edc9e01abb1f4805f270b51c89ada145c6fba13e34ac6daf5f80f1ed217"
+      },
+      "provenance": {
+        "path": "records/runner/b/runner-b.provenance.json",
+        "sha256": "a405647f60d5055716bce44062f86965cfed8e656739f91251e8001d6ca7e380"
+      },
+      "attestation": {
+        "path": "records/runner/b/runner-b.attestation.json",
+        "sha256": "eff903f4cf5d38d8774543d27d1f07f816edf38b1523f29cf9274192f3c1b966"
+      },
+      "admission_policy": {
+        "path": "records/runner/b/runner-b.admission-policy.json",
+        "sha256": "a9daef6dab87a7238b7881acf14a4d73290473c579ceedb68c2efa96c774009b"
+      },
+      "vulnerability_scan": {
+        "path": "records/runner/b/runner-b.vulnerability.json",
+        "sha256": "b49d97ef3d2fb9a2208d6fbc4f9ce6df8a4bc489460b1270e56ff5710eea04c2"
+      },
+      "runtime_scan": {
+        "path": "records/runner/b/runner-b.runtime.json",
+        "sha256": "826fb1bb0c150110ab171d7c67ee63ae66fc898dcc20989ebe2182b79c3a2bd3"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "python",
+        "-c",
+        "import echo_certification_forge; print('echo-certforge-runner-ready')"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import echo_certification_forge"
+      ],
+      "admission_policy_identity": "p4.runner.production.v1",
+      "build_timestamp": "2026-07-18T06:09:30.637976Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.runner.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "runner",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built non-root execution image for isolated Certification Forge runs",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Runner"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "signer",
+      "variant": "a",
+      "repository": "echo-certforge-signer",
+      "tag": "p4-8ccfa65-a",
+      "reference": "echo-certforge-signer:p4-8ccfa65-a",
+      "image_id": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+      "repo_digest": "echo-certforge-signer@sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+      "config_digest": "sha256:36166f22c872d8c924ade95fbaf356a71c682e459e859bac05b68145fbb0f7cb",
+      "manifest_digest": "sha256:797fc9b8454fe61e268930b655ff3eb82a6d36f6f73d4db984b1148f56bc384b",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/signer/Dockerfile",
+      "dockerfile_sha256": "2e1bfbed018d690dd7d977f09174a37fbe09391949682ae186ae0c22a98f8634",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/signer/a/signer-a.spdx.json",
+        "sha256": "53cbe383c67b69b41d2aba797b806d20b8ec9d643b9471ab06f1495f7374b491"
+      },
+      "provenance": {
+        "path": "records/signer/a/signer-a.provenance.json",
+        "sha256": "5e27917bdf1f81a3153cd1fdab6d2b04656bff6396c46d5ce8c6a59c4c4a4e03"
+      },
+      "attestation": {
+        "path": "records/signer/a/signer-a.attestation.json",
+        "sha256": "9bd15e8da7bc6dd71a1e81e1087e46f3c2d48934c7dd0605f7194b644bd094f6"
+      },
+      "admission_policy": {
+        "path": "records/signer/a/signer-a.admission-policy.json",
+        "sha256": "e56fd97f70f74e46062ac1cc8569189e40bfce4def338e93db0095255ccb0e45"
+      },
+      "vulnerability_scan": {
+        "path": "records/signer/a/signer-a.vulnerability.json",
+        "sha256": "4cbebd562a2c56ce44f7c71b64399ca2f6a6ada8cbbea7b17f322ad07bbd22be"
+      },
+      "runtime_scan": {
+        "path": "records/signer/a/signer-a.runtime.json",
+        "sha256": "227aeaad5f1583c99cf0891c2b54543c0f7de2385554b0a9eb02f767bdf37c41"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [
+        "python",
+        "-m",
+        "echo_certification_forge.signer_cli"
+      ],
+      "command": [],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import echo_certification_forge.signer_cli"
+      ],
+      "admission_policy_identity": "p4.signer.production.v1",
+      "build_timestamp": "2026-07-18T06:10:53.281946Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.signer.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "signer",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built isolated verdict-signing image for Certification Forge",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Verdict Signer"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "signer",
+      "variant": "b",
+      "repository": "echo-certforge-signer",
+      "tag": "p4-8ccfa65-b",
+      "reference": "echo-certforge-signer:p4-8ccfa65-b",
+      "image_id": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+      "repo_digest": "echo-certforge-signer@sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+      "config_digest": "sha256:aa27a53907dfe002527c536b819b968f193713ae726a4ba0067192fddfb8e4e7",
+      "manifest_digest": "sha256:81ce20e06f382adeace0d8baf4fced93746e7486a1854510f0b520148946e3d1",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/signer/Dockerfile",
+      "dockerfile_sha256": "2e1bfbed018d690dd7d977f09174a37fbe09391949682ae186ae0c22a98f8634",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/signer/b/signer-b.spdx.json",
+        "sha256": "93b65718940c6c761f02577d2e012f8e5708bc0a6712a6d6e4913ae9a484cda4"
+      },
+      "provenance": {
+        "path": "records/signer/b/signer-b.provenance.json",
+        "sha256": "e0ec85d4ca2dbf6f3f6a9ec4e701eacfa6187a54e00b7caf6df7d984eb3824bc"
+      },
+      "attestation": {
+        "path": "records/signer/b/signer-b.attestation.json",
+        "sha256": "9a3a06997a10e2ff6e6409d0bcbf6ad720bf2fdfef8a33d3559aa77326735917"
+      },
+      "admission_policy": {
+        "path": "records/signer/b/signer-b.admission-policy.json",
+        "sha256": "18aa81ac70050039d7849e1c751e1635d40e7694561e86d32b228c5ba3eb7326"
+      },
+      "vulnerability_scan": {
+        "path": "records/signer/b/signer-b.vulnerability.json",
+        "sha256": "ef66abe75ddfc45b718b3f7e1965f22b0f48f67a559e4f30b076df4417a7e551"
+      },
+      "runtime_scan": {
+        "path": "records/signer/b/signer-b.runtime.json",
+        "sha256": "e50fb36d40f7179ce061b9ea8528478a4d7809992bd603a80ac356e7c68fbc31"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [
+        "python",
+        "-m",
+        "echo_certification_forge.signer_cli"
+      ],
+      "command": [],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import echo_certification_forge.signer_cli"
+      ],
+      "admission_policy_identity": "p4.signer.production.v1",
+      "build_timestamp": "2026-07-18T06:11:01.669968Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.signer.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "signer",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built isolated verdict-signing image for Certification Forge",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Verdict Signer"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "verifier",
+      "variant": "a",
+      "repository": "echo-certforge-verifier",
+      "tag": "p4-8ccfa65-a",
+      "reference": "echo-certforge-verifier:p4-8ccfa65-a",
+      "image_id": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+      "repo_digest": "echo-certforge-verifier@sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+      "config_digest": "sha256:5883bbbe8b4600fe0c9a99d6b565bd58abaad8544d6a5a65971f1aee229ecca9",
+      "manifest_digest": "sha256:aaaf8bc32e549865af47627f7ff9740883515e6a44ab93a276c007dd352870d1",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/verifier/Dockerfile",
+      "dockerfile_sha256": "8f13e2ab2bb8e8b2980b0c9806de14f3057e3be90b6c2639802c8e299dad6c72",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/verifier/a/verifier-a.spdx.json",
+        "sha256": "876fb2e051bb6b71cac4980896550ec155c7098b8c68ceb3f515361e8b6f17b3"
+      },
+      "provenance": {
+        "path": "records/verifier/a/verifier-a.provenance.json",
+        "sha256": "920a70cdbe2cda9912d45468e4749c535e1b4c1bd687e6822a0597558c12bde3"
+      },
+      "attestation": {
+        "path": "records/verifier/a/verifier-a.attestation.json",
+        "sha256": "258e065caa9fbc253c9dad692567b5b8026e34c3279a25df10d48d1e093461b4"
+      },
+      "admission_policy": {
+        "path": "records/verifier/a/verifier-a.admission-policy.json",
+        "sha256": "ca69a6ee42b6118d19e282bea8994d59593d4b8363aa2cd9bc1f51e371b4d043"
+      },
+      "vulnerability_scan": {
+        "path": "records/verifier/a/verifier-a.vulnerability.json",
+        "sha256": "de4f1bfadb9e145309d162c9df52c9637feb16cd7b0ca31e768cd23329bb11c5"
+      },
+      "runtime_scan": {
+        "path": "records/verifier/a/verifier-a.runtime.json",
+        "sha256": "46b7edcffc7c1e4124818632f7c8b2bdfa4879b2b2ec65afe523cc603c3e2470"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [
+        "python",
+        "-m",
+        "echo_certification_forge.verifier_cli"
+      ],
+      "command": [],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import echo_certification_forge.verifier_cli"
+      ],
+      "admission_policy_identity": "p4.verifier.production.v1",
+      "build_timestamp": "2026-07-18T06:12:55.073585Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.verifier.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "verifier",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built public-only evidence and image verification image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Verifier"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "verifier",
+      "variant": "b",
+      "repository": "echo-certforge-verifier",
+      "tag": "p4-8ccfa65-b",
+      "reference": "echo-certforge-verifier:p4-8ccfa65-b",
+      "image_id": "sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd",
+      "repo_digest": "echo-certforge-verifier@sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd",
+      "config_digest": "sha256:d6a7d1d7520dadebf45dc3a47b13e5511549458a6acd92407ccb888f58459b02",
+      "manifest_digest": "sha256:f5e554174c4851d50206c79b2e633419b6245d73637a0236e4ac64d695adeebd",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/verifier/Dockerfile",
+      "dockerfile_sha256": "8f13e2ab2bb8e8b2980b0c9806de14f3057e3be90b6c2639802c8e299dad6c72",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/verifier/b/verifier-b.spdx.json",
+        "sha256": "64df45f32619037e232017a56aa98b54bceb66dd7be831d525e657cc685634d8"
+      },
+      "provenance": {
+        "path": "records/verifier/b/verifier-b.provenance.json",
+        "sha256": "145e8b6618236f0ce4072a070b80d543ebb8e355d091ac52241ebad411d8c425"
+      },
+      "attestation": {
+        "path": "records/verifier/b/verifier-b.attestation.json",
+        "sha256": "7244c7b11b10fbfa1f69170df234a6a02cfbc514457458c786a85133bba00fbc"
+      },
+      "admission_policy": {
+        "path": "records/verifier/b/verifier-b.admission-policy.json",
+        "sha256": "10e1d86e0bfcbcede78ab1d060d815d18f2cd42f93b7c9f7f926ac4544a6ebf8"
+      },
+      "vulnerability_scan": {
+        "path": "records/verifier/b/verifier-b.vulnerability.json",
+        "sha256": "c15a9cc184de2be8de1a2d52480a9943545dd773b736505990a1d7caca17a5e8"
+      },
+      "runtime_scan": {
+        "path": "records/verifier/b/verifier-b.runtime.json",
+        "sha256": "495218fe4d06a2a267dd46221bbfc5d52ad78dd635f56c35d5db0a163ffad573"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [
+        "python",
+        "-m",
+        "echo_certification_forge.verifier_cli"
+      ],
+      "command": [],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import echo_certification_forge.verifier_cli"
+      ],
+      "admission_policy_identity": "p4.verifier.production.v1",
+      "build_timestamp": "2026-07-18T06:13:21.388254Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "5d67613c63f6f5b9393f51c664f1194c8f963d920871a72679dc3adc9da52018",
+      "source_file_count": 24,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.verifier.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "verifier",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built public-only evidence and image verification image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Verifier"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "worker",
+      "variant": "a",
+      "repository": "echo-certforge-worker",
+      "tag": "p4-8ccfa65-a",
+      "reference": "echo-certforge-worker:p4-8ccfa65-a",
+      "image_id": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+      "repo_digest": "echo-certforge-worker@sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+      "config_digest": "sha256:f710e6b5a341ef1c70b185635a4205e9157c75562e6e9bf748b46b3d63865e38",
+      "manifest_digest": "sha256:d86e94ba4407f03b06bbb83d365cce25d76b17680e84a73a4b1f7639d1d841f1",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/worker/Dockerfile",
+      "dockerfile_sha256": "4e8b58e0beaff2e7f165802a268e3a659d66322e69d5734b5e2a9ff9c5aec3d6",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/worker/a/worker-a.spdx.json",
+        "sha256": "f777503e9eb9d87803bb66c26c8522e0427b6952b0e2622d15fe223ce3e11aea"
+      },
+      "provenance": {
+        "path": "records/worker/a/worker-a.provenance.json",
+        "sha256": "db9ea72c43b18eb7e4423f0126cc1bc0b115765425d2b26fc4434a491cc47618"
+      },
+      "attestation": {
+        "path": "records/worker/a/worker-a.attestation.json",
+        "sha256": "f916a48b877c3f4aed154ee53b66fdd61d48fba693e6205d76d81e82ff654cb5"
+      },
+      "admission_policy": {
+        "path": "records/worker/a/worker-a.admission-policy.json",
+        "sha256": "82f0dd006df03acb85da1c03af7597e964430f7b9a0eb5c9acffedc195dad12a"
+      },
+      "vulnerability_scan": {
+        "path": "records/worker/a/worker-a.vulnerability.json",
+        "sha256": "031797ab72c24b5de9bda61072fee3d74a4dae679105271c463470bbd63076c8"
+      },
+      "runtime_scan": {
+        "path": "records/worker/a/worker-a.runtime.json",
+        "sha256": "4f55345c57858f3384437e64a074f0368fa9af072e247216bbbf4d0517afd0bf"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "uvicorn",
+        "echo_certification_forge.app:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--no-access-log"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      ],
+      "admission_policy_identity": "p4.worker.production.v1",
+      "build_timestamp": "2026-07-18T06:11:19.944337Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "2cfa31f29c5f4a7115eb84a4185f2a4859d18ac8659cfcbf79b1f2ee3d97bbf9",
+      "source_file_count": 25,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.worker.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "worker",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "a",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built tenant-scoped control-plane worker image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Worker"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "role": "worker",
+      "variant": "b",
+      "repository": "echo-certforge-worker",
+      "tag": "p4-8ccfa65-b",
+      "reference": "echo-certforge-worker:p4-8ccfa65-b",
+      "image_id": "sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45",
+      "repo_digest": "echo-certforge-worker@sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45",
+      "config_digest": "sha256:38ae0475d7584b9f8fe6219b671cc0328ee2921b6ab768d11ec14dc372b7f73c",
+      "manifest_digest": "sha256:eb8589342fe68beb2e41e017843e2378d5346d33e5ad297980436a74c456fe45",
+      "platform": "linux/amd64",
+      "architecture": "amd64",
+      "operating_system": "linux",
+      "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+      "base_image_reference": "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "base_digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "dockerfile_path": "images/worker/Dockerfile",
+      "dockerfile_sha256": "4e8b58e0beaff2e7f165802a268e3a659d66322e69d5734b5e2a9ff9c5aec3d6",
+      "lockfile_path": "images/requirements.lock",
+      "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+      "sbom": {
+        "path": "records/worker/b/worker-b.spdx.json",
+        "sha256": "9852c24aa9bcd6e9acd5fad1201e6fb858d62a73b15ba5d646b9585d8dfc7477"
+      },
+      "provenance": {
+        "path": "records/worker/b/worker-b.provenance.json",
+        "sha256": "d56ae362bb3b0c9b09ec64516d6c89d3ca6bd2eadea1f50fa8ef39a10dd8931c"
+      },
+      "attestation": {
+        "path": "records/worker/b/worker-b.attestation.json",
+        "sha256": "76b13d9f6201cc22ea6d1e0503a423d393b93e1c4ca517093d7c46ea8ab7397b"
+      },
+      "admission_policy": {
+        "path": "records/worker/b/worker-b.admission-policy.json",
+        "sha256": "9954e88908e375930aa0a52c34c51ee1cf1b81868966e5d523367c5163e6ad64"
+      },
+      "vulnerability_scan": {
+        "path": "records/worker/b/worker-b.vulnerability.json",
+        "sha256": "d014fa463769c96bbaa39fc7f4df279fcace5bb752b2b4e88cb947a37d6bd160"
+      },
+      "runtime_scan": {
+        "path": "records/worker/b/worker-b.runtime.json",
+        "sha256": "e12e63cdec5a49378c78125722fb2dbadb80c4673b6f6970c5f290e4ff738a6c"
+      },
+      "attestation_identity": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_public_key_fingerprint": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+      "attestation_created_at": "2026-07-18T06:45:20.715601Z",
+      "attestation_expiration_time": "2026-08-17T06:45:20.715601Z",
+      "runtime_uid": 65532,
+      "runtime_gid": 65532,
+      "entrypoint": [],
+      "command": [
+        "uvicorn",
+        "echo_certification_forge.app:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--no-access-log"
+      ],
+      "health_command": [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      ],
+      "admission_policy_identity": "p4.worker.production.v1",
+      "build_timestamp": "2026-07-18T06:11:45.563839Z",
+      "build_host_identity": "forge:192.168.1.220:rootful-docker",
+      "normalized_manifest_sha256": "2cfa31f29c5f4a7115eb84a4185f2a4859d18ac8659cfcbf79b1f2ee3d97bbf9",
+      "source_file_count": 25,
+      "package_count": 18,
+      "labels": {
+        "echo.certforge.admission.policy": "p4.worker.production.v1",
+        "echo.certforge.attestation.key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "echo.certforge.image.role": "worker",
+        "echo.certforge.image.schema": "1.2.0",
+        "echo.certforge.image.variant": "b",
+        "org.opencontainers.image.base.digest": "sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+        "org.opencontainers.image.base.name": "python:3.12-alpine",
+        "org.opencontainers.image.description": "Purpose-built tenant-scoped control-plane worker image",
+        "org.opencontainers.image.revision": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "org.opencontainers.image.source": "https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge",
+        "org.opencontainers.image.title": "Echo Certification Forge Worker"
+      }
+    }
+  ]
+}

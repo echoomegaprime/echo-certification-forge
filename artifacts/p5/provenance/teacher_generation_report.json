@@ -1,0 +1,13 @@
+{
+  "completed_success_count": 3200,
+  "cost_usd": 11.376154,
+  "existing_success_count": 0,
+  "failed_count": 0,
+  "failures_path": "artifacts\\p5\\provenance\\teacher_generation_failures.jsonl",
+  "generated_success_count": 3200,
+  "model": "grok-4.5",
+  "pending_count": 0,
+  "provider": "xai-grok-api",
+  "request_count": 3200,
+  "successes_path": "artifacts\\p5\\provenance\\teacher_generations.jsonl"
+}

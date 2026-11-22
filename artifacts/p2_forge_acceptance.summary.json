@@ -1,0 +1,363 @@
+{
+  "cases": {
+    "cancellation": {
+      "cancelled": true,
+      "created_inspect_issues": [],
+      "logs": "",
+      "passed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 143,
+        "FinishedAt": "2026-07-16T06:19:16.434989172Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:15.911777759Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "cpu_exhaustion": {
+      "cancelled": false,
+      "cpu_effective_cores": 0.25234463276836155,
+      "created_inspect_issues": [],
+      "logs": "",
+      "passed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 137,
+        "FinishedAt": "2026-07-16T06:19:12.057710453Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:07.967532987Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "disk_fill": {
+      "cancelled": false,
+      "created_inspect_issues": [],
+      "logs": "File size limit exceeded (core dumped)\ndd_exit=153\nFilesystem           1K-blocks      Used Available Use% Mounted on\ntmpfs                     8192      8192         0 100% /workspace\n",
+      "passed": true,
+      "quota_denial_observed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "2026-07-16T06:19:12.581370036Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:12.510470299Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "file_size_limit": {
+      "cancelled": false,
+      "created_inspect_issues": [],
+      "file_size_denial_observed": true,
+      "logs": "File size limit exceeded (core dumped)\ndd_exit=153\n-rw-------    1 65532    65532      1048576 Jul 16 06:19 /workspace/file.bin\n",
+      "passed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "2026-07-16T06:19:12.814108469Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:12.746425902Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "hostile_install_script": {
+      "cancelled": false,
+      "created_inspect_issues": [],
+      "hostile_actions_denied": true,
+      "logs": "install_started\nsh: can't create /etc/certforge-owned: Read-only file system\nroot_mutation=denied\ninstall_exfil=denied\ninstall_finished\n",
+      "passed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "2026-07-16T06:19:13.515885197Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:13.086067561Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "isolation": {
+      "cancelled": false,
+      "created_inspect_issues": [],
+      "logs": "uid=65532\nCapEff:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\ninterfaces=lo,\nroot_mount=overlay / overlay ro,relatime,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1704/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/33/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/32/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/30/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/26/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/24/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/22/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/19/fs,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1705/fs,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1705/work,nouserxattr 0 0\nmemory_max=67108864\npids_max=32\ncpu_max=25000 100000\nroot_write=denied\nsh: can't create /certforge-root-write: Read-only file system\ntmp_write=allowed\nexfil=denied\n",
+      "passed": true,
+      "semantic_checks": {
+        "capabilities_dropped": true,
+        "loopback_only": true,
+        "memory_limit_visible": true,
+        "network_exfiltration_denied": true,
+        "no_new_privileges": true,
+        "non_root": true,
+        "pid_limit_visible": true,
+        "rootfs_write_denied": true,
+        "seccomp_enforced": true,
+        "tmpfs_writable_by_runner": true
+      },
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "2026-07-16T06:19:07.762437629Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:07.645010703Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "pid_exhaustion": {
+      "cancelled": false,
+      "created_inspect_issues": [],
+      "logs": "sh: can't fork: Resource temporarily unavailable\n",
+      "passed": true,
+      "pid_denial_observed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 2,
+        "FinishedAt": "2026-07-16T06:19:12.33682998Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:12.266427157Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "runner_crash": {
+      "cancelled": false,
+      "crash_observed": true,
+      "created_inspect_issues": [],
+      "logs": "",
+      "passed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 139,
+        "FinishedAt": "2026-07-16T06:19:16.802720441Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:16.72058987Z",
+        "Status": "exited"
+      },
+      "timed_out": false
+    },
+    "timeout": {
+      "cancelled": false,
+      "created_inspect_issues": [],
+      "logs": "",
+      "passed": true,
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 137,
+        "FinishedAt": "2026-07-16T06:19:15.666527858Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 0,
+        "Restarting": false,
+        "Running": false,
+        "StartedAt": "2026-07-16T06:19:14.241027488Z",
+        "Status": "exited"
+      },
+      "timed_out": true
+    }
+  },
+  "cleanup": {
+    "containers_after": 21,
+    "errors": [],
+    "owned_container_ids": [
+      "0d1c5d24c7e158d9147a1cc59860f5abba85f4218ffef3b77ad007ccb4a6291b",
+      "1a21dd7f3c9602a82f873c3893610fa22211b6c0880bfeb17ea6446d7806a016",
+      "1c15e1e04fa92fd6b74e33d8c84679ab168776c0986d72d620127a02c3c5062e",
+      "5391e3a0c481071806b265081fd9e1d9ab43c5fa9d006516781522c59ab12c38",
+      "5eff9b07acfe587e07e7cd88aed4965d38b0274e99562d90f78125b331f3be12",
+      "79085052a5dce5297cdd87750ea158bf5392f90346a0be7d73bfc5c710868b1d",
+      "c84320b68793c412cad7ada816ce1b8876ae5f01c5a005ecb2ea6631c82297f5",
+      "cd53202ca1d72e1466a5ccba17fa0eea625449455b1a7a8d63157a46c200feca",
+      "f7d13671afb079cd2a5738f14f8a656106ecbe639e3afe32dd10b77839f19d89"
+    ],
+    "unrelated_container_ids_preserved": true
+  },
+  "common_isolation_host_config": {
+    "CapDrop": [
+      "ALL"
+    ],
+    "Memory": 67108864,
+    "MemorySwap": 67108864,
+    "NanoCpus": 250000000,
+    "NetworkMode": "none",
+    "PidsLimit": 32,
+    "ReadonlyRootfs": true,
+    "SecurityOpt": [
+      "no-new-privileges:true",
+      "seccomp=builtin",
+      "apparmor=docker-default"
+    ],
+    "Tmpfs": {
+      "/run": "rw,nosuid,nodev,noexec,size=8388608,mode=700,uid=65532,gid=65532",
+      "/tmp": "rw,nosuid,nodev,noexec,size=16777216,mode=700,uid=65532,gid=65532",
+      "/workspace": "rw,nosuid,nodev,noexec,size=8388608,mode=700,uid=65532,gid=65532"
+    }
+  },
+  "docker": {
+    "cgroup_driver": "systemd",
+    "cgroup_version": "2",
+    "containers_before": 21,
+    "docker_root_dir": "/mnt/npm_native/docker",
+    "security_options": [
+      "name=apparmor",
+      "name=seccomp,profile=builtin",
+      "name=cgroupns"
+    ],
+    "storage_driver": "overlayfs",
+    "version": {
+      "ApiVersion": "1.54",
+      "Arch": "amd64",
+      "BuildTime": "2026-04-20T16:32:37.000000000+00:00",
+      "Components": [
+        {
+          "Details": {
+            "ApiVersion": "1.54",
+            "Arch": "amd64",
+            "BuildTime": "2026-04-20T16:32:37.000000000+00:00",
+            "Experimental": "false",
+            "GitCommit": "6c91b92",
+            "GoVersion": "go1.26.2",
+            "KernelVersion": "6.8.0-134-generic",
+            "MinAPIVersion": "1.40",
+            "Module": "github.com/moby/moby/v2",
+            "ModuleVersion": "v2.0.0+unknown",
+            "Os": "linux"
+          },
+          "Name": "Engine",
+          "Version": "29.4.1"
+        },
+        {
+          "Details": {
+            "GitCommit": "77c84241c7cbdd9b4eca2591793e3d4f4317c590"
+          },
+          "Name": "containerd",
+          "Version": "v2.2.3"
+        },
+        {
+          "Details": {
+            "GitCommit": "v1.3.5-0-g488fc13e"
+          },
+          "Name": "runc",
+          "Version": "1.3.5"
+        },
+        {
+          "Details": {
+            "GitCommit": "de40ad0"
+          },
+          "Name": "docker-init",
+          "Version": "0.19.0"
+        }
+      ],
+      "GitCommit": "6c91b92",
+      "GoVersion": "go1.26.2",
+      "KernelVersion": "6.8.0-134-generic",
+      "MinAPIVersion": "1.40",
+      "Os": "linux",
+      "Platform": {
+        "Name": "Docker Engine - Community"
+      },
+      "Version": "29.4.1"
+    }
+  },
+  "full_report": {
+    "bytes": 20807,
+    "path": "/home/forge/.cache/echo-certforge/p2-e679adf01ca773d8/p2_forge_acceptance.hardened.json",
+    "sha256": "d563aefcb121f91f5b6beda0f82ce80d776dd7bc6f2caaf6253226370883ef68"
+  },
+  "host": {
+    "gid": 1002,
+    "node": "forge",
+    "platform": "Linux-6.8.0-134-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "uid": 1000
+  },
+  "isolation_profile_digest": "f0722821d2658705626bca74623438db30416de174ead34df15588b80dcc72bc",
+  "passed": true,
+  "phase": "P2",
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "runner_image_digest": "sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99",
+  "schema_version": "1.0.0",
+  "source_identity": {
+    "models.py": "6feb76c47967dfc562a55e57b12f184feee4f66abc4c246c10aec6d0023d5799",
+    "p2_forge_acceptance.py": "4c83a187509a8e62477bed861dc16523a0400476260e8bf44f2ddae8b0dfd823",
+    "runner.py": "19ebf13539dc878611bb21a8aeb1f8621ca2d43e4cf82b290a5bb3f5761b03d4"
+  },
+  "transport": {
+    "checks": {
+      "archive_symlink_blocked": true,
+      "archive_traversal_blocked": true,
+      "cancellation_recorded": true,
+      "cross_tenant_read_blocked": true,
+      "evidence_completion_verified": true,
+      "evidence_interruption_detected": true,
+      "expired_credential_blocked": true,
+      "idempotent_retry_preserved_sequence": true,
+      "lost_heartbeat_reaped": true,
+      "replay_blocked": true,
+      "transport_key_separated_from_runner_key": true,
+      "untrusted_control_plane_blocked": true
+    },
+    "evidence_status": {
+      "artifact_id": "artifact.transport",
+      "assembled_sha256": "75a14fac20d94eb0a681fb715759946191c1b1bc981f4f29382cbfd12401f9ee",
+      "complete": true,
+      "expected_total_chunks": 2,
+      "received_chunks": [
+        0,
+        1
+      ],
+      "run_id": "run.transport",
+      "tenant_id": "tenant.p2"
+    },
+    "orphaned_runs": [
+      "run.orphan"
+    ],
+    "passed": true,
+    "runner_key_id": "ed25519:bd577e428634ca66873aef05bd181619",
+    "transport_key_id": "ed25519:6518c1c90d8eec804d76060b3240b0a3"
+  }
+}

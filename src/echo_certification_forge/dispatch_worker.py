@@ -1,0 +1,444 @@
+"""Restart-safe transactional-outbox dispatcher for subscriber certification runs."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any, Callable
+
+from .evidence import EvidenceStore
+from .intake import SubmitRequest
+from .policy import RuleManifest
+from .production_e2e import DirectoryProductionE2EProvider
+from .run_worker import _load_adapter_inputs, _load_signer, run
+from .sandbox import DEFAULT_IMAGE, DockerSandbox
+from .dispatch_safety import safe_dispatch_queue_stats, safe_reconcile_dispatch_outbox
+from .sqlite_io import free_space_bytes, is_transient_sqlite_error
+from .subscriber import SubscriberDispatch, SubscriberError, SubscriberGovernance, SubscriberPolicy
+
+_REPO = Path(__file__).resolve().parents[2]
+
+_DB_ERROR_BACKOFF_SEC = float(os.environ.get("ECHO_CERTFORGE_DISPATCH_DB_BACKOFF_SEC", "15"))
+_DB_ERROR_BACKOFF_SEC = min(max(_DB_ERROR_BACKOFF_SEC, 2.0), 120.0)
+_DB_ERROR_BACKOFF_CAP_SEC = float(os.environ.get("ECHO_CERTFORGE_DISPATCH_DB_BACKOFF_CAP_SEC", "120"))
+_DB_ERROR_BACKOFF_CAP_SEC = min(max(_DB_ERROR_BACKOFF_CAP_SEC, 15.0), 600.0)
+
+
+def recover_pending_intake(
+    governance: SubscriberGovernance,
+    store: EvidenceStore,
+    manifest: RuleManifest,
+) -> int:
+    recovered = 0
+    for pending in governance.pending_intake_requests():
+        request = SubmitRequest.model_validate(pending.request)
+        governance.materialize_reserved_run(
+            pending.reservation,
+            run_id=request.run_id(manifest.digest),
+            target_type=request.target.target_type,
+            target_reference=request.target.reference,
+            target_identity_digest=request.target.identity_digest,
+            environment_identity_digest=request.environment.identity_digest,
+            environment_json=request.environment.model_dump(exclude_none=True),
+            manifest_id=manifest.manifest_id,
+            manifest_digest=manifest.digest,
+            target_spec=pending.target_spec,
+            journey=pending.journey,
+        )
+        recovered += 1
+    return recovered
+
+
+def dispatch_once(
+    governance: SubscriberGovernance,
+    worker: Callable[..., dict[str, Any]],
+    *,
+    dispatcher_id: str,
+    run_id: str | None = None,
+    organization_id: str | None = None,
+    worker_options: dict[str, Any] | None = None,
+) -> tuple[SubscriberDispatch | None, dict[str, Any] | None]:
+    options = dict(worker_options or {})
+    adapter_inputs = options.pop("adapter_inputs", None)
+    signer = options.get("signer")
+    signing_key_id = getattr(signer, "key_id", None)
+    if signing_key_id is None:
+        raise ValueError("dispatcher signer is required")
+    if options.get("subscribers") is not governance:
+        raise ValueError("dispatcher must use its subscriber governance instance")
+    store = options.get("store")
+    manifest = options.get("manifest")
+    if not isinstance(store, EvidenceStore) or not isinstance(manifest, RuleManifest):
+        raise ValueError("dispatcher store and manifest are required")
+    recover_pending_intake(governance, store, manifest)
+    dispatch = governance.claim_dispatch(
+        dispatcher_id,
+        run_id=run_id,
+        organization_id=organization_id,
+        worker_id=options.get("worker_id"),
+        worker_attestation_sha256=options.get("worker_attestation_sha256"),
+        execution_location=str(options.get("execution_location", "local")),
+        signing_authority=str(options.get("signing_authority", "platform")),
+        signing_key_id=signing_key_id,
+    )
+    if dispatch is None:
+        return None, None
+    if adapter_inputs is not None:
+        try:
+            records, adapter_policy, rebound = _load_adapter_inputs(
+                response_path=adapter_inputs["response_path"],
+                policy_path=adapter_inputs["policy_path"],
+                registry_path=adapter_inputs["registry_path"],
+                runner_signing_key_path=adapter_inputs["runner_signing_key_path"],
+                run_id=dispatch.run_id,
+                tenant=dispatch.organization_id,
+            )
+        except ValueError as exc:
+            result = {
+                "run_id": dispatch.run_id,
+                "error": "adapter_input_rejected",
+                "detail": str(exc),
+            }
+            governance.finish_dispatch(dispatch, error="adapter_input_rejected")
+            return dispatch, result
+        options.update(
+            {
+                "adapter_records": records,
+                "adapter_policy": adapter_policy,
+                "adapter_bundle_response": rebound,
+            }
+        )
+    try:
+        result = worker(
+            dispatch.run_id,
+            dispatch.organization_id,
+            dispatch.target_spec,
+            journey=dispatch.journey,
+            **options,
+        )
+    except Exception as exc:
+        governance.finish_dispatch(
+            dispatch,
+            error=f"dispatcher_worker_exception:{type(exc).__name__}",
+        )
+        raise
+    error = str(result.get("error")) if result.get("error") else None
+    try:
+        governance.finish_dispatch(dispatch, error=error)
+    except SubscriberError as exc:
+        if exc.code != "dispatch_claim_inactive":
+            raise
+    return dispatch, result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--run-id")
+    parser.add_argument("--tenant")
+    parser.add_argument(
+        "--dispatcher-id",
+        default=os.environ.get("ECHO_CERTFORGE_DISPATCHER_ID", "certforge-dispatcher"),
+    )
+    parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=float(os.environ.get("ECHO_CERTFORGE_DISPATCH_POLL_SECONDS", "2")),
+    )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=Path(os.environ.get("ECHO_CERTFORGE_DB", _REPO / "var" / "certforge.sqlite3")),
+    )
+    parser.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=Path(
+            os.environ.get("ECHO_CERTFORGE_EVIDENCE_ROOT", _REPO / "var" / "evidence")
+        ),
+    )
+    parser.add_argument(
+        "--policy",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "ECHO_CERTFORGE_POLICY",
+                _REPO / "policies" / "mandatory-rules.v2.json",
+            )
+        ),
+    )
+    parser.add_argument(
+        "--subscriber-policy",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "ECHO_CERTFORGE_SUBSCRIBER_POLICY",
+                _REPO / "policies" / "subscriber-governance.v1.json",
+            )
+        ),
+    )
+    parser.add_argument(
+        "--signing-key",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "ECHO_CERTFORGE_RUN_SIGNING_KEY",
+                _REPO / "var" / "run-signing-key.pem",
+            )
+        ),
+    )
+    parser.add_argument("--sandbox", action="store_true")
+    parser.add_argument("--non-production-compat", action="store_true")
+    parser.add_argument(
+        "--sandbox-image",
+        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
+    )
+    parser.add_argument(
+        "--sandbox-docker",
+        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_DOCKER", "docker"),
+    )
+    parser.add_argument(
+        "--adapter-response",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE"])
+            if os.environ.get("ECHO_CERTFORGE_PROD_ADAPTER_RESPONSE")
+            else None
+        ),
+    )
+    parser.add_argument(
+        "--adapter-policy",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PROD_ADAPTER_POLICY"])
+            if os.environ.get("ECHO_CERTFORGE_PROD_ADAPTER_POLICY")
+            else None
+        ),
+    )
+    parser.add_argument(
+        "--adapter-registry",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_ADAPTER_REGISTRY"])
+            if os.environ.get("ECHO_CERTFORGE_ADAPTER_REGISTRY")
+            else None
+        ),
+    )
+    parser.add_argument(
+        "--adapter-runner-signing-key",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY"])
+            if os.environ.get("ECHO_CERTFORGE_ADAPTER_RUNNER_SIGNING_KEY")
+            else None
+        ),
+    )
+    parser.add_argument("--worker-id", default=os.environ.get("ECHO_CERTFORGE_WORKER_ID"))
+    parser.add_argument(
+        "--worker-attestation-sha256",
+        default=os.environ.get("ECHO_CERTFORGE_WORKER_ATTESTATION_SHA256"),
+    )
+    parser.add_argument(
+        "--execution-location",
+        default=os.environ.get("ECHO_CERTFORGE_EXECUTION_LOCATION", "local"),
+    )
+    parser.add_argument(
+        "--signing-authority",
+        choices=("platform", "customer"),
+        default=os.environ.get("ECHO_CERTFORGE_SIGNING_AUTHORITY", "platform"),
+    )
+    parser.add_argument(
+        "--production-e2e-attestation-dir",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR"])
+            if os.environ.get("ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION_DIR")
+            else None
+        ),
+    )
+    parser.add_argument(
+        "--trusted-production-e2e-keys",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS"])
+            if os.environ.get("ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS")
+            else None
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.poll_seconds <= 0:
+        parser.error("--poll-seconds must be positive")
+    pepper = os.environ.get("ECHO_CERTFORGE_API_KEY_PEPPER")
+    if not pepper:
+        print(json.dumps({"error": "subscriber_governance_pepper_missing"}))
+        return 2
+
+    policy = SubscriberPolicy.load(args.subscriber_policy)
+    governance = SubscriberGovernance(args.db, policy, pepper.encode("utf-8"))
+    manifest = RuleManifest.load(args.policy)
+    adapter_paths = (
+        args.adapter_response,
+        args.adapter_policy,
+        args.adapter_registry,
+        args.adapter_runner_signing_key,
+    )
+    supplied_count = sum(path is not None for path in adapter_paths)
+    adapter_rule_required = any(rule.id == "adapter_identity_and_quality" for rule in manifest.rules)
+    if not args.non_production_compat and (
+        not adapter_rule_required or supplied_count != len(adapter_paths)
+    ):
+        print(json.dumps({"error": "production_adapter_inputs_unavailable"}))
+        return 2
+    if args.non_production_compat and supplied_count not in (0, len(adapter_paths)):
+        print(json.dumps({"error": "adapter_input_incomplete"}))
+        return 2
+    store = EvidenceStore(args.db, args.evidence_root)
+    signer = _load_signer(args.signing_key)
+    production_e2e_paths = (
+        args.production_e2e_attestation_dir,
+        args.trusted_production_e2e_keys,
+    )
+    if sum(path is not None for path in production_e2e_paths) not in (0, 2):
+        print(json.dumps({"error": "production_e2e_trust_incomplete"}))
+        return 2
+    production_e2e_provider = None
+    if all(path is not None for path in production_e2e_paths):
+        try:
+            production_e2e_provider = DirectoryProductionE2EProvider(
+                args.production_e2e_attestation_dir,
+                args.trusted_production_e2e_keys,
+            )
+        except ValueError:
+            print(json.dumps({"error": "production_e2e_trust_unavailable"}))
+            return 2
+    sandbox = (
+        DockerSandbox(
+            image=args.sandbox_image,
+            docker=tuple(args.sandbox_docker.split()),
+        )
+        if args.sandbox
+        else None
+    )
+    options = {
+        "store": store,
+        "manifest": manifest,
+        "signer": signer,
+        "subscribers": governance,
+        "sandbox": sandbox,
+        "worker_id": args.worker_id,
+        "worker_attestation_sha256": args.worker_attestation_sha256,
+        "execution_location": args.execution_location,
+        "signing_authority": args.signing_authority,
+    }
+    if production_e2e_provider is not None:
+        options["production_e2e_provider"] = production_e2e_provider
+    if supplied_count == len(adapter_paths):
+        options["adapter_inputs"] = {
+            "response_path": args.adapter_response,
+            "policy_path": args.adapter_policy,
+            "registry_path": args.adapter_registry,
+            "runner_signing_key_path": args.adapter_runner_signing_key,
+        }
+    # Reconcile once at boot so zombie PENDING/FAILED rows don't require a
+    # separate ops pass before the claim loop can make progress. Soft call:
+    # product package may lag SYSTEMS overlay (incident #9676 AttributeError).
+    boot_reconcile = safe_reconcile_dispatch_outbox(governance)
+    if boot_reconcile is not None:
+        print(
+            json.dumps(
+                {"event": "dispatcher_boot_reconcile", **boot_reconcile},
+                sort_keys=True,
+            )
+        )
+    else:
+        print(
+            json.dumps(
+                {
+                    "event": "dispatcher_boot_reconcile_skipped",
+                    "reason": "reconcile_dispatch_outbox_unavailable",
+                },
+                sort_keys=True,
+            )
+        )
+    idle_since = time.monotonic()
+    status_every = float(
+        os.environ.get("ECHO_CERTFORGE_DISPATCH_STATUS_SECONDS", "60")
+    )
+    last_status_at = 0.0
+    db_error_streak = 0
+    while True:
+        try:
+            # Keep outbox hygiene continuous when method is present.
+            safe_reconcile_dispatch_outbox(governance)
+            dispatch, result = dispatch_once(
+                governance,
+                run,
+                dispatcher_id=args.dispatcher_id,
+                run_id=args.run_id,
+                organization_id=args.tenant,
+                worker_options=options,
+            )
+        except (sqlite3.OperationalError, OSError) as exc:
+            # Killer of unit_flapping (incident #9676): uncaught disk I/O error
+            # exits the process; systemd Restart=always storms within one scan.
+            # OSError is included because connect_sqlite may raise it after
+            # exhausted retries (ENOSPC / EIO) — same storm class as OperationalError.
+            db_error_streak += 1
+            free = free_space_bytes(args.db)
+            backoff = min(
+                _DB_ERROR_BACKOFF_CAP_SEC,
+                _DB_ERROR_BACKOFF_SEC * (2 ** min(db_error_streak - 1, 4)),
+            )
+            transient = is_transient_sqlite_error(exc) or isinstance(exc, OSError)
+            print(
+                json.dumps(
+                    {
+                        "event": "dispatcher_db_transient_error",
+                        "error": type(exc).__name__,
+                        "detail": str(exc)[:300],
+                        "transient": transient,
+                        "streak": db_error_streak,
+                        "backoff_sec": round(backoff, 2),
+                        "db_path": str(args.db),
+                        "db_free_bytes": free,
+                        "dispatcher_id": args.dispatcher_id,
+                    },
+                    sort_keys=True,
+                )
+            )
+            if args.once:
+                return 4 if transient else 1
+            if not transient and db_error_streak >= 8:
+                raise
+            time.sleep(backoff)
+            continue
+        db_error_streak = 0
+        if dispatch is not None:
+            idle_since = time.monotonic()
+            print(json.dumps(result, sort_keys=True))
+        if args.once:
+            return 0 if dispatch is not None else 3
+        if dispatch is None:
+            now_mono = time.monotonic()
+            if status_every > 0 and (now_mono - last_status_at) >= status_every:
+                stats = safe_dispatch_queue_stats(governance)
+                print(
+                    json.dumps(
+                        {
+                            "event": "dispatcher_idle",
+                            "idle_seconds": round(now_mono - idle_since, 1),
+                            "dispatcher_id": args.dispatcher_id,
+                            **stats,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                last_status_at = now_mono
+            time.sleep(args.poll_seconds)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "P5",
+  "release_verdict": "NOT_READY",
+  "evaluation": {
+    "rows": 960,
+    "launch_commit": "296d45a950a9c784e70ef53c5505e1987d03f82a",
+    "provenance_status": "authoritative",
+    "invariant": "The running evaluation continues to use the scoring, corpus, and evaluation-runtime semantics from its launch commit."
+  },
+  "production_trust_fixes": {
+    "upstream_tip": "ec9fe1477c224d686e574a9ac49b989eba346c82",
+    "release_cherry_pick": "6679ba8",
+    "scope": [
+      "signed routing receipt completeness and replay binding",
+      "atomic asynchronous run reservation",
+      "exact production rule-manifest identity pinning",
+      "environment-bound persistence of the rebound adapter response",
+      "production router and operator trust-path validation"
+    ],
+    "excluded_semantic_changes": [
+      "evaluation scoring",
+      "evaluation corpus",
+      "candidate generation",
+      "qualification thresholds",
+      "evaluation runtime behavior"
+    ]
+  },
+  "integration": {
+    "preserved_authoritative_components": [
+      "P7 governed outbox run router",
+      "P7 durable dispatcher and execution fencing",
+      "P6 immutable staging-first deployment and rollback"
+    ],
+    "trust_path_binding": "The durable dispatcher passes the verified rebound RunnerResponse into the run worker; the worker binds its byte digest into EnvironmentIdentity and persists immutable run-scoped evidence before verdict signing."
+  }
+}

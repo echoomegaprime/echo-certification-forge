@@ -1,0 +1,16 @@
+{
+  "body": {
+    "armed": {
+      "armed": true,
+      "target_adapter_id": "echo-r2d2",
+      "wrong_adapter_id": "echo-gs343"
+    },
+    "released": {
+      "fault_preserved": true,
+      "lease_id": "9217c7c9-9ff9-42cb-a4f0-6e71dcb1f1d1",
+      "released": true,
+      "unloaded_preserved": false
+    }
+  },
+  "status_code": 200
+}

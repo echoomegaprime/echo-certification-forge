@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0.0",
+  "service": "echo-certification-forge",
+  "completed_phase_gate": "P4",
+  "run_outcome": "COMPLETE",
+  "release_verdict": "NOT_READY",
+  "phases": [
+    {
+      "phase": "P1",
+      "name": "deterministic evidence and verdict foundation",
+      "state": "COMPLETE",
+      "evidence": ["artifacts/p1_verification_report.json"]
+    },
+    {
+      "phase": "P2",
+      "name": "isolated runner and authenticated transport foundation",
+      "state": "COMPLETE",
+      "evidence": [
+        "artifacts/p2_forge_acceptance.json",
+        "artifacts/p2_forge_acceptance.summary.json",
+        "artifacts/p2_verification_report.json"
+      ]
+    },
+    {
+      "phase": "P3",
+      "name": "production evidence custody, independent anchoring, and isolated signing",
+      "state": "COMPLETE",
+      "evidence": [
+        "artifacts/p3_forge_acceptance.json",
+        "artifacts/p3_forge_acceptance.summary.json",
+        "artifacts/p3_offline_bundle/manifest.json",
+        "artifacts/p3_verification_report.json"
+      ]
+    },
+    {
+      "phase": "P4",
+      "name": "hostile runner, signer image, and supply-chain qualification",
+      "state": "COMPLETE",
+      "evidence": [
+        "artifacts/p4_forge_acceptance.json",
+        "artifacts/p4_images/manifest.json",
+        "artifacts/p4_evidence_index.json",
+        "artifacts/p4_verification_report.json"
+      ]
+    },
+    {
+      "phase": "P5",
+      "name": "adapter breadth and service modes",
+      "state": "NOT_STARTED",
+      "evidence": []
+    },
+    {
+      "phase": "P6",
+      "name": "deployment enforcement and platform integration",
+      "state": "NOT_STARTED",
+      "evidence": []
+    },
+    {
+      "phase": "P7",
+      "name": "subscriber productization and governance",
+      "state": "NOT_STARTED",
+      "evidence": []
+    }
+  ],
+  "hosted_ci": {
+    "state": "RESOLVED",
+    "ready": true,
+    "evidence": "artifacts/hosted_ci_resolution.json"
+  },
+  "echo_desktop_p8c": "NOT_STARTED",
+  "product_blockers": [
+    "hostile-runner and purpose-built image supply-chain qualification",
+    "GS343 and R2D2 applied-adapter identity and quality qualification",
+    "central echo.certforge.* registration",
+    "real deployment-path exact-digest enforcement",
+    "subscriber governance, retention, billing, support-access, and commercial controls"
+  ]
+}

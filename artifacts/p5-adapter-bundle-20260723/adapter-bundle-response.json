@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0.0",
+  "response_id": "cert-p5-anvil-20260723-adapter-response",
+  "request_id": "cert-p5-anvil-20260723-adapter-request",
+  "run_id": "cert-p5-anvil-20260723",
+  "tenant_id": "echo-sovereign",
+  "runner_id": "anvil-adapter-runner",
+  "sequence": 1,
+  "issued_at": "2026-07-23T20:56:47.189934Z",
+  "status": "COMPLETED",
+  "body": {
+    "schema_version": "1.0.0",
+    "kind": "adapter_execution_bundle",
+    "records": [
+      {
+        "identity": {
+          "adapter_id": "gs343",
+          "version": "v3",
+          "artifact_sha256": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
+          "configuration_sha256": "05766df08add5c7a19bcf68106f1cfa97bc4c17dd2647776594e5c3d65f0853d",
+          "runtime_sha256": "21abf8fac90a89c1ab8c333c2fd5410f0f2d0f6fc479a8060163bb1993b7c291",
+          "maturity": "EXPERIMENTAL",
+          "provenance": "anvil-family-r5:echo-gs343:2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae:ed25519:030941e03db7cf24b7ad2a2e8993a791"
+        },
+        "observed_identity_digest": "1b33a9f21d56a18a9d65cc40fbec381f530f97e1edfad2790864b628be64ab0e",
+        "quality": {
+          "adapter_id": "gs343",
+          "passed_cases": 7,
+          "total_cases": 11,
+          "critical_failures": [
+            "probe_failed:3",
+            "probe_failed:4",
+            "probe_failed:5",
+            "probe_failed:8"
+          ],
+          "suite_sha256": "4e15092cd9171d3f06d89f1c6f2765db5e43bb617064efbd4a40e23522498411",
+          "evidence_ids": [
+            "gs343-r5-evidence",
+            "gs343-gs_adapter_context-quality"
+          ]
+        },
+        "execution_node": "ANVIL",
+        "result_sha256": "021a674351f76d26e26d63747e5cb0449254510d2ceec6bd390bd96952225008"
+      },
+      {
+        "identity": {
+          "adapter_id": "r2d2",
+          "version": "v2",
+          "artifact_sha256": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+          "configuration_sha256": "3b4fc123716af7a581b30f18bde1f17778529fd190a925cece281e7361b3d5ff",
+          "runtime_sha256": "21abf8fac90a89c1ab8c333c2fd5410f0f2d0f6fc479a8060163bb1993b7c291",
+          "maturity": "EXPERIMENTAL",
+          "provenance": "anvil-family-r5:echo-r2d2:2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae:ed25519:030941e03db7cf24b7ad2a2e8993a791"
+        },
+        "observed_identity_digest": "6f528d077eab5ad7c9f9cfff775ddc614f311ef8ecc9ea7225e9562f9e522eea",
+        "quality": {
+          "adapter_id": "r2d2",
+          "passed_cases": 1,
+          "total_cases": 3,
+          "critical_failures": [
+            "probe_failed:0",
+            "probe_failed:2"
+          ],
+          "suite_sha256": "fb5c56799eaaf566e22548413896dac4a89fe0eb90e46bef40e8e3778af5de79",
+          "evidence_ids": [
+            "r2d2-r5-evidence",
+            "r2d2-r2_adapter_context-quality"
+          ]
+        },
+        "execution_node": "ANVIL",
+        "result_sha256": "f63a6e5198cc7532e56216393443b791510509e84ae1a759a462fb32cfbb424a"
+      }
+    ]
+  },
+  "body_sha256": "954b92a699edfcb1738e902561999cb9219a0a943ec35ebb446cd15f1dc3052a",
+  "runner_key_id": "ed25519:cf7ae8108cedc34cecade3b883ca604b",
+  "signature_b64": "KEdVLD/1QCHMF6xj7xdGUYmMthjr7gGodHfsvHDIWfaNrNBI59dTg9edHS82A/Ig/2CYH2FGhDB9FcxJimDnCA=="
+}

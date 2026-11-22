@@ -1,0 +1,132 @@
+{
+  "blocker": null,
+  "completion_marker": "[R5 COMPLETE]",
+  "controls": [
+    {
+      "control": "wrong_active_adapter",
+      "error_code": "ADAPTER_IDENTITY_MISMATCH",
+      "http_status": 409,
+      "passed": true,
+      "receipt_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791"
+    },
+    {
+      "control": "unloaded_adapter",
+      "error_code": "ADAPTER_NOT_ACTIVE",
+      "http_status": 503,
+      "passed": true,
+      "receipt_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791"
+    }
+  ],
+  "deployment_authorized": false,
+  "expected_identity": {
+    "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+    "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+    "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+    "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+    "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+    "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+    "target_adapter_digest": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
+    "target_model": "echo-gs343",
+    "wrong_adapter_digest": "bb7fb603afaeb722ee0387aee7335fd6026571fd4ae8bebaca5cd61724ff7138",
+    "wrong_model": "echo-r2d2"
+  },
+  "forge_verification_bundle": {
+    "attested_base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+    "attested_base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+    "attested_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+    "attested_registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+    "attested_registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+    "attested_server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+    "mode": "full",
+    "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAlmDJPBdTmrv47jos7MM1MNHqvuKwGIwHBlNkJ71ZYcM=\n-----END PUBLIC KEY-----\n",
+    "receipts": [
+      {
+        "control": "wrong_active_adapter",
+        "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+        "payload": {
+          "active_adapter_ids": [
+            "echo-r2d2"
+          ],
+          "adapter_applied": false,
+          "adapter_version": "v3",
+          "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+          "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+          "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+          "challenge_nonce": "certforge-r5-wrong-active-ddf5c4fb-eb27-4d7b-a2c5-20df97136136",
+          "completed_at": "2026-07-23T20:55:08.148422Z",
+          "error_code": "ADAPTER_IDENTITY_MISMATCH",
+          "error_reason": "actual active adapter state ['echo-r2d2'] did not match 'echo-gs343'",
+          "fallback_reason": null,
+          "fallback_used": false,
+          "maturity_state": "CONFORMANCE_PENDING",
+          "persona_applied": false,
+          "persona_enabled": true,
+          "registry_adapter_id": "echo-gs343",
+          "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+          "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+          "request_id": "86932e43-bd48-4234-9584-d4a333e3ae7c",
+          "request_sha256": "0a28c073f430b3b0d7c822df89ad1d0db4e323c3a05b39a12c1f9916f01d53da",
+          "requested_model": "echo-gs343",
+          "requested_persona": "gs343",
+          "response_sha256": null,
+          "response_size_bytes": null,
+          "routing_mode": "failure",
+          "schema": "echo.family-routing-receipt/v1",
+          "selected_adapter_digest": null,
+          "selected_adapter_id": "echo-r2d2",
+          "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+          "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "slot_lease_id": "d67363c4-7030-4d1a-88e1-c42251aaeb0a",
+          "started_at": "2026-07-23T20:55:08.114726Z"
+        },
+        "signature_b64": "XTUwghoa9TsVpJr0kTUET/T0lbz5BAJp2KmtpXjqQ2ciogyqeLhuvJ0hAzhKBpLRB2bCwX7XUcolVOMItQWbCA=="
+      },
+      {
+        "control": "unloaded_adapter",
+        "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+        "payload": {
+          "active_adapter_ids": [
+            "echo-prime"
+          ],
+          "adapter_applied": false,
+          "adapter_version": "v3",
+          "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+          "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+          "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+          "challenge_nonce": "certforge-r5-unloaded-c04e54d0-3707-4699-ad97-a2968f9f6604",
+          "completed_at": "2026-07-23T20:55:08.256326Z",
+          "error_code": "ADAPTER_NOT_ACTIVE",
+          "error_reason": "registered adapter is not loaded in the live PEFT model",
+          "fallback_reason": null,
+          "fallback_used": false,
+          "maturity_state": "CONFORMANCE_PENDING",
+          "persona_applied": false,
+          "persona_enabled": true,
+          "registry_adapter_id": "echo-gs343",
+          "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+          "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+          "request_id": "e660ab0a-9cbd-456b-8b19-5ea91f1c9d01",
+          "request_sha256": "e2f2b4a2edff482e011995dae5bc4a2a5c54a24a846f3ff4ff873104be8f4c95",
+          "requested_model": "echo-gs343",
+          "requested_persona": "gs343",
+          "response_sha256": null,
+          "response_size_bytes": null,
+          "routing_mode": "failure",
+          "schema": "echo.family-routing-receipt/v1",
+          "selected_adapter_digest": null,
+          "selected_adapter_id": null,
+          "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+          "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+          "slot_lease_id": null,
+          "started_at": "2026-07-23T20:55:08.256326Z"
+        },
+        "signature_b64": "OGn/MD41MIhUxvxo+q72qQGJ/LgNMf/uydRvHsVR3dByw9dA7+kAqu+x78To0Jm9cwmgwuAXBpIshMnngf8FCA=="
+      }
+    ],
+    "schema": "echo.certification-forge.forge-verification-bundle/v1"
+  },
+  "r5_gate": "PASS",
+  "release_verdict": "NOT_READY",
+  "run_outcome": "COMPLETE",
+  "schema": "echo.certification-forge.family-r5-negative-controls/v1"
+}

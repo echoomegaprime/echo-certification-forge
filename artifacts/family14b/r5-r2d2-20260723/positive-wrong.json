@@ -1,0 +1,61 @@
+{
+  "body": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "Echo-GS343 was a prototype unit developed in the early stages of",
+          "role": "assistant"
+        }
+      }
+    ],
+    "model": "echo-gs343",
+    "object": "chat.completion",
+    "routing_receipt": {
+      "key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+      "payload": {
+        "active_adapter_ids": [
+          "echo-gs343"
+        ],
+        "active_adapter_ids_after": [
+          "echo-gs343"
+        ],
+        "active_adapter_ids_before": [
+          "echo-gs343"
+        ],
+        "adapter_applied": true,
+        "adapter_version": "v3",
+        "base_model_digest": "09aaac89da4520c2105a841273b15f99f5a28a55eb31fd692f00e0df6c0b29d2",
+        "base_model_id": "Qwen/Qwen2.5-14B-Instruct",
+        "base_model_revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+        "challenge_nonce": "certforge-r5-positive-echo-gs343-f097eb6b-56bb-4d87-9652-d9841568be82",
+        "completed_at": "2026-07-23T20:55:44.490271Z",
+        "fallback_reason": null,
+        "fallback_used": false,
+        "maturity_state": "CONFORMANCE_PENDING",
+        "persona_applied": true,
+        "persona_enabled": true,
+        "registry_adapter_id": "echo-gs343",
+        "registry_revision": "2b05bd98dbdb549a947acf1fc94a4988ee31936264ac8531171c9cd479474fae",
+        "registry_snapshot_digest": "b1b40746e5489cd60b22fffbfdd74aaeb5e551fa52eb3361021d5c2de879c8bc",
+        "request_id": "ffbd46fc-4cc4-4e2c-b6a2-8033dc4186af",
+        "request_sha256": "5e36132cbc3029b482b36361bb58daa3e676243ae1eadd2974d77103cf5f222c",
+        "requested_model": "echo-gs343",
+        "requested_persona": "gs343",
+        "response_sha256": "4decebd2b784d4c1212268a33966f274b896d242646e09c40345abe4e798676a",
+        "response_size_bytes": 64,
+        "routing_mode": "lora_adapter",
+        "schema": "echo.family-routing-receipt/v1",
+        "selected_adapter_digest": "206e898ecd8b011d6e3fcdc6fefff42dedc131df1769625b7b7c52de0d855c50",
+        "selected_adapter_id": "echo-gs343",
+        "server_build_digest": "323f16719b1436ca669d866fccd1eb1172d94e1b03138dfe785e2f9b862a30c8",
+        "signature_key_id": "ed25519:030941e03db7cf24b7ad2a2e8993a791",
+        "slot_lease_id": "5f71cee1-d07d-4674-b437-e2d705a34116",
+        "started_at": "2026-07-23T20:55:42.752697Z"
+      },
+      "signature_b64": "1rNLdWDPCiNazA/5029AVAI/PNpLhaFjOhen+CiC89S9NeZfecoENs5jzijNRG83+D1DZqb69i2bhr2zwqyzCg=="
+    }
+  },
+  "status_code": 200
+}

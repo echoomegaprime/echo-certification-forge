@@ -1,0 +1,17 @@
+{
+  "adapter": "r2d2",
+  "derivation_algorithm": "non-expressive-certification-scenarios.v1",
+  "ledger": {
+    "path": "/home/anvil/adapter_training/datasets/certification_forge_p5/curriculum/r2d2_curriculum_v1.jsonl",
+    "sha256": "16094fc89598aaa127e63839f8ec2154f3587631351bddca0868a6e306c31719"
+  },
+  "rights_basis": "non-expressive-digest-derivation",
+  "row_count": 1600,
+  "schema_version": "p5-attribution-free-curriculum-manifest.v1",
+  "source": {
+    "expressive_content_copied": false,
+    "path": "/home/anvil/adapter_training/datasets/r2d2_v2/r2d2_v2_train.jsonl",
+    "sha256": "1735f0e54502d61c17d76c82202cff50f4a83db5cd757e3006af8a371403f4ca"
+  },
+  "source_license_claim": "none"
+}

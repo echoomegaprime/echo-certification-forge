@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cert.echoforge.com/contracts/finding.v1.json",
+  "title": "FindingV1",
+  "type": "object",
+  "required": ["finding_id", "run_id", "severity", "category", "title", "evidence_ids", "deterministic"],
+  "properties": {
+    "finding_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "severity": {"enum": ["BLOCKER", "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]},
+    "category": {"enum": ["application", "harness", "environment", "test_data", "dependency", "security", "evidence", "policy"]},
+    "title": {"type": "string", "minLength": 1, "maxLength": 256},
+    "description": {"type": "string", "maxLength": 8192},
+    "evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+    "deterministic": {"type": "boolean"},
+    "model_proposal": {"type": ["object", "null"]}
+  },
+  "additionalProperties": false
+}

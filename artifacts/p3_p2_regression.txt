@@ -1,0 +1,13 @@
+{
+  "check_exit_codes": {
+    "compileall": 0,
+    "diff_check": 0,
+    "pip_check": 0,
+    "pytest": 0
+  },
+  "passed": true,
+  "release_verdict": "NOT_READY",
+  "report": "/home/forge/grok-build-workspace-certforge/artifacts/p2_verification_report.json",
+  "report_sha256": "d6cbeba061a181d8eb1c7bdd53ae74c9ba196ba5ac8fb824a82a45b44e4cc465",
+  "run_outcome": "COMPLETE"
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "entries": [
+    {
+      "ecosystem": "npm",
+      "package": "lodash",
+      "affected_versions": ["4.17.20"],
+      "advisory": "CVE-2021-23337",
+      "severity": "HIGH"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "health": {
+    "anchor": "independent_provider_required",
+    "control_plane_executes_customer_code": false,
+    "custody": "append_only_merkle_verified",
+    "private_signing_key_loaded": false,
+    "signing": "isolated_out_of_process",
+    "status": "ok",
+    "subscriber_governance": "disabled",
+    "version": "0.8.0"
+  },
+  "passed": true,
+  "pid": 13480,
+  "port": 60117,
+  "readiness": "observable_http_predicate",
+  "schema_version": "1.0.0",
+  "status": {
+    "adapter_qualification": "PENDING",
+    "completed_phase_gate": "P8C",
+    "customer_surface": "LIVE",
+    "deployment_enforcement": "P6_FAIL_CLOSED",
+    "evidence_custody": "P3_APPEND_ONLY_VERIFIED",
+    "external_evidence_anchor": "P3_INDEPENDENT_PROVIDER_VERIFIED",
+    "public_key_lifecycle": "P3_ROTATION_REVOCATION_VERIFIED",
+    "release_verdict": "NOT_READY",
+    "release_verdicts": [
+      "NOT_READY",
+      "CONDITIONALLY_READY",
+      "PRODUCTION_READY"
+    ],
+    "rule_manifest_digest": "0ca325c3e6d39b7f22cdd3d01068c8f99dcd976c4422200b5b4d4cfe452f29f7",
+    "rule_manifest_id": "certforge.release-strict.v1",
+    "run_outcomes": [
+      "COMPLETE",
+      "INCONCLUSIVE",
+      "CANCELLED",
+      "INFRA_FAILED"
+    ],
+    "runner_isolation": "P2_FOUNDATION_VERIFIED",
+    "service": "echo-certification-forge",
+    "subscriber_governance": "DISABLED",
+    "trusted_signing_keys": [],
+    "verdict_signing": "P3_ISOLATED_SIGNER_VERIFIED"
+  }
+}

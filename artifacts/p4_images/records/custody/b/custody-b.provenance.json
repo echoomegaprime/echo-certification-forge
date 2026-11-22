@@ -1,0 +1,47 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "predicate": {
+    "buildDefinition": {
+      "buildType": "https://cert.echoforge.com/buildtypes/docker-v2",
+      "externalParameters": {
+        "admission_policy_id": "p4.custody.production.v1",
+        "attestation_key_id": "ed25519:d1a2b83569e5a4d3d33025410088a5fe",
+        "dockerfile_sha256": "8bf27b0262a87775a481adbfa84b4741f6794f8cec4a47d300174ab5dbfd8105",
+        "lockfile_sha256": "4bfd5e749f079f1fffc35463ddd03a95e564e416b4e80d97a666e87286e016aa",
+        "source_commit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e",
+        "variant": "b"
+      },
+      "resolvedDependencies": [
+        {
+          "digest": {
+            "sha256": "6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df"
+          },
+          "uri": "docker-image://python:3.12-alpine"
+        },
+        {
+          "digest": {
+            "gitCommit": "8ccfa65f8cb53f42e660abd2a2b547edac74250e"
+          },
+          "uri": "git+https://github.com/ECHO-OMEGA-PRIME/echo-certification-forge"
+        }
+      ]
+    },
+    "runDetails": {
+      "builder": {
+        "id": "forge:192.168.1.220:rootful-docker"
+      },
+      "metadata": {
+        "startedOn": "2026-07-18T01:10:21.607201638-05:00"
+      }
+    }
+  },
+  "predicateType": "https://slsa.dev/provenance/v1",
+  "subject": [
+    {
+      "digest": {
+        "sha256": "cd8df2e1159641b4794261539c8168e8af77aee2505566d62b59e1abe51d7889"
+      },
+      "name": "echo-certforge-custody-b"
+    }
+  ]
+}
