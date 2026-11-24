@@ -76,12 +76,17 @@ class EvidenceStore:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = FULL")
-        return connection
+        from .sqlite_io import connect_sqlite
+
+        return connect_sqlite(
+            self.db_path,
+            timeout=10,
+            wal=True,
+            synchronous="FULL",
+            busy_timeout_ms=10000,
+            foreign_keys=True,
+            label="evidence_sqlite_connect",
+        )
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
