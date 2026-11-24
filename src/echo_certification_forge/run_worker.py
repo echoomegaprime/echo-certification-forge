@@ -12,11 +12,13 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import logging
 import os
 import shutil
 import sqlite3
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -38,16 +40,19 @@ from .evidence import EvidenceStore
 from .executor import RetentionPolicy, RunExecutor, StaticEntitlement
 from .models import EnvironmentIdentity, RunOutcome, RunState, TargetIdentity
 from .policy import RuleManifest
+from .production_e2e import VerifiedProductionE2E, load_signed_attestation
 from .runner import RunnerResponse
-from .sandbox import DEFAULT_IMAGE, DockerSandbox, sandboxed_journey_runner
+from .runtime_identity import RuntimeProfile, _journey, load_runtime_profile, measured_environment
+from .sandbox import DockerSandbox, sandboxed_journey_runner
 from .signing import Ed25519VerdictSigner
 from .subscriber import SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
+_LOGGER = logging.getLogger(__name__)
 _ADAPTER_RULE = "adapter_identity_and_quality"
 _PRODUCTION_MANIFEST_ID = "certforge.release-strict.v2"
 _PRODUCTION_MANIFEST_SHA256 = (
-    "7dc98e0e95e6dd2c000ec069a8c46c4d1d49a4fe869ad4eae25e059d103644f4"
+    "08ba068ceb3e14bfed2690337edbb94c546e3e0a1a89b1321f7657653d8eea43"
 )
 class _ClaimHeartbeat:
     def __init__(self, governance: SubscriberGovernance, claim) -> None:
@@ -92,38 +97,20 @@ class _ClaimHeartbeat:
             raise SubscriberError(409, self._failure_code)
 
 
-def _env_digest(component: str) -> str:
-    return sha256_bytes(f"certforge-worker-env:{component}".encode("utf-8"))
-
-
 def _worker_environment(
     adapter_set_sha256: str | None = None,
     adapter_execution_profile_sha256: str | None = None,
+    *,
+    manifest: RuleManifest | None = None,
+    sandbox: DockerSandbox | None = None,
+    journey: list[str] | None = None,
 ) -> EnvironmentIdentity:
-    """Declared certification environment.
-
-    The legacy v1 path retains its historical environment commitment. P5/v2 callers pass the exact
-    digest derived from the verified signed adapter execution records.
-    """
-    return EnvironmentIdentity(
-        runner_image_sha256=_env_digest("runner-image"),
-        adapter_set_sha256=adapter_set_sha256 or _env_digest("adapter-set"),
-        test_plan_sha256=_env_digest("test-plan"),
-        policy_sha256=_env_digest("policy"),
-        harness_sha256=_env_digest("harness"),
-        prompt_set_sha256=_env_digest("prompt-set"),
-        model_route_sha256=(
-            sha256_json(
-                {
-                    "base_model_route_sha256": _env_digest("model-route"),
-                    "adapter_execution_profile_sha256": adapter_execution_profile_sha256,
-                }
-            )
-            if adapter_execution_profile_sha256
-            else _env_digest("model-route")
-        ),
-        os_runtime_sha256=_env_digest("os-runtime"),
-        egress_policy_sha256=_env_digest("egress-policy"),
+    """Compatibility entrypoint for the measured public runtime contract."""
+    return measured_environment(
+        manifest=manifest or RuleManifest.load(_REPO / "policies/mandatory-rules.v2.json"),
+        sandbox=sandbox, journey=journey,
+        adapter_set_sha256=adapter_set_sha256,
+        adapter_execution_profile_sha256=adapter_execution_profile_sha256,
     )
 
 
@@ -157,14 +144,66 @@ def run(
     subscribers: SubscriberGovernance | None = None,
     journey: list[str] | None = None,
     sandbox: DockerSandbox | None = None,
+    runtime_profile: RuntimeProfile | None = None,
     adapter_records: tuple[AdapterExecutionRecord, ...] | None = None,
     adapter_policy: AdapterAcceptancePolicy | None = None,
     adapter_bundle_response: RunnerResponse | None = None,
+    production_e2e_attestation: VerifiedProductionE2E | None = None,
+    production_e2e_provider: (
+        Callable[
+            [TargetIdentity, EnvironmentIdentity],
+            VerifiedProductionE2E | None,
+        ]
+        | None
+    ) = None,
     worker_id: str | None = None,
     worker_attestation_sha256: str | None = None,
     execution_location: str = "local",
     signing_authority: str = "platform",
 ) -> dict:
+    try:
+        _journey(journey)
+    except ValueError:
+        # Applies to persisted legacy jobs and non-production compatibility too.
+        return {"run_id": run_id, "error": "runtime_profile_mismatch"}
+    if runtime_profile is not None:
+        try:
+            # Check operator-controlled inputs independently of tenant argv.
+            runtime_profile.check_execution(sandbox, runtime_profile.journey)
+        except ValueError:
+            return {"run_id": run_id, "error": "runtime_operator_profile_mismatch"}
+        try:
+            runtime_profile.check_execution(sandbox, journey)
+        except ValueError:
+            _LOGGER.warning("runtime_profile_rejected", extra={"run_id": run_id, "error_code": "runtime_profile_mismatch"})
+            return {"run_id": run_id, "error": "runtime_profile_mismatch"}
+    try:
+        # Reject unmeasurable inputs before claiming work or acquiring a target.
+        prepared = _worker_environment(
+            adapter_set_digest(adapter_records) if adapter_records is not None else None,
+            sha256_json(adapter_bundle_response.body) if adapter_bundle_response is not None else None,
+            manifest=manifest, sandbox=sandbox, journey=journey,
+        )
+        if runtime_profile is not None:
+            try:
+                declared = store.get_run(run_id, tenant)
+            except KeyError:
+                declared = None
+            if declared is not None:
+                try:
+                    public = json.loads(str(declared["environment_identity_json"]))
+                except (ValueError, KeyError):
+                    return {"run_id": run_id, "error": "runtime_environment_mismatch"}
+                if not isinstance(public, dict):
+                    return {"run_id": run_id, "error": "runtime_environment_mismatch"}
+                image = public.get("runner_image_digest")
+                if declared["environment_identity_digest"] != prepared.identity_digest or (
+                    image is not None and image != "sha256:" + prepared.runner_image_sha256
+                ):
+                    return {"run_id": run_id, "error": "runtime_environment_mismatch"}
+    except (ValueError, OSError, sqlite3.Error):
+        _LOGGER.warning("runtime_identity_rejected", extra={"run_id": run_id, "error_code": "runtime_identity_unavailable"})
+        return {"run_id": run_id, "error": "runtime_identity_unavailable"}
     if subscribers is None:
         try:
             with sqlite3.connect(store.db_path) as connection:
@@ -347,7 +386,38 @@ def run(
         if adapter_bundle_response is not None
         else None
     )
-    environment = _worker_environment(adapter_digest, adapter_execution_profile_sha256)
+    runtime_error = "runtime_profile_mismatch"
+    try:
+        # Acquisition can replace an OCI sandbox image. Fence the effective image,
+        # not merely the launcher's original selection, before any customer code.
+        if runtime_profile is not None:
+            runtime_profile.check_execution(sandbox_effective, journey)
+        runtime_error = "runtime_identity_unavailable"
+        environment = _worker_environment(
+            adapter_digest, adapter_execution_profile_sha256,
+            manifest=manifest, sandbox=sandbox_effective, journey=journey,
+        )
+    except (ValueError, OSError):
+        if heartbeat is not None:
+            heartbeat.stop()
+        claim_released = claim is None
+        if claim is not None and subscribers is not None:
+            try:
+                subscribers.fail_worker_execution(claim, reason=runtime_error)
+                claim_released = True
+            except (OSError, sqlite3.Error, SubscriberError):
+                # The existing lease fences signing and eventually expires; never
+                # claim successful cleanup when storage could not confirm it.
+                pass
+        shutil.rmtree(workdir, ignore_errors=True)
+        cleanup_complete = claim_released and not workdir.exists()
+        _LOGGER.warning("runtime_identity_rejected_after_acquisition", extra={
+            "run_id": run_id, "error_code": runtime_error,
+            "cleanup_complete": cleanup_complete,
+        })
+        return {"run_id": run_id, "error": runtime_error, "cleanup_complete": cleanup_complete}
+    if production_e2e_attestation is None and production_e2e_provider is not None:
+        production_e2e_attestation = production_e2e_provider(target, environment)
     if subscribers is not None:
         if existing is None or existing["state"] != RunState.QUEUED.value:
             if claim is not None:
@@ -530,6 +600,7 @@ def run(
                 },
                 adapter_records=adapter_records,
                 adapter_policy=adapter_policy,
+                production_e2e_attestation=production_e2e_attestation,
                 execution_guard=execution_guard,
                 completion_callback=completion_callback,
             )
@@ -669,6 +740,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tenant", required=True)
     parser.add_argument("--target-json", required=True, help='e.g. {"type":"local","path":"/abs/dir"}')
     parser.add_argument("--journey-json", default=None, help='e.g. ["python3","hello.py"]')
+    parser.add_argument(
+        "--production-e2e-attestation",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION"])
+            if os.environ.get("ECHO_CERTFORGE_PRODUCTION_E2E_ATTESTATION")
+            else None
+        ),
+        help="trusted-collector signed production E2E envelope",
+    )
+    parser.add_argument(
+        "--trusted-production-e2e-keys",
+        type=Path,
+        default=(
+            Path(os.environ["ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS"])
+            if os.environ.get("ECHO_CERTFORGE_TRUSTED_PRODUCTION_E2E_KEYS")
+            else None
+        ),
+        help="directory of pinned Ed25519 collector public keys",
+    )
     parser.add_argument("--policy-version", default=None)
     parser.add_argument(
         "--db",
@@ -711,6 +802,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--sandbox", action="store_true")
+    parser.add_argument("--runtime-profile", type=Path)
     parser.add_argument(
         "--non-production-compat",
         action="store_true",
@@ -718,7 +810,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--sandbox-image",
-        default=os.environ.get("ECHO_CERTFORGE_SANDBOX_IMAGE", DEFAULT_IMAGE),
+        default=None,
     )
     parser.add_argument(
         "--sandbox-docker",
@@ -875,12 +967,28 @@ def main(argv: list[str] | None = None) -> int:
         )
     target_spec = json.loads(args.target_json)
     journey = json.loads(args.journey_json) if args.journey_json else None
-    sandbox = None
-    if args.sandbox:
-        sandbox = DockerSandbox(
-            image=args.sandbox_image,
+    production_e2e_attestation = None
+    if args.production_e2e_attestation is not None:
+        if args.trusted_production_e2e_keys is None:
+            print(json.dumps({"error": "trusted_production_e2e_keys_missing"}))
+            return 2
+        try:
+            production_e2e_attestation = load_signed_attestation(
+                args.production_e2e_attestation,
+                args.trusted_production_e2e_keys,
+            )
+        except ValueError as exc:
+            print(json.dumps({"error": "production_e2e_attestation_invalid", "detail": str(exc)}))
+            return 2
+    try:
+        runtime = load_runtime_profile(
+            args.runtime_profile, image=args.sandbox_image,
             docker=tuple(args.sandbox_docker.split()),
         )
+    except ValueError as exc:
+        print(json.dumps({"error": "runtime_profile_invalid", "detail": str(exc)}))
+        return 2
+    sandbox = runtime.sandbox if args.sandbox else None
 
     result = run(
         args.run_id,
@@ -893,9 +1001,11 @@ def main(argv: list[str] | None = None) -> int:
         subscribers=subscribers,
         journey=journey,
         sandbox=sandbox,
+        runtime_profile=(runtime if args.runtime_profile or os.environ.get("ECHO_CERTFORGE_RUNTIME_PROFILE") else None),
         adapter_records=adapter_records,
         adapter_policy=adapter_policy,
         adapter_bundle_response=adapter_rebound_response,
+        production_e2e_attestation=production_e2e_attestation,
         worker_id=args.worker_id,
         worker_attestation_sha256=args.worker_attestation_sha256,
         execution_location=args.execution_location,

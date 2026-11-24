@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Production subscriber-to-dispatcher certification smoke.
+"""Production subscriber-to-dispatcher fail-closed certification smoke.
 
 This test runs only after the real API and dispatcher are active. It submits an exact-identity
-local target through the customer HTTP contract, waits for the durable dispatcher, and verifies
-the signed PRODUCTION_READY verdict and append-only evidence through the public API.
+local target through the customer HTTP contract without a trusted production-E2E attestation,
+waits for the durable dispatcher, and verifies that the service signs ``NOT_READY`` while keeping
+the append-only evidence and public signature-verification paths healthy. A deploy smoke must not
+manufacture the external evidence that the production gate is intended to require.
 """
 from __future__ import annotations
 
@@ -17,7 +19,8 @@ import urllib.request
 from pathlib import Path
 
 from echo_certification_forge.acquisition import acquire_target
-from echo_certification_forge.models import TargetIdentity
+from echo_certification_forge.models import EnvironmentIdentity, TargetIdentity
+from echo_certification_forge.service import RuntimeEnvironmentResponse
 from echo_certification_forge.subscriber import (
     OrganizationStatus,
     SubscriberGovernance,
@@ -65,6 +68,39 @@ def _require(condition: bool, message: str, detail: object | None = None) -> Non
     print(f"  [ok ] {message}")
 
 
+def _require_attestation_gate_closed(terminal: dict) -> None:
+    """Prove an unattested run cannot be promoted by the production dispatcher."""
+
+    _require(
+        terminal.get("release_verdict") == "NOT_READY",
+        "unattested customer run is NOT_READY",
+        terminal.get("release_verdict"),
+    )
+    production_e2e = terminal.get("production_e2e")
+    _require(
+        isinstance(production_e2e, dict) and production_e2e.get("verified") is False,
+        "unattested customer run has no verified production E2E",
+        production_e2e,
+    )
+
+
+def _resolve_environment(base: str, headers: dict, journey: list[str], image: str) -> dict:
+    code, payload = _request(
+        base, "POST", "/v1/subscriber/runtime/environment", **headers,
+        body={"journey": journey},
+    )
+    _require(code == 200, "smoke journey runtime resolved", code)
+    response = RuntimeEnvironmentResponse.model_validate(payload)
+    measured = EnvironmentIdentity(**response.environment.model_dump())
+    _require(response.journey == journey, "resolved runtime binds the smoke journey")
+    _require(response.submit_environment.identity_digest == measured.identity_digest,
+             "resolved runtime component commitment verifies")
+    _require(response.submit_environment.runner_image_digest == image
+             and image == "sha256:" + measured.runner_image_sha256,
+             "resolved runtime retains the operator image")
+    return response.submit_environment.model_dump(exclude_none=True)
+
+
 def main() -> int:
     base = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8309"
     db_path = os.environ.get("ECHO_CERTFORGE_DB")
@@ -76,12 +112,7 @@ def main() -> int:
     status_code, status = _request(base, "GET", "/v1/status")
     _require(status_code == 200, "service status is reachable", status_code)
     _require(status.get("adapter_qualification") == "REQUIRED", "required adapter mode is active")
-    environment_digest = status.get("certification_environment_identity_digest")
     runner_image_digest = status.get("runner_image_digest")
-    _require(
-        isinstance(environment_digest, str) and len(environment_digest) == 64,
-        "customer certification environment is published",
-    )
     _require(
         isinstance(runner_image_digest, str) and runner_image_digest.startswith("sha256:"),
         "customer runner image is published",
@@ -105,6 +136,9 @@ def main() -> int:
     target_root = Path(db_path).parent / "deploy-scratch" / f"dispatch-smoke-{_NONCE}"
     target_root.mkdir(parents=True)
     try:
+        journey = ["python3", "certforge_smoke.py"]
+        environment = _resolve_environment(base, headers, journey, runner_image_digest)
+        environment_digest = environment["identity_digest"]
         (target_root / "certforge_smoke.py").write_text(
             "print('echo-certification-forge-production-smoke')\n",
             encoding="utf-8",
@@ -152,13 +186,10 @@ def main() -> int:
                     "reference": acquired.canonical_ref,
                     "path": acquired.canonical_ref,
                 },
-                "environment": {
-                    "identity_digest": environment_digest,
-                    "runner_image_digest": runner_image_digest,
-                },
+                "environment": environment,
                 "policy_version": status["rule_manifest_id"],
                 "idempotency_key": f"production-dispatch-smoke-{_NONCE}",
-                "journey": ["python3", "certforge_smoke.py"],
+                "journey": journey,
             },
         )
         _require(submit_status == 201, "customer certification was accepted", submitted)
@@ -177,11 +208,7 @@ def main() -> int:
             time.sleep(1)
         _require(terminal.get("state") == "COMPLETE", "dispatcher completed the customer run", terminal)
         _require(terminal.get("run_outcome") == "COMPLETE", "customer run outcome is COMPLETE")
-        _require(
-            terminal.get("release_verdict") == "PRODUCTION_READY",
-            "customer received PRODUCTION_READY",
-            terminal.get("release_verdict"),
-        )
+        _require_attestation_gate_closed(terminal)
         _require(
             terminal.get("environment_identity_digest") == environment_digest,
             "verdict retained the published environment identity",
@@ -198,7 +225,12 @@ def main() -> int:
         )
         _require(verdict_status == 200, "signed verdict is retrievable", verdict_status)
         payload = verdict.get("payload", {})
-        _require(payload.get("release_verdict") == "PRODUCTION_READY", "signed verdict is PRODUCTION_READY")
+        _require(payload.get("release_verdict") == "NOT_READY", "signed verdict is NOT_READY")
+        _require(
+            "production_e2e_attestation_missing" in payload.get("reasons", []),
+            "signed verdict records the missing production E2E attestation",
+            payload.get("reasons"),
+        )
         _require(payload.get("environment_identity_digest") == environment_digest, "signed verdict binds environment")
 
         verify_status, verified = _request(
@@ -209,7 +241,7 @@ def main() -> int:
             "public verdict verification succeeds",
             verified,
         )
-        print(f"PRODUCTION DISPATCH SMOKE GREEN - run_id={run_id}")
+        print(f"PRODUCTION DISPATCH FAIL-CLOSED SMOKE GREEN - run_id={run_id}")
         return 0
     finally:
         shutil.rmtree(target_root, ignore_errors=True)

@@ -3,4 +3,4 @@
 from .models import ReleaseVerdict, RunOutcome, RunState
 
 __all__ = ["ReleaseVerdict", "RunOutcome", "RunState"]
-__version__ = "1.1.0"
+__version__ = "1.2.0"

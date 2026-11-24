@@ -1,4 +1,4 @@
 {
   "version": 1,
-  "journey": ["python", "-B", "scripts/certification_journey.py"]
+  "journey": ["python3", "-B", "scripts/certforge_journey.py"]
 }
