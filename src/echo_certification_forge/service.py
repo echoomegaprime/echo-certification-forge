@@ -32,6 +32,7 @@ from .intake import (
     SubmitRequest,
     SubmitTarget,
     project_run,
+    project_runs,
     submit,
 )
 from .models import RunState, SignedVerdictEnvelope, VerdictLifecycleEvent
@@ -594,7 +595,7 @@ def create_app(context: ServiceContext) -> FastAPI:
         tenant_id, _principal = authorize(
             x_tenant_id, authorization, Permission.RUN_READ, "certifications.list"
         )
-        return [project_run(context.store, row) for row in context.store.list_runs(tenant_id)]
+        return project_runs(context.store, tenant_id)
 
     @app.get("/v1/certifications/{run_id}")
     def get_run(

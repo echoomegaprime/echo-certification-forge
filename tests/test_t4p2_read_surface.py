@@ -6,13 +6,16 @@ real on-disk sqlite EvidenceStore, real Ed25519 signing. No mocks.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
 from echo_certification_forge.models import RedactionStatus, RunOutcome, RunState, RuleResult
+from echo_certification_forge.production_e2e import RULE_ID as PRODUCTION_E2E_RULE_ID
 from echo_certification_forge.service import ServiceContext, create_app
 from echo_certification_forge.signing import Ed25519VerdictSigner, TrustedPublicKeyRegistry
 from echo_certification_forge.verdict import DeterministicVerdictEngine
+from production_e2e_support import trusted_generic_production_e2e
 
 
 def _client(store, manifest, trusted=None) -> TestClient:
@@ -150,3 +153,76 @@ def test_verdict_endpoint_404_until_signed_then_returns_envelope(store, manifest
     )
     verified, reason = trusted.verify(envelope)
     assert verified, reason
+
+
+def test_list_preserves_signed_verdict_and_production_e2e_in_one_read(
+    store, manifest, target, environment, monkeypatch
+):
+    client = _client(store, manifest)
+    tenant = target.tenant_id
+    other = replace(target, tenant_id="tenant-other")
+    for run_id, run_target in (
+        ("cert-unsigned", target), ("cert-valid", target),
+        ("cert-mismatch", target), ("cert-other", other),
+    ):
+        store.register_run(run_id, run_target, environment, manifest.manifest_id, manifest.digest)
+
+    details = trusted_generic_production_e2e(target, environment).result_details()
+    for run_id, rule_details in (
+        ("cert-valid", details),
+        ("cert-mismatch", {**details, "environment_identity_digest": "0" * 64}),
+    ):
+        artifact_id = f"evidence-{run_id}"
+        store.append_artifact(
+            run_id, tenant, artifact_id, b"attestation fixture",
+            "text/plain", "test", RedactionStatus.COMPLETE,
+        )
+        store.record_rule_result(
+            run_id, tenant, RuleResult(PRODUCTION_E2E_RULE_ID, True, (artifact_id,), rule_details)
+        )
+
+    signer = Ed25519VerdictSigner.generate()
+    engine = DeterministicVerdictEngine()
+    roots = []
+    for revision in (1, 2):
+        store.append_artifact(
+            "cert-valid", tenant, f"evidence-revision-{revision}", str(revision).encode(),
+            "text/plain", "test", RedactionStatus.COMPLETE,
+        )
+        decision = engine.evaluate(store, "cert-valid", tenant, manifest, signer.key_id)
+        store.save_signed_verdict("cert-valid", tenant, signer.sign(decision))
+        roots.append(decision.evidence_merkle_root)
+    assert roots[0] != roots[1]
+
+    expected = []
+    for row in store.list_runs(tenant):
+        response = client.get(f"/v1/certifications/{row['run_id']}", headers=_h(tenant))
+        assert response.status_code == 200
+        expected.append(response.json())
+    select_statements = []
+    connect = store._connect
+
+    def record_select(sql):
+        if sql.lstrip().upper().startswith("SELECT"):
+            select_statements.append(sql)
+
+    def traced_connect():
+        connection = connect()
+        connection.set_trace_callback(record_select)
+        return connection
+
+    monkeypatch.setattr(store, "_connect", traced_connect)
+    response = client.get("/v1/certifications", headers=_h(tenant))
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert len(select_statements) == 1
+    by_id = {row["run_id"]: row for row in response.json()}
+    assert set(by_id) == {"cert-unsigned", "cert-valid", "cert-mismatch"}
+    assert by_id["cert-valid"]["evidence_merkle_root"] == roots[1]
+    assert by_id["cert-valid"]["production_e2e"]["verified"] is True
+    assert by_id["cert-valid"]["production_e2e"]["attestation_id"] == details["attestation_id"]
+    assert by_id["cert-unsigned"]["release_verdict"] == "NOT_READY"
+    assert by_id["cert-unsigned"]["evidence_merkle_root"] is None
+    assert by_id["cert-mismatch"]["production_e2e"] == by_id["cert-unsigned"]["production_e2e"]
+    assert by_id["cert-mismatch"]["production_e2e"]["verified"] is False
+    assert client.get("/v1/certifications", headers=_h("tenant-empty")).json() == []

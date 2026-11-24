@@ -153,11 +153,37 @@ def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
     """Project an internal run row into a certification-run.v1.json-conforming object."""
     run_id = row["run_id"]
     tenant_id = row["tenant_id"]
+    verdict = store.latest_signed_verdict(run_id, tenant_id)
+    result = store.list_rule_results(run_id, tenant_id).get(PRODUCTION_E2E_RULE_ID)
+    return _project_run(
+        row,
+        verdict["payload_json"] if verdict is not None else None,
+        result.details if result is not None else None,
+    )
+
+
+def project_runs(store: EvidenceStore, tenant_id: str) -> list[dict[str, Any]]:
+    rows = store.list_run_projection_rows(tenant_id, PRODUCTION_E2E_RULE_ID)
+    return [
+        _project_run(
+            row,
+            row["verdict_payload_json"],
+            json.loads(row["production_details_json"])
+            if row["production_details_json"] is not None else None,
+        )
+        for row in rows
+    ]
+
+
+def _project_run(
+    row: dict[str, Any],
+    verdict_payload_json: str | None,
+    production_details: dict[str, Any] | None,
+) -> dict[str, Any]:
     release_verdict = ReleaseVerdict.NOT_READY.value
     evidence_merkle_root: str | None = None
-    verdict_row = store.latest_signed_verdict(run_id, tenant_id)
-    if verdict_row is not None:
-        payload = json.loads(verdict_row["payload_json"])
+    if verdict_payload_json is not None:
+        payload = json.loads(verdict_payload_json)
         release_verdict = payload.get("release_verdict", release_verdict)
         evidence_merkle_root = payload.get("evidence_merkle_root")
     production_e2e = {
@@ -174,48 +200,47 @@ def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
         "collector_key_id": None,
         "attestation_envelope_sha256": None,
     }
-    result = store.list_rule_results(run_id, tenant_id).get(PRODUCTION_E2E_RULE_ID)
-    if result is not None:
+    if production_details is not None:
         try:
             target = TargetIdentity(**json.loads(row["target_identity_json"]))
             environment = EnvironmentIdentity(**json.loads(row["environment_identity_json"]))
             verified, _reason = validate_production_e2e(
-                result.details,
+                production_details,
                 target,
                 environment,
                 now=utc_now(),
             )
             production_e2e = {
                 "verified": verified,
-                "profile": result.details.get("profile") if verified else None,
-                "attestation_id": result.details.get("attestation_id") if verified else None,
-                "source_commit": result.details.get("source_commit") if verified else None,
-                "deployment_sha": result.details.get("deployment_sha") if verified else None,
+                "profile": production_details.get("profile") if verified else None,
+                "attestation_id": production_details.get("attestation_id") if verified else None,
+                "source_commit": production_details.get("source_commit") if verified else None,
+                "deployment_sha": production_details.get("deployment_sha") if verified else None,
                 "target_identity_digest": (
-                    result.details.get("target_identity_digest") if verified else None
+                    production_details.get("target_identity_digest") if verified else None
                 ),
                 "environment_identity_digest": (
-                    result.details.get("environment_identity_digest") if verified else None
+                    production_details.get("environment_identity_digest") if verified else None
                 ),
                 "canonical_target": (
-                    result.details.get("canonical_target") if verified else None
+                    production_details.get("canonical_target") if verified else None
                 ),
-                "tool_count": result.details.get("tool_count") if verified else None,
+                "tool_count": production_details.get("tool_count") if verified else None,
                 "signature_verified": (
-                    result.details.get("signature_verified") is True if verified else False
+                    production_details.get("signature_verified") is True if verified else False
                 ),
                 "collector_key_id": (
-                    result.details.get("collector_key_id") if verified else None
+                    production_details.get("collector_key_id") if verified else None
                 ),
                 "attestation_envelope_sha256": (
-                    result.details.get("attestation_envelope_sha256") if verified else None
+                    production_details.get("attestation_envelope_sha256") if verified else None
                 ),
             }
         except (TypeError, ValueError):
             pass
     projected = {
-        "run_id": run_id,
-        "tenant_id": tenant_id,
+        "run_id": row["run_id"],
+        "tenant_id": row["tenant_id"],
         "state": to_public_state(row["state"]),
         "run_outcome": row["run_outcome"],
         "release_verdict": release_verdict,
