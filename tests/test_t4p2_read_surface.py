@@ -150,3 +150,40 @@ def test_verdict_endpoint_404_until_signed_then_returns_envelope(store, manifest
     )
     verified, reason = trusted.verify(envelope)
     assert verified, reason
+
+
+def test_run_list_projects_latest_verdict_for_each_tenant_run_in_one_read(
+    store, manifest, target, environment, monkeypatch
+):
+    tenant = target.tenant_id
+    for run_id in ("cert-signed", "cert-unsigned"):
+        store.register_run(run_id, target, environment, manifest.manifest_id, manifest.digest)
+    signer = Ed25519VerdictSigner.generate()
+    for verdict, root in (("NOT_READY", "a" * 64), ("PRODUCTION_READY", "b" * 64)):
+        envelope = signer.sign_payload({
+            "tenant_id": tenant, "run_id": "cert-signed",
+            "release_verdict": verdict, "evidence_merkle_root": root,
+            "signing_key_id": signer.key_id,
+        })
+        store.save_signed_verdict("cert-signed", tenant, envelope)
+    client = _client(store, manifest)
+    ordered_ids = [row["run_id"] for row in store.list_runs(tenant)]
+    expected = [client.get(f"/v1/certifications/{run_id}", headers=_h(tenant)).json()
+                for run_id in ordered_ids]
+    assert client.get("/v1/certifications", headers=_h("other-tenant")).json() == []
+    connects = []
+    original_connect = store._connect
+
+    def trace_connect():
+        connects.append(True)
+        return original_connect()
+
+    monkeypatch.setattr(store, "_connect", trace_connect)
+    response = client.get("/v1/certifications", headers=_h(tenant))
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert len(connects) == 1
+    rows = {row["run_id"]: row for row in response.json()}
+    assert rows["cert-signed"]["evidence_merkle_root"] == "b" * 64
+    assert rows["cert-signed"]["release_verdict"] == "PRODUCTION_READY"
+    assert rows["cert-unsigned"]["release_verdict"] == "NOT_READY"

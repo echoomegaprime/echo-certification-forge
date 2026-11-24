@@ -10,10 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import socket
-import subprocess
-import sys
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -22,12 +18,6 @@ from echo_certification_forge.subscriber import SubscriberGovernance, Subscriber
 
 DIGEST = "0" * 64
 PEPPER = "auth-tenant-http-e2e-pepper-material-32-bytes"
-
-
-def _free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
 
 
 def _json_request(
@@ -60,22 +50,6 @@ def _json_request(
         return exc.code, parsed, raw
 
 
-def _wait_healthy(base: str, process: subprocess.Popen[str]) -> None:
-    output = ""
-    for _ in range(100):
-        if process.poll() is not None:
-            if process.stdout is not None:
-                output = process.stdout.read()
-            break
-        try:
-            status, _, _ = _json_request(f"{base}/healthz")
-            if status == 200:
-                return
-        except OSError:
-            time.sleep(0.05)
-    raise AssertionError(f"uvicorn never became healthy: {output}")
-
-
 def _valid_submit(tenant_id: str, project_id: str, key: str, manifest_id: str) -> dict:
     return {
         "tenant_id": tenant_id,
@@ -95,10 +69,9 @@ def _valid_submit(tenant_id: str, project_id: str, key: str, manifest_id: str) -
 
 
 def test_live_http_anonymous_submit_is_indistinguishable_and_tenants_stay_isolated(
-    tmp_path: Path, manifest
+    tmp_path: Path, manifest, live_certforge
 ) -> None:
     repo = Path(__file__).parents[1]
-    port = _free_port()
     db = tmp_path / "e2e.sqlite3"
     env = os.environ.copy()
     env.update(
@@ -115,29 +88,7 @@ def test_live_http_anonymous_submit_is_indistinguishable_and_tenants_stay_isolat
             "ECHO_CERTFORGE_API_KEY_PEPPER": PEPPER,
         }
     )
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "echo_certification_forge.app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--log-level",
-            "warning",
-        ],
-        cwd=repo,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    base = f"http://127.0.0.1:{port}"
-    try:
-        _wait_healthy(base, process)
-
+    with live_certforge(env) as base:
         malformed_status, malformed_body, malformed_raw = _json_request(
             f"{base}/v1/certifications", method="POST", payload={}
         )
@@ -245,10 +196,3 @@ def test_live_http_anonymous_submit_is_indistinguishable_and_tenants_stay_isolat
         )
         assert cross_header_status in {401, 403, 404}
         assert cross_header_body != own_body
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)

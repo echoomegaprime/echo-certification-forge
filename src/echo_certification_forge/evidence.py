@@ -506,6 +506,22 @@ class EvidenceStore:
             rows = connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
+    def list_runs_with_latest_verdict(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Read the full tenant list and its latest verdict payloads in one snapshot."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT r.*,
+                          (SELECT v.payload_json
+                             FROM signed_verdicts AS v
+                            WHERE v.run_id = r.run_id AND v.tenant_id = r.tenant_id
+                            ORDER BY v.verdict_id DESC LIMIT 1) AS latest_verdict_payload_json
+                     FROM runs AS r
+                    WHERE r.tenant_id = ?
+                    ORDER BY r.created_at DESC""",
+                (tenant_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def count_runs_by_state(self, tenant_id: str) -> dict[str, int]:
         """Return tenant-scoped run counts without loading the run population."""
         with self._connection() as connection:

@@ -5,13 +5,10 @@ import base64
 import hashlib
 import json
 import os
-import socket
 import sqlite3
 import subprocess
 import sys
 import threading
-import time
-import urllib.request
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -3225,12 +3222,9 @@ def test_expired_lease_cannot_commit_signed_completion(tmp_path, manifest, monke
 
 @pytest.mark.parametrize("deployment", ["staging", "production"])
 def test_deploy_environment_boots_and_authenticated_smoke_is_green(
-    tmp_path, deployment
+    tmp_path, deployment, live_certforge
 ):
     repo = Path(__file__).parents[1]
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
     env = os.environ.copy()
     env.update(
         {
@@ -3250,42 +3244,7 @@ def test_deploy_environment_boots_and_authenticated_smoke_is_green(
             ),
         }
     )
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "echo_certification_forge.app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--log-level",
-            "warning",
-        ],
-        cwd=repo,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    base = f"http://127.0.0.1:{port}"
-    try:
-        healthy = False
-        for _ in range(100):
-            if process.poll() is not None:
-                break
-            try:
-                with urllib.request.urlopen(f"{base}/healthz", timeout=1) as response:
-                    healthy = response.status == 200
-                    if healthy:
-                        break
-            except OSError:
-                time.sleep(0.05)
-        output = ""
-        if process.poll() is not None and process.stdout is not None:
-            output = process.stdout.read()
-        assert healthy and process.poll() is None, output
+    with live_certforge(env) as base:
         smoke = subprocess.run(
             [sys.executable, "deploy/smoke_live.py", base],
             cwd=repo,
@@ -3297,13 +3256,6 @@ def test_deploy_environment_boots_and_authenticated_smoke_is_green(
         )
         assert smoke.returncode == 0, smoke.stdout + smoke.stderr
         assert "SMOKE GREEN" in smoke.stdout
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
 
 
 def _artifact_fixture(tmp_path, manifest):

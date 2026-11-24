@@ -143,18 +143,27 @@ def to_public_state(internal: str) -> str:
 
 def project_run(store: EvidenceStore, row: dict[str, Any]) -> dict[str, Any]:
     """Project an internal run row into a certification-run.v1.json-conforming object."""
-    run_id = row["run_id"]
-    tenant_id = row["tenant_id"]
+    verdict = store.latest_signed_verdict(row["run_id"], row["tenant_id"])
+    return _public_run(row, verdict["payload_json"] if verdict is not None else None)
+
+
+def project_runs(store: EvidenceStore, tenant_id: str) -> list[dict[str, Any]]:
+    return [
+        _public_run(row, row["latest_verdict_payload_json"])
+        for row in store.list_runs_with_latest_verdict(tenant_id)
+    ]
+
+
+def _public_run(row: dict[str, Any], verdict_payload_json: str | None) -> dict[str, Any]:
     release_verdict = ReleaseVerdict.NOT_READY.value
     evidence_merkle_root: str | None = None
-    verdict_row = store.latest_signed_verdict(run_id, tenant_id)
-    if verdict_row is not None:
-        payload = json.loads(verdict_row["payload_json"])
+    if verdict_payload_json is not None:
+        payload = json.loads(verdict_payload_json)
         release_verdict = payload.get("release_verdict", release_verdict)
         evidence_merkle_root = payload.get("evidence_merkle_root")
     projected = {
-        "run_id": run_id,
-        "tenant_id": tenant_id,
+        "run_id": row["run_id"],
+        "tenant_id": row["tenant_id"],
         "state": to_public_state(row["state"]),
         "run_outcome": row["run_outcome"],
         "release_verdict": release_verdict,
