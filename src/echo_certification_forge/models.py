@@ -169,6 +169,19 @@ class VerificationReport:
     chain_tip: str
 
 
+# Residual-limit wording carried in the signed payload of every verdict (Fable
+# condition S1, 2026-11-24): a certificate must state what its runtime identity
+# does and does not prove, so no reader can mistake a digest pin for execution
+# attestation.
+RUNTIME_IDENTITY_EVIDENCE_BASIS = (
+    "The runner image digest proves selection of the exact pinned image handed to Docker, "
+    "not observed execution of that image. Runtime identity is self-measured by the worker; "
+    "there is no TPM attestation. Integrity is anchored by external comparison of the measured "
+    "harness digest against the admitted candidate, and execution is evidenced by the run's own "
+    "journey evidence and independently signed production E2E attestation."
+)
+
+
 @dataclass(frozen=True, slots=True)
 class VerdictDecision:
     schema_version: str
@@ -188,6 +201,7 @@ class VerdictDecision:
     signing_key_id: str
     issued_at: datetime
     expires_at: datetime
+    evidence_basis: str = RUNTIME_IDENTITY_EVIDENCE_BASIS
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -208,6 +222,7 @@ class VerdictDecision:
             "signing_key_id": self.signing_key_id,
             "issued_at": to_utc_iso(self.issued_at),
             "expires_at": to_utc_iso(self.expires_at),
+            "evidence_basis": self.evidence_basis,
         }
 
 

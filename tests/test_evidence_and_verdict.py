@@ -10,6 +10,7 @@ import pytest
 
 from echo_certification_forge.deploy_gate import DeployGate
 from echo_certification_forge.models import (
+    RUNTIME_IDENTITY_EVIDENCE_BASIS,
     RedactionStatus,
     ReleaseVerdict,
     RuleResult,
@@ -322,3 +323,38 @@ def test_cross_tenant_read_is_not_disclosed(store, manifest, target, environment
     run_id = register(store, manifest, target, environment)
     with pytest.raises(KeyError):
         store.get_run(run_id, "tenant-other")
+
+
+def test_signed_verdict_carries_runtime_identity_evidence_basis(store, manifest, target, environment):
+    # Condition S1 (Fable sign-off, 2026-11-24): every fresh certificate must
+    # state what the image digest does and does not prove, inside the signed
+    # payload itself.
+    run_id = register(store, manifest, target, environment)
+    signer = Ed25519VerdictSigner.generate()
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
+    payload = decision.to_dict()
+    assert payload["evidence_basis"] == RUNTIME_IDENTITY_EVIDENCE_BASIS
+    assert "proves selection" in payload["evidence_basis"]
+    assert "not observed execution" in payload["evidence_basis"]
+    assert "no TPM attestation" in payload["evidence_basis"]
+    envelope = signer.sign(decision)
+    assert envelope.payload["evidence_basis"] == RUNTIME_IDENTITY_EVIDENCE_BASIS
+    trusted = TrustedPublicKeyRegistry.empty()
+    trusted.add_pem(signer.public_key_pem)
+    verified, reason = trusted.verify(envelope)
+    assert verified, reason
+
+
+def test_ready_verdict_also_carries_evidence_basis(store, manifest, target, environment):
+    run_id = register(store, manifest, target, environment)
+    satisfy_all_rules(store, manifest, run_id, target.tenant_id)
+    store.set_run_outcome(run_id, target.tenant_id, RunOutcome.COMPLETE)
+    signer = Ed25519VerdictSigner.generate()
+    decision = DeterministicVerdictEngine().evaluate(
+        store, run_id, target.tenant_id, manifest, signer.key_id
+    )
+    assert decision.release_verdict is ReleaseVerdict.PRODUCTION_READY
+    assert decision.evidence_basis == RUNTIME_IDENTITY_EVIDENCE_BASIS
+    assert decision.to_dict()["evidence_basis"] == RUNTIME_IDENTITY_EVIDENCE_BASIS
