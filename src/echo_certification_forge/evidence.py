@@ -506,6 +506,26 @@ class EvidenceStore:
             rows = connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
+    def list_run_projection_rows(self, tenant_id: str, rule_id: str) -> list[dict[str, Any]]:
+        """Read each run and its public projection inputs in a single database snapshot."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT runs.*,
+                          (SELECT verdict.payload_json
+                             FROM signed_verdicts AS verdict
+                            WHERE verdict.run_id = runs.run_id AND verdict.tenant_id = runs.tenant_id
+                            ORDER BY verdict.verdict_id DESC LIMIT 1) AS verdict_payload_json,
+                          result.details_json AS production_details_json
+                     FROM runs
+                     LEFT JOIN rule_results AS result
+                       ON result.run_id = runs.run_id AND result.tenant_id = runs.tenant_id
+                      AND result.rule_id = ?
+                    WHERE runs.tenant_id = ?
+                    ORDER BY runs.created_at DESC""",
+                (rule_id, tenant_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def count_runs_by_state(self, tenant_id: str) -> dict[str, int]:
         """Return tenant-scoped run counts without loading the run population."""
         with self._connection() as connection:
