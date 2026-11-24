@@ -1306,12 +1306,35 @@
         "additionalProperties": false,
         "properties": {
           "command": {
+            "description": "Uniform SDK command field (not forwarded to upstream; auth via static_headers).",
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
           },
           "project_id": {
+            "description": "Tenant certification project id to archive (path token {project_id}).",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
             "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "description": "Dual-shape mirror for fleet envelope / option_projections.",
+            "properties": {
+              "command": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "project_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "type": "string"
+              }
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -1322,7 +1345,15 @@
       },
       "operation": "DELETE /v1/subscriber/projects/{project_id}",
       "output_schema": {
-        "type": "null"
+        "anyOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "object",
+            "additionalProperties": true
+          }
+        ]
       }
     },
     "echo.certforge.projects.create": {

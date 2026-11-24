@@ -5,6 +5,7 @@ import argparse
 import json
 import logging
 import os
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -17,10 +18,17 @@ from .intake import SubmitRequest
 from .policy import RuleManifest
 from .production_e2e import DirectoryProductionE2EProvider
 from .run_worker import _load_adapter_inputs, _load_signer, run
+from .dispatch_safety import safe_dispatch_queue_stats, safe_reconcile_dispatch_outbox
 from .runtime_identity import load_runtime_profile
+from .sqlite_io import free_space_bytes, is_transient_sqlite_error
 from .subscriber import SubscriberDispatch, SubscriberError, SubscriberGovernance, SubscriberPolicy
 
 _REPO = Path(__file__).resolve().parents[2]
+
+_DB_ERROR_BACKOFF_SEC = float(os.environ.get("ECHO_CERTFORGE_DISPATCH_DB_BACKOFF_SEC", "15"))
+_DB_ERROR_BACKOFF_SEC = min(max(_DB_ERROR_BACKOFF_SEC, 2.0), 120.0)
+_DB_ERROR_BACKOFF_CAP_SEC = float(os.environ.get("ECHO_CERTFORGE_DISPATCH_DB_BACKOFF_CAP_SEC", "120"))
+_DB_ERROR_BACKOFF_CAP_SEC = min(max(_DB_ERROR_BACKOFF_CAP_SEC, 15.0), 600.0)
 
 
 def recover_pending_intake(
@@ -368,22 +376,103 @@ def main(argv: list[str] | None = None) -> int:
             "registry_path": args.adapter_registry,
             "runner_signing_key_path": args.adapter_runner_signing_key,
         }
-    while True:
-        dispatch, result = dispatch_once(
-            governance,
-            run,
-            dispatcher_id=args.dispatcher_id,
-            run_id=args.run_id,
-            organization_id=args.tenant,
-            worker_options=options,
+    # Reconcile once at boot so zombie PENDING/FAILED rows don't require a
+    # separate ops pass before the claim loop can make progress. Soft call:
+    # product package may lag SYSTEMS overlay (incident #9676 AttributeError).
+    boot_reconcile = safe_reconcile_dispatch_outbox(governance)
+    if boot_reconcile is not None:
+        print(
+            json.dumps(
+                {"event": "dispatcher_boot_reconcile", **boot_reconcile},
+                sort_keys=True,
+            )
         )
+    else:
+        print(
+            json.dumps(
+                {
+                    "event": "dispatcher_boot_reconcile_skipped",
+                    "reason": "reconcile_dispatch_outbox_unavailable",
+                },
+                sort_keys=True,
+            )
+        )
+    idle_since = time.monotonic()
+    status_every = float(
+        os.environ.get("ECHO_CERTFORGE_DISPATCH_STATUS_SECONDS", "60")
+    )
+    last_status_at = 0.0
+    db_error_streak = 0
+    while True:
+        try:
+            # Keep outbox hygiene continuous when method is present.
+            safe_reconcile_dispatch_outbox(governance)
+            dispatch, result = dispatch_once(
+                governance,
+                run,
+                dispatcher_id=args.dispatcher_id,
+                run_id=args.run_id,
+                organization_id=args.tenant,
+                worker_options=options,
+            )
+        except (sqlite3.OperationalError, OSError) as exc:
+            # Killer of unit_flapping (incident #9676): uncaught disk I/O error
+            # exits the process; systemd Restart=always storms within one scan.
+            # OSError is included because connect_sqlite may raise it after
+            # exhausted retries (ENOSPC / EIO) — same storm class as OperationalError.
+            db_error_streak += 1
+            free = free_space_bytes(args.db)
+            backoff = min(
+                _DB_ERROR_BACKOFF_CAP_SEC,
+                _DB_ERROR_BACKOFF_SEC * (2 ** min(db_error_streak - 1, 4)),
+            )
+            transient = is_transient_sqlite_error(exc) or isinstance(exc, OSError)
+            print(
+                json.dumps(
+                    {
+                        "event": "dispatcher_db_transient_error",
+                        "error": type(exc).__name__,
+                        "detail": str(exc)[:300],
+                        "transient": transient,
+                        "streak": db_error_streak,
+                        "backoff_sec": round(backoff, 2),
+                        "db_path": str(args.db),
+                        "db_free_bytes": free,
+                        "dispatcher_id": args.dispatcher_id,
+                    },
+                    sort_keys=True,
+                )
+            )
+            if args.once:
+                return 4 if transient else 1
+            if not transient and db_error_streak >= 8:
+                raise
+            time.sleep(backoff)
+            continue
+        db_error_streak = 0
         if dispatch is not None:
+            idle_since = time.monotonic()
             print(json.dumps(result, sort_keys=True))
         if result is not None and result.get("dispatcher_halted") is True:
             return 2
         if args.once:
             return 0 if dispatch is not None else 3
         if dispatch is None:
+            now_mono = time.monotonic()
+            if status_every > 0 and (now_mono - last_status_at) >= status_every:
+                stats = safe_dispatch_queue_stats(governance)
+                print(
+                    json.dumps(
+                        {
+                            "event": "dispatcher_idle",
+                            "idle_seconds": round(now_mono - idle_since, 1),
+                            "dispatcher_id": args.dispatcher_id,
+                            **stats,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                last_status_at = now_mono
             time.sleep(args.poll_seconds)
 
 

@@ -267,13 +267,18 @@ class SubscriberGovernance:
         return value.astimezone(UTC)
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = FULL")
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return connection
+        # Retries transient disk I/O / lock errors (incident #9676 unit_flapping).
+        from .sqlite_io import connect_sqlite
+
+        return connect_sqlite(
+            self.db_path,
+            timeout=10,
+            wal=True,
+            synchronous="FULL",
+            busy_timeout_ms=10000,
+            foreign_keys=True,
+            label="subscriber_sqlite_connect",
+        )
 
     @contextmanager
     def _connection(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
