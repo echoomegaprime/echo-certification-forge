@@ -31,8 +31,16 @@ _DB_ERROR_BACKOFF_SEC = min(max(_DB_ERROR_BACKOFF_SEC, 2.0), 120.0)
 _DB_ERROR_BACKOFF_CAP_SEC = float(os.environ.get("ECHO_CERTFORGE_DISPATCH_DB_BACKOFF_CAP_SEC", "120"))
 _DB_ERROR_BACKOFF_CAP_SEC = min(max(_DB_ERROR_BACKOFF_CAP_SEC, 15.0), 600.0)
 
-# Operating-system errors at startup that can clear without a restart.
-_STARTUP_TRANSIENT_ERRNOS = frozenset({errno.ENOSPC, errno.EIO, errno.EBUSY, errno.EAGAIN})
+# Operating-system errors that can clear without a restart. Every other errno
+# (a missing path, a permission, a name already taken) is a fault to surface.
+_TRANSIENT_OS_ERRNOS = frozenset({errno.ENOSPC, errno.EIO, errno.EBUSY, errno.EAGAIN})
+
+
+def _is_transient_db_error(exc: BaseException) -> bool:
+    """One rule for startup and for the claim loop: can waiting fix this error?"""
+    if isinstance(exc, OSError):
+        return exc.errno in _TRANSIENT_OS_ERRNOS
+    return is_transient_sqlite_error(exc)
 
 
 class _StartupUnavailable(Exception):
@@ -60,10 +68,7 @@ def _startup_db_step(
         try:
             return action()
         except (sqlite3.OperationalError, OSError) as exc:
-            transient = is_transient_sqlite_error(exc) or (
-                isinstance(exc, OSError) and exc.errno in _STARTUP_TRANSIENT_ERRNOS
-            )
-            if not transient:
+            if not _is_transient_db_error(exc):
                 raise
             streak += 1
             backoff = min(
@@ -508,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
                 _DB_ERROR_BACKOFF_CAP_SEC,
                 _DB_ERROR_BACKOFF_SEC * (2 ** min(db_error_streak - 1, 4)),
             )
-            transient = is_transient_sqlite_error(exc) or isinstance(exc, OSError)
+            transient = _is_transient_db_error(exc)
             print(
                 json.dumps(
                     {
