@@ -21,6 +21,13 @@ SURFACE_PATH = ROOT / "contracts" / "certforge-capability-surface.v2.json"
 CONTRACT_PATH = ROOT / "contracts" / "certforge-sdk-capabilities.v1.json"
 SQL_PATH = ROOT / "scripts" / "register_certforge_sdk_schemas.sql"
 COMMAND_SCHEMA = {"type": "string", "minLength": 1, "maxLength": 64}
+PROJECT_ID_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 128,
+    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+}
+PROJECTS_ARCHIVE_CAPABILITY = "echo.certforge.projects.archive"
 
 
 def _object_schema(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
@@ -30,6 +37,34 @@ def _object_schema(properties: dict[str, Any], required: list[str]) -> dict[str,
         "properties": properties,
         "additionalProperties": False,
     }
+
+
+def _projects_archive_schemas() -> tuple[dict[str, Any], dict[str, Any]]:
+    """SDK-facing shape of the archive capability (fix-cap 25412 / 39521).
+
+    The route takes the project id as a path token and may answer with no body,
+    so the route contract alone gives an unconstrained id and a null-only output.
+    The SDK gate needs the id validated, the fleet envelope's projected
+    ``options`` mirror accepted, and an object answer allowed.
+
+    This is the single source for both generated artifacts. The schema SQL is
+    applied after the capability registrations at release, so what is written
+    here is what the registry keeps.
+    """
+    input_schema = _object_schema(
+        {
+            "command": COMMAND_SCHEMA,
+            "project_id": PROJECT_ID_SCHEMA,
+            "options": {
+                "type": "object",
+                "properties": {"command": COMMAND_SCHEMA, "project_id": PROJECT_ID_SCHEMA},
+                "additionalProperties": True,
+            },
+        },
+        ["command", "project_id"],
+    )
+    output_schema = {"anyOf": [{"type": "null"}, {"type": "object", "additionalProperties": True}]}
+    return input_schema, output_schema
 
 
 def _r5_input() -> dict[str, Any]:
@@ -226,6 +261,9 @@ def build_contract() -> dict[str, Any]:
         "input_schema": publish["input_schema"],
         "output_schema": publish["output_schema"],
     }
+    archive_input, archive_output = _projects_archive_schemas()
+    capabilities[PROJECTS_ARCHIVE_CAPABILITY]["input_schema"] = archive_input
+    capabilities[PROJECTS_ARCHIVE_CAPABILITY]["output_schema"] = archive_output
     capabilities.update(_manual_capabilities())
     return {
         "schema_version": "1.0.0",

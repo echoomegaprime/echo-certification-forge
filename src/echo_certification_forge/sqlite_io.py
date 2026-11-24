@@ -14,8 +14,16 @@ from pathlib import Path
 
 logger = logging.getLogger("echo_certification_forge.sqlite_io")
 
+# Primary SQLite result codes for conditions that can clear by themselves:
+# BUSY 5, LOCKED 6, IOERR 10, FULL 13, CANTOPEN 14, PROTOCOL 15. Extended codes
+# keep the primary code in their low byte.
+_TRANSIENT_CODES = frozenset({5, 6, 10, 13, 14, 15})
+
+# Message fallback for errors that carry no result code. SQLite reports a full
+# disk as "database or disk is full".
 _TRANSIENT = (
     "disk i/o error",
+    "disk is full",
     "disk full",
     "database is locked",
     "database is busy",
@@ -28,6 +36,9 @@ _TRANSIENT = (
 def is_transient_sqlite_error(exc: BaseException) -> bool:
     if not isinstance(exc, sqlite3.OperationalError):
         return False
+    code = getattr(exc, "sqlite_errorcode", None)
+    if isinstance(code, int) and (code & 0xFF) in _TRANSIENT_CODES:
+        return True
     msg = str(exc).lower()
     return any(m in msg for m in _TRANSIENT)
 
