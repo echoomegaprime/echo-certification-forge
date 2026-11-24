@@ -2999,6 +2999,15 @@ def test_api_worker_reconciles_exact_git_commit_without_declared_tree_digest(
     assert json.loads(persisted["target_identity_json"]) == expected_target.to_dict()
     assert persisted["target_identity_digest"] == expected_target.identity_digest
 
+    replay = client.post(
+        "/v1/certifications",
+        headers=_headers(org.organization_id, org.bootstrap_api_key),
+        json=payload,
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["run_id"] == response.json()["run_id"]
+    assert replay.json()["target_identity_digest"] == expected_target.identity_digest
+
 
 @pytest.mark.parametrize("drift", [None, "artifact", "source"])
 def test_local_declared_commitments_survive_intake_and_fail_closed_on_drift(

@@ -1,6 +1,7 @@
 # Echo Certification Forge
 
 [![CI](https://github.com/echoomegaprime/echo-certification-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/echoomegaprime/echo-certification-forge/actions/workflows/ci.yml)
+[![Certification](https://github.echo-op.com/certificates/echoomegaprime/echo-certification-forge/badge.svg)](https://github.echo-op.com/certificates/echoomegaprime/echo-certification-forge)
 ![Python](https://img.shields.io/badge/Python-3.12%2B-4b8bbe)
 ![Release gate](https://img.shields.io/badge/release%20gate-fail--closed-caa85e)
 ![License](https://img.shields.io/badge/license-proprietary-59636e)
@@ -8,6 +9,27 @@
 [Architecture](docs/ARCHITECTURE.md) · [Operations](docs/OPERATIONS.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 Echo Certification Forge is a deterministic, evidence-backed release authority for EchoForge. Every run begins at `NOT_READY`. Exact target, environment, policy, evidence, anchor, key, and lifecycle identities must verify before any signed verdict can be trusted.
+
+**Evidence-backed release authority and Certification Forge runtime.**
+
+## Architecture
+
+The service separates authenticated subscriber intake, isolated evidence execution, append-only
+custody, deterministic verdict evaluation, and public verification. Trust boundaries and signed
+artifact flow are documented in [Architecture](docs/ARCHITECTURE.md) and summarized in the
+[architecture diagram](docs/assets/architecture.svg).
+
+## Workflows
+
+Exact-revision release qualification and fail-closed incident containment are documented in
+[Workflows](docs/WORKFLOWS.md). The [workflow diagram](docs/assets/workflow.svg) shows the path from
+immutable source identity to a signed verdict and controlled deployment.
+
+## Security
+
+Every privileged operation is authenticated, scoped, audited, and bound to an immutable target.
+Signing keys are isolated from the public API, subscriber input is untrusted, and missing or stale
+evidence always fails closed. See [Security](SECURITY.md) for reporting and supported-version policy.
 
 ## Release state
 
@@ -76,7 +98,7 @@ The sealed image manifest SHA-256 is `bc86b3ce849d7da82a4378cc2d3693d44e04604d2b
 - Subscriber API/authorization contract: `contracts/subscriber-governance.v1.json`
 - Targeted suite: `tests/test_p7_subscriber_governance.py`
 
-## Development and verification
+## Verification
 
 ```powershell
 py -3.13 -m venv .venv

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Certification Forge release workflow</title>
+  <desc id="desc">Six fail-closed stages bind an exact source revision to production promotion and rollback proof.</desc>
+  <defs><linearGradient id="bg" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#07111f"/><stop offset="1" stop-color="#17365b"/></linearGradient><linearGradient id="line" x1="0" x2="1"><stop stop-color="#55b8ff"/><stop offset="1" stop-color="#f0c873"/></linearGradient></defs>
+  <rect width="1200" height="675" rx="28" fill="url(#bg)"/>
+  <text x="72" y="80" fill="#fff" font-family="Segoe UI,Arial,sans-serif" font-size="34" font-weight="700">EXACT-REVISION RELEASE WORKFLOW</text>
+  <text x="72" y="116" fill="#9db5ce" font-family="Segoe UI,Arial,sans-serif" font-size="17">Every transition requires evidence. Any missing gate stops promotion.</text>
+  <path d="M105 330H1095" stroke="url(#line)" stroke-width="6" stroke-linecap="round"/>
+  <g font-family="Segoe UI,Arial,sans-serif" text-anchor="middle">
+    <g transform="translate(125 330)"><circle r="38" fill="#0d2037" stroke="#55b8ff" stroke-width="4"/><text y="8" fill="#fff" font-size="22" font-weight="700">01</text><text y="82" fill="#fff" font-size="18" font-weight="650">PIN</text><text y="109" fill="#9db5ce" font-size="14">Exact SHA</text></g>
+    <g transform="translate(315 330)"><circle r="38" fill="#0d2037" stroke="#65c4f2" stroke-width="4"/><text y="8" fill="#fff" font-size="22" font-weight="700">02</text><text y="82" fill="#fff" font-size="18" font-weight="650">TEST</text><text y="109" fill="#9db5ce" font-size="14">Negative controls</text></g>
+    <g transform="translate(505 330)"><circle r="38" fill="#0d2037" stroke="#83cad3" stroke-width="4"/><text y="8" fill="#fff" font-size="22" font-weight="700">03</text><text y="82" fill="#fff" font-size="18" font-weight="650">EXECUTE</text><text y="109" fill="#9db5ce" font-size="14">Isolated runner</text></g>
+    <g transform="translate(695 330)"><circle r="38" fill="#0d2037" stroke="#acd0a8" stroke-width="4"/><text y="8" fill="#fff" font-size="22" font-weight="700">04</text><text y="82" fill="#fff" font-size="18" font-weight="650">ANCHOR</text><text y="109" fill="#9db5ce" font-size="14">Evidence root</text></g>
+    <g transform="translate(885 330)"><circle r="38" fill="#0d2037" stroke="#d5cd7f" stroke-width="4"/><text y="8" fill="#fff" font-size="22" font-weight="700">05</text><text y="82" fill="#fff" font-size="18" font-weight="650">SIGN</text><text y="109" fill="#9db5ce" font-size="14">Verdict envelope</text></g>
+    <g transform="translate(1075 330)"><circle r="38" fill="#0d2037" stroke="#f0c873" stroke-width="4"/><text y="8" fill="#fff" font-size="22" font-weight="700">06</text><text y="82" fill="#fff" font-size="18" font-weight="650">PROMOTE</text><text y="109" fill="#9db5ce" font-size="14">Stage, smoke, verify</text></g>
+  </g>
+  <rect x="190" y="508" width="820" height="74" rx="14" fill="#091725" stroke="#315272"/>
+  <text x="228" y="539" fill="#f0c873" font-family="Segoe UI,Arial,sans-serif" font-size="15" letter-spacing="2">ROLLBACK CONTRACT</text>
+  <text x="228" y="564" fill="#c5d4e2" font-family="Segoe UI,Arial,sans-serif" font-size="15">Production identity mismatch or red smoke restores the prior release and preserves the evidence.</text>
+</svg>
