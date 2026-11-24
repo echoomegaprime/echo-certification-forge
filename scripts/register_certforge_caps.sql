@@ -255,7 +255,7 @@ VALUES
   ('echo.certforge.projects.list', 'List tenant certification projects.', 'http', 'http://127.0.0.1:8309/v1/subscriber/projects', 'GET', 'query', 'forge',
    '{"type":"object","additionalProperties":false}'::jsonb, 'certforge.project.read', 0, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
   ('echo.certforge.projects.archive', 'Archive one tenant certification project.', 'http', 'http://127.0.0.1:8309/v1/subscriber/projects/{project_id}', 'DELETE', 'path', 'forge',
-   '{"type":"object","required":["project_id"],"properties":{"project_id":{"type":"string"}},"additionalProperties":false}'::jsonb, 'certforge.project.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
+   '{"type":"object","required":["command","project_id"],"properties":{"command":{"type":"string","minLength":1,"maxLength":64,"description":"Uniform SDK command field (not forwarded to upstream; auth via static_headers)."},"project_id":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$","description":"Tenant certification project id to archive (path token {project_id})."},"options":{"type":"object","description":"Dual-shape mirror for fleet envelope / option_projections.","additionalProperties":true,"properties":{"command":{"type":"string","minLength":1,"maxLength":64},"project_id":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}}}},"additionalProperties":false}'::jsonb, 'certforge.project.manage', 1, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 20, 'active', 'unknown'),
   ('echo.certforge.api_keys.create', 'Create a scoped tenant API key; secret is returned once.', 'http', 'http://127.0.0.1:8309/v1/subscriber/api-keys', 'POST', 'json_body', 'forge',
    '{"type":"object","required":["name","scopes","expires_at"],"properties":{"name":{"type":"string"},"user_id":{"type":["string","null"]},"scopes":{"type":"array","items":{"type":"string"}},"expires_at":{"type":"string","format":"date-time"}},"additionalProperties":false}'::jsonb, 'certforge.api_key.manage', 2, '{"X-Tenant-ID":"org-echo-sovereign","Authorization":"vault:certforge.desktop_admin_api_key"}'::jsonb, 15, 'active', 'unknown'),
   ('echo.certforge.api_keys.list', 'List tenant API-key metadata without secret material.', 'http', 'http://127.0.0.1:8309/v1/subscriber/api-keys', 'GET', 'query', 'forge',
@@ -311,3 +311,15 @@ ON CONFLICT (id) DO UPDATE SET
   lifecycle_status = 'active',
   health_status = 'unknown',
   updated_at = now();
+
+-- dual-shape + projections for projects.archive (fix-cap 25412 / 39521)
+UPDATE arcanum_sdk.sdk_capabilities
+SET
+  input_schema_json = '{"type":"object","required":["command","project_id"],"properties":{"command":{"type":"string","minLength":1,"maxLength":64,"description":"Uniform SDK command field (not forwarded to upstream; auth via static_headers)."},"project_id":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$","description":"Tenant certification project id to archive (path token {project_id})."},"options":{"type":"object","description":"Dual-shape mirror for fleet envelope / option_projections.","additionalProperties":true,"properties":{"command":{"type":"string","minLength":1,"maxLength":64},"project_id":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}}}},"additionalProperties":false}'::jsonb,
+  output_schema_json = '{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":true}]}'::jsonb,
+  option_projections = '["command", "project_id"]'::jsonb,
+  default_timeout_seconds = GREATEST(COALESCE(default_timeout_seconds, 0), 20),
+  never_archive = true,
+  updated_at = now()
+WHERE id = 'echo.certforge.projects.archive';
+
